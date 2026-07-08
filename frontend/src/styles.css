@@ -141,18 +141,64 @@ body {
   background-size: 40px 40px;
   -webkit-mask: radial-gradient(120% 80% at 30% 20%, #000, transparent 75%); mask: radial-gradient(120% 80% at 30% 20%, #000, transparent 75%);
 }
-.hero-marca { position: relative; font-size: 14px; font-weight: 700; letter-spacing: .3px; color: #eafff2; display: flex; align-items: center; gap: 8px; }
-.hero-centro { position: relative; display: flex; flex-direction: column; gap: 18px; }
+.hero-marca { position: relative; display: flex; align-items: center; gap: 10px; }
+.hero-marca-logo {
+  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+  font-size: 17px; font-weight: 800; color: #1c1400; letter-spacing: -.5px;
+  background: linear-gradient(135deg, #FFD54A, #FFB300);
+  box-shadow: 0 6px 16px rgba(255,183,0,.32), inset 0 1px 0 rgba(255,255,255,.55);
+}
+.hero-marca-txt { font-size: 15px; font-weight: 700; letter-spacing: .2px; color: #eafff2; }
+.hero-marca-txt b { font-weight: 800; color: #fff; }
+.hero-centro { position: relative; display: flex; flex-direction: column; gap: 18px; align-items: flex-start; }
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.3px;
+  color: rgba(125,255,176,.9); padding: 6px 12px; border-radius: 999px;
+  background: rgba(0,200,83,.10); border: 1px solid rgba(0,200,83,.24);
+}
+.hero-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #35e07f; box-shadow: 0 0 8px rgba(53,224,127,.8); }
 .hero-frase { font-size: 30px; font-weight: 800; line-height: 1.16; letter-spacing: -.6px; color: #F5F7F6; max-width: 15ch; }
 .hero-sub { font-size: 14px; line-height: 1.5; color: rgba(234,255,242,.72); max-width: 34ch; }
 .hero-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
 .hero-mini {
+  position: relative; overflow: hidden;
   background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
-  padding: 12px 14px; min-width: 132px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  padding: 13px 15px; min-width: 128px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   display: flex; flex-direction: column; gap: 4px; animation: flutua 6s ease-in-out infinite;
+  transition: border-color var(--t), box-shadow var(--t), background var(--t);
 }
+.hero-mini::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(0,230,106,.22), transparent 62%);
+  transition: opacity var(--t);
+}
+.hero-mini:hover {
+  border-color: rgba(0,230,106,.4); background: rgba(255,255,255,.11);
+  box-shadow: 0 16px 34px rgba(0,0,0,.30), 0 0 22px rgba(0,200,83,.16);
+}
+.hero-mini:hover::after { opacity: 1; }
 .hero-mini:nth-child(2) { animation-delay: 1.4s; }
+.hero-mini:nth-child(3) { animation-delay: .7s; }
 .hero-mini.destaque { background: linear-gradient(135deg, rgba(0,200,83,.28), rgba(0,200,83,.08)); border-color: rgba(0,230,106,.4); }
+.hero-mini > * { position: relative; z-index: 1; }
+
+/* Pills de recursos ao vivo */
+.hero-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600;
+  color: rgba(234,255,242,.82); padding: 6px 12px; border-radius: 999px;
+  background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.11);
+  transition: border-color var(--t), background var(--t);
+}
+.hero-pill:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.18); }
+.hero-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(234,255,242,.5); flex-shrink: 0; }
+.hero-pill-dot.live { background: #35e07f; animation: pulseLive 1.9s ease-out infinite; }
+@keyframes pulseLive {
+  0% { box-shadow: 0 0 0 0 rgba(53,224,127,.55); }
+  70% { box-shadow: 0 0 0 7px rgba(53,224,127,0); }
+  100% { box-shadow: 0 0 0 0 rgba(53,224,127,0); }
+}
 .hero-mini-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: rgba(234,255,242,.7); font-weight: 700; }
 .hero-mini-valor { font-size: 20px; font-weight: 800; color: #fff; }
 .hero-mini-sub { font-size: 11px; color: #7dffb0; font-weight: 600; }
@@ -191,7 +237,8 @@ body {
 @keyframes logoIn { from { opacity: 0; transform: translateY(-10px) scale(.88); } to { opacity: 1; transform: none; } }
 
 .login-brand { text-align: center; font-size: 25px; font-weight: 800; letter-spacing: -.4px; color: #F5F7F6; }
-.login-sub { text-align: center; color: rgba(245,247,246,.55); font-size: 13.5px; font-weight: 500; margin: -8px 0 12px; }
+.login-sub { text-align: center; color: rgba(245,247,246,.62); font-size: 13.5px; font-weight: 600; margin: -8px 0 0; }
+.login-sub2 { text-align: center; color: rgba(245,247,246,.42); font-size: 12px; line-height: 1.5; font-weight: 400; margin: 0 auto 8px; max-width: 34ch; }
 
 .campo { display: flex; flex-direction: column; gap: 8px; }
 .campo > span { font-size: 12px; font-weight: 600; color: rgba(245,247,246,.62); letter-spacing: .3px; }
@@ -205,7 +252,8 @@ body {
 .input-senha input { padding-right: 46px; }
 .campo input::placeholder { color: rgba(245,247,246,.32); }
 .campo input:hover { border-color: rgba(255,255,255,.20); background: rgba(255,255,255,.06); }
-.campo input:focus { outline: none; border-color: #00C853; background: rgba(0,200,83,.07); box-shadow: 0 0 0 4px rgba(0,200,83,.16); }
+.campo input:focus { outline: none; border-color: #00C853; background: rgba(0,200,83,.07); box-shadow: 0 0 0 4px rgba(0,200,83,.16), inset 0 1px 0 rgba(255,255,255,.04); }
+.campo:focus-within > span { color: rgba(125,255,176,.9); }
 .campo:focus-within .input-icon { color: #00C853; }
 
 .toggle-senha {
@@ -231,14 +279,53 @@ body {
 .login-card .btn-primary:hover { transform: translateY(-2px) scale(1.012); box-shadow: 0 20px 46px rgba(0,200,83,.5); }
 .login-card .btn-primary:active { transform: translateY(0) scale(.995); }
 
+/* Estado de loading do botão (apenas visual — não altera a autenticação) */
+.login-btn-txt { transition: opacity var(--t); }
+.login-btn-spin { display: none; }
+.login-btn.carregando { pointer-events: none; }
+.login-btn.carregando .login-btn-txt { opacity: 0; }
+.login-btn.carregando .login-btn-spin {
+  display: block; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px;
+  margin: -9px 0 0 -9px; border-radius: 50%;
+  border: 2px solid rgba(4,22,12,.28); border-top-color: #04160C;
+  animation: spin .6s linear infinite;
+}
+.login-btn:disabled { opacity: 1; }
+
 .login-nota { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: rgba(245,247,246,.45); margin-top: 4px; letter-spacing: .2px; }
 .nota-lock { width: 13px; height: 13px; color: rgba(245,247,246,.4); flex-shrink: 0; }
 .login-rodape { text-align: center; color: rgba(245,247,246,.4); font-size: 12.5px; letter-spacing: .3px; margin-top: 4px; }
+
+/* ===================== ASSINATURA DO DESENVOLVEDOR (PeuCode) =====================
+   Discreta, fixa no canto inferior esquerdo. Para REMOVER: apague o bloco
+   <div class="dev-credito"> no index.html (o CSS abaixo pode ficar, sem efeito).
+   Para AJUSTAR opacidade/posição/tamanho, edite as variáveis --dev-* logo abaixo. */
+.dev-credito {
+  --dev-op: .4;          /* opacidade base do texto */
+  --dev-gap-x: 24px;     /* distância da borda esquerda */
+  --dev-gap-y: 20px;     /* distância da borda inferior */
+  --dev-fs: 11.5px;      /* tamanho da fonte */
+  position: fixed; left: var(--dev-gap-x); bottom: var(--dev-gap-y); z-index: 4;
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: var(--dev-fs); font-weight: 500; letter-spacing: .3px;
+  color: rgba(245,247,246,var(--dev-op)); -webkit-user-select: none; user-select: none;
+  animation: fadeIn .8s ease .3s both; transition: color var(--t);
+}
+.dev-credito:hover { color: rgba(245,247,246,.7); }
+.dev-credito-mark {
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 10px; font-weight: 700; letter-spacing: -.5px; line-height: 1; color: rgba(125,255,176,.75);
+  padding: 3px 6px; border-radius: 7px;
+  background: rgba(0,200,83,.10); border: 1px solid rgba(0,200,83,.22);
+}
+.dev-credito-txt b { font-weight: 700; color: rgba(245,247,246,.7); }
 
 @media (max-width: 880px) {
   .login-hero { display: none; }
   .login-split { grid-template-columns: 1fr; max-width: 420px; }
   .login-form-col { padding: 40px 32px; }
+  /* No mobile: assinatura centralizada, discreta, abaixo do card */
+  .dev-credito { left: 50%; right: auto; transform: translateX(-50%); bottom: 16px; --dev-fs: 11px; --dev-op: .38; }
 }
 @media (max-width: 480px) {
   .login-split { border-radius: 20px; }

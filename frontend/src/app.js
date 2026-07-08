@@ -110,13 +110,19 @@ function wireEventos() {
   el("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const erroBox = el("#login-erro");
+    const btn = e.currentTarget.querySelector('button[type="submit"]');
     try {
-      await login(el("#login-user").value, el("#login-pass").value);
       erroBox.hidden = true;
+      btn?.classList.add("carregando");
+      if (btn) btn.disabled = true;
+      await login(el("#login-user").value, el("#login-pass").value);
       mostrarApp();
     } catch (err) {
       erroBox.textContent = err.message;
       erroBox.hidden = false;
+    } finally {
+      btn?.classList.remove("carregando");
+      if (btn) btn.disabled = false;
     }
   });
 
