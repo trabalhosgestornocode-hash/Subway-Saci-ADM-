@@ -1,9 +1,11 @@
 import { state, linhasFiltradas } from "./state.js";
 import { INTEGRACOES, STATUS_INTEGRACAO } from "./config.js";
 import { ACOES_TABELA } from "./actions.js";
-import { el, fmtMoeda, fmtPct, fmtTexto, fmtHora, escapeHtml, temValor, statusCmv } from "./utils.js";
+import { el, fmtMoeda, fmtPct, fmtTexto, fmtHora, fmtRelativo, escapeHtml, temValor, statusCmv } from "./utils.js";
 import { renderGraficos } from "./charts.js";
 import { montarCardapioIfood, montarJanelaIfood } from "./cardapio.js";
+import { obterHistoricoRecente } from "./api.js";
+import { abrirHistoricoModal, fmtValor } from "./historicoModal.js";
 
 // ---------- rótulos ----------
 const CAT_LABEL = {
@@ -87,9 +89,12 @@ export function renderDashboard() {
       <div class="painel">
         <div class="painel-head"><h4>🕑 Últimas alterações</h4></div>
         <div class="ultimas">
-          <div class="ultima-item"><span class="alerta-dot ok"></span> Última sincronização <b>${fmtHora(state.atualizadoEm)}</b></div>
-          <div class="ultima-item"><span class="alerta-dot muted"></span> ${s.total} produto(s) carregado(s)</div>
-          <div class="estado-mini">O histórico de alterações (preço, CMV, estoque) será registrado automaticamente quando o módulo de auditoria for ativado.</div>
+          <div id="dash-ultimas" class="ultimas-lista">
+            <div class="ultima-skel"></div><div class="ultima-skel"></div><div class="ultima-skel"></div>
+          </div>
+          <div class="ultimas-rodape">
+            <span class="alerta-dot ok"></span> Sincronizado <b>${fmtHora(state.atualizadoEm)}</b> · ${s.total} produto(s)
+          </div>
         </div>
       </div>
     </div>
@@ -107,6 +112,52 @@ export function renderDashboard() {
   `;
 
   if (!carregando && rows.length) renderGraficos(rows);
+  carregarUltimasAlteracoes();
+}
+
+// ---- Painel "Últimas alterações": alimenta com o histórico real de auditoria ----
+function resumoMudancas(mudancas) {
+  const m0 = mudancas[0];
+  const de = m0.valor_anterior == null ? "" : `<s>${escapeHtml(fmtValor(m0.campo, m0.valor_anterior))}</s> → `;
+  const principal = `<span class="um-campo">${escapeHtml(m0.rotulo)}</span> ${de}<b>${escapeHtml(fmtValor(m0.campo, m0.valor_novo))}</b>`;
+  const extra = mudancas.length > 1 ? ` <span class="um-mais">+${mudancas.length - 1}</span>` : "";
+  return principal + extra;
+}
+
+async function carregarUltimasAlteracoes() {
+  const box = el("#dash-ultimas");
+  if (!box) return;
+  try {
+    const { data } = await obterHistoricoRecente(6);
+    if (el("#dash-ultimas") !== box) return; // dashboard já foi re-renderizado
+
+    if (data.pendente) {
+      box.innerHTML = `<div class="estado-mini">O histórico de alterações começa a ser registrado assim que o módulo de auditoria for ativado no banco (migration <code>002_produto_historico.sql</code>).</div>`;
+      return;
+    }
+    if (!data.eventos.length) {
+      box.innerHTML = `<div class="estado-mini">Nenhuma alteração registrada ainda. Edições de produtos (nome, categoria, status e preços) aparecerão aqui, com autor e horário.</div>`;
+      return;
+    }
+
+    box.innerHTML = data.eventos.map((e) => {
+      const autor = e.usuario_nome || e.usuario_email || "Usuário";
+      return `
+        <button class="ultima-mudanca" data-produto="${e.produto_id}" data-nome="${escapeHtml(e.produto_nome)}" title="Ver histórico de ${escapeHtml(e.produto_nome)}">
+          <span class="alerta-dot ok"></span>
+          <span class="um-corpo">
+            <span class="um-topo"><b class="um-produto">${escapeHtml(e.produto_nome)}</b><span class="um-quando">${fmtRelativo(e.created_at)}</span></span>
+            <span class="um-detalhe">${resumoMudancas(e.mudancas)}</span>
+            <span class="um-autor">por ${escapeHtml(autor)}</span>
+          </span>
+        </button>`;
+    }).join("");
+
+    box.querySelectorAll(".ultima-mudanca").forEach((btn) =>
+      btn.addEventListener("click", () => abrirHistoricoModal(btn.dataset.produto, btn.dataset.nome)));
+  } catch {
+    box.innerHTML = `<div class="estado-mini">Não foi possível carregar as últimas alterações agora.</div>`;
+  }
 }
 
 // ======================= PRODUTOS / CMV =======================

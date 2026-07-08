@@ -2,6 +2,7 @@ import { toast } from "./utils.js";
 import { abrirProdutoModal } from "./produtoModal.js";
 import { abrirSimulador } from "./simuladorModal.js";
 import { abrirEditarModal } from "./editarModal.js";
+import { abrirHistoricoModal } from "./historicoModal.js";
 
 // Ações da tabela de produtos. Placeholders organizados — prontos para ligar ao backend.
 // Cada função recebe a linha (produto) correspondente.
@@ -15,8 +16,8 @@ export const acoes = {
     else toast(`Produto "${row.nome}" sem identificador.`);
   },
   historico: (row) => {
-    // Futuro: histórico de preço/custo do produto
-    toast(`Histórico de "${row.nome}" — em breve.`);
+    if (row.produto_id) abrirHistoricoModal(row.produto_id, row.nome);
+    else toast(`Produto "${row.nome}" sem identificador.`);
   },
   simular: (row) => {
     abrirSimulador(row);

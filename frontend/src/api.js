@@ -43,6 +43,14 @@ export async function obterProduto(id) {
   return getJson(`/api/v1/produtos/${id}`);
 }
 
+export async function obterHistoricoProduto(id) {
+  return getJson(`/api/v1/produtos/${id}/historico`);
+}
+
+export async function obterHistoricoRecente(limite = 8) {
+  return getJson(`/api/v1/produtos/historico/recentes?limite=${limite}`);
+}
+
 export async function atualizarProduto(id, dados) {
   const r = await fetch(`${API_BASE}/api/v1/produtos/${id}`, {
     method: "PUT",

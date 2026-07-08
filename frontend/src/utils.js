@@ -12,6 +12,22 @@ export const fmtPct = (v) => (temValor(v) && !Number.isNaN(Number(v)) ? Number(v
 export const fmtTexto = (v) => (temValor(v) ? String(v) : "—");
 export const fmtHora = (ts) => (ts ? new Date(ts).toLocaleTimeString("pt-BR") : "—");
 
+// Tempo relativo curto em pt-BR (ex.: "há 5 min", "há 2 dias").
+export function fmtRelativo(iso) {
+  if (!iso) return "—";
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "agora mesmo";
+  const m = Math.floor(s / 60); if (m < 60) return `há ${m} min`;
+  const h = Math.floor(m / 60); if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24); if (d < 30) return `há ${d} dia${d > 1 ? "s" : ""}`;
+  const meses = Math.floor(d / 30); if (meses < 12) return `há ${meses} ${meses > 1 ? "meses" : "mês"}`;
+  return `há ${Math.floor(meses / 12)} ano(s)`;
+}
+
+// Data + hora curtas em pt-BR (ex.: "08/07/2026 14:32").
+export const fmtDataHora = (iso) =>
+  iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
 export function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

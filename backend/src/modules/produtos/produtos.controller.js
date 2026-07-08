@@ -24,6 +24,24 @@ export const atualizar = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     id: req.params.id,
     dados: req.body ?? {},
+    usuario: req.user, // { id, nome, email } — para a auditoria
+  });
+  res.json({ data });
+});
+
+export const historico = asyncHandler(async (req, res) => {
+  const data = await service.listarHistoricoProduto({
+    organizacaoId: req.tenant.organizacaoId,
+    produtoId: req.params.id,
+  });
+  res.json({ data });
+});
+
+export const historicoRecente = asyncHandler(async (req, res) => {
+  const limite = Math.min(Math.max(Number(req.query.limite) || 8, 1), 30);
+  const data = await service.listarHistoricoRecente({
+    organizacaoId: req.tenant.organizacaoId,
+    limite,
   });
   res.json({ data });
 });
