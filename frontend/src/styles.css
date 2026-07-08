@@ -99,8 +99,8 @@ body {
 /* ===================== LOGIN (dark premium / enterprise) ===================== */
 .login-screen {
   position: relative; overflow: hidden;
-  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 22px; padding: 24px; color: #F5F7F6;
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; color: #F5F7F6;
   background:
     radial-gradient(900px 620px at 50% -10%, rgba(0,200,83,.20), transparent 60%),
     radial-gradient(760px 560px at 82% 116%, rgba(11,138,62,.24), transparent 55%),
@@ -113,27 +113,72 @@ body {
 .login-screen::before { width: 480px; height: 480px; background: radial-gradient(circle, #00C853, transparent 66%); opacity: .38; top: -170px; left: -130px; animation: floatBlob 12s ease-in-out infinite; }
 .login-screen::after { width: 400px; height: 400px; background: radial-gradient(circle, #FFC72C, transparent 62%); opacity: .22; bottom: -150px; right: -110px; animation: floatBlob 15s ease-in-out infinite reverse; }
 
-.login-card {
-  position: relative; z-index: 1; width: 100%; max-width: 404px;
-  background: linear-gradient(180deg, rgba(22,38,30,.74), rgba(9,20,14,.62));
+/* Container split (vitrine + formulário) */
+.login-split {
+  position: relative; z-index: 1; width: 100%; max-width: 1000px;
+  display: grid; grid-template-columns: 1.05fr .95fr;
+  background: linear-gradient(180deg, rgba(20,34,27,.72), rgba(8,18,13,.6));
   -webkit-backdrop-filter: blur(26px) saturate(1.4); backdrop-filter: blur(26px) saturate(1.4);
-  border: 1px solid rgba(255,255,255,.10); border-radius: 24px;
-  padding: 40px 34px 30px; display: flex; flex-direction: column; gap: 15px;
-  box-shadow: 0 40px 90px rgba(0,0,0,.6), 0 0 60px rgba(0,200,83,.10), inset 0 1px 0 rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10); border-radius: 26px; overflow: hidden;
+  box-shadow: 0 44px 100px rgba(0,0,0,.6), 0 0 70px rgba(0,200,83,.10), inset 0 1px 0 rgba(255,255,255,.08);
   animation: fadeInUp .6s cubic-bezier(.2,.8,.2,1) both;
-  transition: transform var(--t), box-shadow var(--t);
 }
-.login-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 50px 110px rgba(0,0,0,.66), 0 0 84px rgba(0,200,83,.18), inset 0 1px 0 rgba(255,255,255,.12);
+
+/* ---- Vitrine (esquerda) ---- */
+.login-hero {
+  position: relative; overflow: hidden; padding: 46px 42px;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 26px;
+  background: linear-gradient(160deg, #0F7E41 0%, #0B3D2E 56%, #06281E 100%);
+  border-right: 1px solid rgba(255,255,255,.06);
 }
-/* borda com brilho sutil */
-.login-card::before {
-  content: ""; position: absolute; inset: 0; border-radius: 24px; padding: 1px; pointer-events: none;
-  background: linear-gradient(155deg, rgba(0,200,83,.55), rgba(255,255,255,.05) 42%, transparent 72%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
+.login-hero::before {
+  content: ""; position: absolute; width: 340px; height: 340px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,230,106,.35), transparent 66%); top: -120px; right: -90px; filter: blur(30px); pointer-events: none;
 }
+.login-hero::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  -webkit-mask: radial-gradient(120% 80% at 30% 20%, #000, transparent 75%); mask: radial-gradient(120% 80% at 30% 20%, #000, transparent 75%);
+}
+.hero-marca { position: relative; font-size: 14px; font-weight: 700; letter-spacing: .3px; color: #eafff2; display: flex; align-items: center; gap: 8px; }
+.hero-centro { position: relative; display: flex; flex-direction: column; gap: 18px; }
+.hero-frase { font-size: 30px; font-weight: 800; line-height: 1.16; letter-spacing: -.6px; color: #F5F7F6; max-width: 15ch; }
+.hero-sub { font-size: 14px; line-height: 1.5; color: rgba(234,255,242,.72); max-width: 34ch; }
+.hero-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.hero-mini {
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
+  padding: 12px 14px; min-width: 132px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; gap: 4px; animation: flutua 6s ease-in-out infinite;
+}
+.hero-mini:nth-child(2) { animation-delay: 1.4s; }
+.hero-mini.destaque { background: linear-gradient(135deg, rgba(0,200,83,.28), rgba(0,200,83,.08)); border-color: rgba(0,230,106,.4); }
+.hero-mini-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: rgba(234,255,242,.7); font-weight: 700; }
+.hero-mini-valor { font-size: 20px; font-weight: 800; color: #fff; }
+.hero-mini-sub { font-size: 11px; color: #7dffb0; font-weight: 600; }
+.hero-spark { display: flex; align-items: flex-end; gap: 3px; height: 22px; margin-top: 2px; }
+.hero-spark i { flex: 1; background: linear-gradient(180deg, #00E06A, #0B8A3E); border-radius: 2px; opacity: .9; }
+.hero-badge {
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 12px 16px;
+  font-size: 12px; color: rgba(234,255,242,.8); text-align: center; align-self: center; animation: flutua 7s ease-in-out .7s infinite;
+}
+.hero-badge b { display: block; font-size: 20px; color: #fff; margin-top: 2px; }
+.hero-rodape { position: relative; font-size: 12px; color: rgba(234,255,242,.55); letter-spacing: .2px; }
+@keyframes flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+
+/* ---- Coluna do formulário (direita) ---- */
+.login-form-col {
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 46px 44px; gap: 16px; background: rgba(6,18,13,.25);
+}
+
+/* Card do formulário — dentro do split, sem "chrome" próprio (o container é o split) */
+.login-card {
+  position: relative; z-index: 1; display: flex; flex-direction: column; gap: 15px;
+  width: 100%; background: none; border: none; box-shadow: none; padding: 0;
+}
+.login-card::before { display: none; }
+.login-card:hover { transform: none; box-shadow: none; }
 
 .login-logo {
   width: 92px; height: 92px; object-fit: contain; display: block; margin: 0 auto 4px;
@@ -188,10 +233,16 @@ body {
 
 .login-nota { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: rgba(245,247,246,.45); margin-top: 4px; letter-spacing: .2px; }
 .nota-lock { width: 13px; height: 13px; color: rgba(245,247,246,.4); flex-shrink: 0; }
-.login-rodape { position: relative; z-index: 1; color: rgba(245,247,246,.4); font-size: 13px; letter-spacing: .3px; }
+.login-rodape { text-align: center; color: rgba(245,247,246,.4); font-size: 12.5px; letter-spacing: .3px; margin-top: 4px; }
 
+@media (max-width: 880px) {
+  .login-hero { display: none; }
+  .login-split { grid-template-columns: 1fr; max-width: 420px; }
+  .login-form-col { padding: 40px 32px; }
+}
 @media (max-width: 480px) {
-  .login-card { padding: 32px 22px 26px; border-radius: 20px; max-width: 100%; }
+  .login-split { border-radius: 20px; }
+  .login-form-col { padding: 32px 24px; }
   .login-logo { width: 74px; height: 74px; }
   .login-brand { font-size: 22px; }
 }
