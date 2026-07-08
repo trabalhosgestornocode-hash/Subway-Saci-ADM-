@@ -1,0 +1,24 @@
+# Render Blueprint — Subway Saci
+# O backend serve a API + o frontend estático (serviço único).
+# As 3 chaves do Supabase são marcadas como "sync: false" → você as define
+# no painel do Render (nunca ficam no repositório).
+services:
+  - type: web
+    name: subway-saci
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: DEFAULT_ORG_ID
+        value: "00000000-0000-0000-0000-000000000001"
+      - key: DEFAULT_UNIDADE_ID
+        value: "00000000-0000-0000-0000-0000000000a1"

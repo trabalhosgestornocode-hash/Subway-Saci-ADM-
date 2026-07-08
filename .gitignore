@@ -1,0 +1,26 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (SEGREDOS — nunca commitar)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Ferramenta local (Claude Code)
+.claude/
+
+# Planilhas de origem — dados internos sensíveis (já embutidos nos seeds)
+planilhasveryimportants/

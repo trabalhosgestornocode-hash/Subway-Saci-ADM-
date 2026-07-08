@@ -1,0 +1,22 @@
+{
+  "name": "subway-saci-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "API do sistema de gestão Subway Saci",
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/server.js",
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "ws": "^8.21.0"
+  }
+}
