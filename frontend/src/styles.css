@@ -143,10 +143,8 @@ body {
 }
 .hero-marca { position: relative; display: flex; align-items: center; gap: 10px; }
 .hero-marca-logo {
-  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
-  font-size: 17px; font-weight: 800; color: #1c1400; letter-spacing: -.5px;
-  background: linear-gradient(135deg, #FFD54A, #FFB300);
-  box-shadow: 0 6px 16px rgba(255,183,0,.32), inset 0 1px 0 rgba(255,255,255,.55);
+  width: 40px; height: 40px; border-radius: 11px; object-fit: cover; display: block; flex-shrink: 0;
+  background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.18);
 }
 .hero-marca-txt { font-size: 15px; font-weight: 700; letter-spacing: .2px; color: #eafff2; }
 .hero-marca-txt b { font-weight: 800; color: #fff; }
@@ -160,7 +158,7 @@ body {
 .hero-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #35e07f; box-shadow: 0 0 8px rgba(53,224,127,.8); }
 .hero-frase { font-size: 30px; font-weight: 800; line-height: 1.16; letter-spacing: -.6px; color: #F5F7F6; max-width: 15ch; }
 .hero-sub { font-size: 14px; line-height: 1.5; color: rgba(234,255,242,.72); max-width: 34ch; }
-.hero-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.hero-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 6px; max-width: 384px; }
 .hero-mini {
   position: relative; overflow: hidden;
   background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
@@ -180,6 +178,7 @@ body {
 .hero-mini:hover::after { opacity: 1; }
 .hero-mini:nth-child(2) { animation-delay: 1.4s; }
 .hero-mini:nth-child(3) { animation-delay: .7s; }
+.hero-mini:nth-child(4) { animation-delay: 2.1s; }
 .hero-mini.destaque { background: linear-gradient(135deg, rgba(0,200,83,.28), rgba(0,200,83,.08)); border-color: rgba(0,230,106,.4); }
 .hero-mini > * { position: relative; z-index: 1; }
 
@@ -201,6 +200,7 @@ body {
 }
 .hero-mini-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: rgba(234,255,242,.7); font-weight: 700; }
 .hero-mini-valor { font-size: 20px; font-weight: 800; color: #fff; }
+.hero-mini-valor.hero-mini-valor-txt { font-size: 15px; letter-spacing: -.2px; line-height: 1.2; }
 .hero-mini-sub { font-size: 11px; color: #7dffb0; font-weight: 600; }
 .hero-spark { display: flex; align-items: flex-end; gap: 3px; height: 22px; margin-top: 2px; }
 .hero-spark i { flex: 1; background: linear-gradient(180deg, #00E06A, #0B8A3E); border-radius: 2px; opacity: .9; }
@@ -239,6 +239,19 @@ body {
 .login-brand { text-align: center; font-size: 25px; font-weight: 800; letter-spacing: -.4px; color: #F5F7F6; }
 .login-sub { text-align: center; color: rgba(245,247,246,.62); font-size: 13.5px; font-weight: 600; margin: -8px 0 0; }
 .login-sub2 { text-align: center; color: rgba(245,247,246,.42); font-size: 12px; line-height: 1.5; font-weight: 400; margin: 0 auto 8px; max-width: 34ch; }
+
+/* Wordmark "SUBWAY SACI" no estilo da marca (fonte display pesada + cores Subway).
+   Usado no hero (esquerda) e no brand do formulário (direita). */
+.marca-sw {
+  font-family: "Archivo Black", "Inter", -apple-system, sans-serif; font-weight: 400;
+  text-transform: uppercase; letter-spacing: -.5px; white-space: nowrap; line-height: 1;
+}
+.marca-sw .sw-sub  { color: #FFC72C; }                    /* amarelo Subway */
+.marca-sw .sw-way  { color: #45E585; }                    /* verde legível no fundo escuro */
+.marca-sw .sw-saci { color: #FFFFFF; margin-left: .3em; } /* "SACI" em branco, com respiro */
+.login-brand.marca-sw { font-size: clamp(18px, 4.8vw, 24px); letter-spacing: -.6px; }
+@media (min-width: 1001px) { .login-brand.marca-sw { font-size: 25px; } }
+.hero-marca-txt.marca-sw { font-size: 16px; }
 
 .campo { display: flex; flex-direction: column; gap: 8px; }
 .campo > span { font-size: 12px; font-weight: 600; color: rgba(245,247,246,.62); letter-spacing: .3px; }
