@@ -6,10 +6,10 @@ services:
   - type: web
     name: subway-saci
     runtime: node
-    rootDir: backend
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    # Sem rootDir: assim mudanças no frontend/ TAMBÉM disparam auto-deploy.
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
     healthCheckPath: /health
     envVars:
       - key: SUPABASE_URL
