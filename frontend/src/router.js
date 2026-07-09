@@ -2,6 +2,7 @@ import { state } from "./state.js";
 import { MENU } from "./config.js";
 import { el, els } from "./utils.js";
 import * as views from "./views.js";
+import { renderConfiguracoes } from "./configuracoes.js";
 
 // Navega para uma rota da sidebar
 export function irPara(rotaId) {
@@ -26,6 +27,9 @@ export function renderRotaAtual() {
       break;
     case "integracao":
       views.renderIntegracaoDetalhe(item.integ);
+      break;
+    case "configuracoes":
+      renderConfiguracoes();
       break;
     case "construcao":
       views.renderConstrucao(item.id, item.label);

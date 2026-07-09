@@ -35,7 +35,7 @@ export const MENU = [
   { id: "ia",            label: "Agente de IA",    icon: "🤖", tipo: "integracao",  integ: "ia",           secao: "INTELIGÊNCIA" },
   { id: "relatorios",    label: "Relatórios",      icon: "📈", tipo: "construcao",  secao: "INTELIGÊNCIA" },
   { id: "integracoes",   label: "Integrações",     icon: "🔌", tipo: "integracoes", secao: "INTELIGÊNCIA" },
-  { id: "configuracoes", label: "Configurações",   icon: "⚙️", tipo: "construcao",  secao: "SISTEMA" },
+  { id: "configuracoes", label: "Configurações",   icon: "⚙️", tipo: "configuracoes", secao: "SISTEMA" },
 ];
 
 // Status possíveis de integração

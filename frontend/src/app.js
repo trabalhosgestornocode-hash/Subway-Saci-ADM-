@@ -8,6 +8,7 @@ import { irPara, renderRotaAtual } from "./router.js";
 import { acoes } from "./actions.js";
 import { getLinha, contarAlertas } from "./views.js";
 import { abrirProdutoModal } from "./produtoModal.js";
+import { aplicarTemaSalvo } from "./configuracoes.js";
 
 // ---------- sidebar ----------
 function montarMenu() {
@@ -175,6 +176,7 @@ function wireEventos() {
 
 // ---------- boot ----------
 async function boot() {
+  aplicarTemaSalvo();
   wireEventos();
   try {
     if (await restaurarSessao()) mostrarApp();

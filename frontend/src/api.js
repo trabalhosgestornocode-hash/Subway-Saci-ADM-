@@ -60,6 +60,34 @@ export async function atualizarProduto(id, dados) {
   return tratar(r);
 }
 
+// ---------- Usuários (Configurações → Usuários) ----------
+export async function obterUsuarios() {
+  return getJson("/api/v1/usuarios");
+}
+export async function criarUsuario(dados) {
+  const r = await fetch(`${API_BASE}/api/v1/usuarios`, {
+    method: "POST",
+    headers: await comAuth({ "Content-Type": "application/json" }),
+    body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+export async function atualizarUsuario(id, dados) {
+  const r = await fetch(`${API_BASE}/api/v1/usuarios/${id}`, {
+    method: "PATCH",
+    headers: await comAuth({ "Content-Type": "application/json" }),
+    body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+export async function excluirUsuario(id) {
+  const r = await fetch(`${API_BASE}/api/v1/usuarios/${id}`, {
+    method: "DELETE",
+    headers: await comAuth(),
+  });
+  return tratar(r);
+}
+
 export async function health() {
   return getJson("/health");
 }

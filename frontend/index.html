@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/styles.css" />
+  <!-- Tema individual (por dispositivo): aplica antes da pintura p/ evitar flash -->
+  <script>try{if(localStorage.getItem('saci-tema')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <!-- ===================== LOGIN ===================== -->
@@ -105,7 +107,9 @@
       <div class="sidebar-brand"><img src="/assets/logo_subway.jpeg" alt="" class="brand-logo" /><span>Subway Saci</span></div>
       <nav class="menu"><ul id="menu"></ul></nav>
       <div class="sidebar-footer">
-        <span class="ver">v0.2 · MVP</span>
+        <a class="sidebar-peucode" href="#" onclick="return false" title="Desenvolvido por PeuCode">
+          <span class="sidebar-peucode-mark">&lt;/&gt;</span> by <b>PeuCode</b>
+        </a>
       </div>
     </aside>
 
