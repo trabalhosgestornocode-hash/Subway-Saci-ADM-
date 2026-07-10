@@ -13,7 +13,7 @@ const TAM_LABEL = { "15cm": "15 cm", "30cm": "30 cm", salada: "Salada", unico: "
 // Formata o valor de acordo com o campo alterado.
 export function fmtValor(campo, v) {
   if (v === null || v === undefined || v === "") return "—";
-  if (campo === "preco") return fmtMoeda(Number(v));
+  if (campo === "preco" || campo === "custo") return fmtMoeda(Number(v));
   if (campo === "ativo") return v === "true" || v === true ? "Ativo" : "Inativo";
   if (campo === "tipo") return CAT_LABEL[v] || String(v);
   if (campo === "tamanho") return TAM_LABEL[v] || String(v);

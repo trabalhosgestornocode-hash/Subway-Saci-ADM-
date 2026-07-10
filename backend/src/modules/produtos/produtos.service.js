@@ -74,9 +74,12 @@ export async function obterProduto({ organizacaoId, id }) {
       : { tipo: "submontagem", nome: nomeProdById[f.subproduto_id] ?? "?", quantidade: Number(f.quantidade), unidade: null }
   );
 
-  const custo = ingredientes.reduce((s, r) => s + r.custo_total, 0);
+  const custoCalculado = ingredientes.reduce((s, r) => s + r.custo_total, 0);
+  // Custo manual (override) vence o calculado quando definido.
+  const custoManual = produto.custo_manual != null ? Number(produto.custo_manual) : null;
+  const custo = custoManual != null ? custoManual : custoCalculado;
 
-  return { ...produto, custo, ingredientes, componentes, precos: precosRes.data ?? [] };
+  return { ...produto, custo, custo_calculado: custoCalculado, custo_manual: custoManual, ingredientes, componentes, precos: precosRes.data ?? [] };
 }
 
 // Atualiza campos do produto e/ou preços (upsert por canal/tabela).
@@ -147,7 +150,35 @@ export async function atualizarProduto({ organizacaoId, id, dados, usuario }) {
     }
   }
 
-  // 3) Auditoria (best-effort: nunca derruba o salvar se a tabela não existir)
+  // 3) Custo manual (override do custo calculado). '' ou null volta ao automático.
+  //    Best-effort: se a coluna custo_manual não existir (migration 004 não rodada),
+  //    ignora sem quebrar o restante do salvar.
+  if (dados.custo !== undefined) {
+    let custoManual = null;
+    if (dados.custo !== "" && dados.custo !== null) {
+      const n = Number(dados.custo);
+      if (Number.isNaN(n) || n < 0) throw ApiError.badRequest("Custo inválido.");
+      custoManual = n;
+    }
+    const { data: cAntes, error: eRead } = await supabase
+      .from("produtos").select("custo_manual").eq("id", id).eq("organizacao_id", organizacaoId).single();
+    const colunaAusente = eRead && /custo_manual|does not exist|schema cache|could not find/i.test(eRead.message);
+    if (!colunaAusente) {
+      const antesCusto = cAntes?.custo_manual != null ? Number(cAntes.custo_manual) : null;
+      const { error } = await supabase.from("produtos").update({ custo_manual: custoManual })
+        .eq("id", id).eq("organizacao_id", organizacaoId);
+      if (error) throw ApiError.badRequest(error.message);
+      if (antesCusto !== custoManual) {
+        mudancas.push({
+          campo: "custo", rotulo: "Custo",
+          valor_anterior: antesCusto == null ? null : String(antesCusto),
+          valor_novo: custoManual == null ? null : String(custoManual),
+        });
+      }
+    }
+  }
+
+  // 4) Auditoria (best-effort: nunca derruba o salvar se a tabela não existir)
   await registrarHistorico({ organizacaoId, produtoId: id, usuario, mudancas });
 
   return obterProduto({ organizacaoId, id });

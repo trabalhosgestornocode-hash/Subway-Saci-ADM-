@@ -675,6 +675,7 @@ body {
 .ed-check { flex-direction: row; align-items: center; gap: 9px; grid-column: 1 / -1; cursor: pointer; }
 .ed-check input { width: 18px; height: 18px; accent-color: var(--verde); cursor: pointer; }
 .ed-check > span { font-size: 14px; font-weight: 600; color: var(--texto); text-transform: none; letter-spacing: 0; }
+.ed-hint { font-size: 11px; color: var(--cinza-claro); font-weight: 500; text-transform: none; letter-spacing: 0; }
 .ed-preco { width: 92px; padding: 7px 9px; border: 1.5px solid var(--linha); border-radius: 8px; font-size: 14px; text-align: right; }
 .ed-preco:focus { outline: none; border-color: var(--verde-vivo); box-shadow: 0 0 0 3px rgba(0,194,90,.13); }
 .modal-sec-titulo small { font-weight: 500; color: var(--cinza); font-size: 12px; }

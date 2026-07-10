@@ -32,6 +32,8 @@ export const MENU = [
   { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "integracao",  integ: "martinbrower", secao: "INTEGRAÇÕES" },
   { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES" },
   { id: "ifood",         label: "iFood",           icon: "🛵", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES" },
+  { id: "cocacola",      label: "Coca-Cola",       icon: "🥤", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES" },
+  { id: "claudiahortifruti", label: "Cláudia Hortifruti", icon: "🍓", tipo: "integracao", integ: "claudiahortifruti", secao: "INTEGRAÇÕES" },
   { id: "ia",            label: "Agente de IA",    icon: "🤖", tipo: "integracao",  integ: "ia",           secao: "INTELIGÊNCIA" },
   { id: "relatorios",    label: "Relatórios",      icon: "📈", tipo: "construcao",  secao: "INTELIGÊNCIA" },
   { id: "integracoes",   label: "Integrações",     icon: "🔌", tipo: "integracoes", secao: "INTELIGÊNCIA" },
@@ -67,6 +69,16 @@ export const INTEGRACOES = {
     nome: "Martin Brower", icon: "🏭", logo: "/assets/logo-mb.jpeg", status: "futuro",
     desc: "Distribuidora oficial: fonte do custo real de cada insumo comprado, mantendo o CMV sempre preciso e atualizado.",
     features: ["Custo real por insumo", "Atualização automática de custos", "Notas e histórico de compra"],
+  },
+  cocacola: {
+    nome: "Coca-Cola", icon: "🥤", logo: "/assets/logo-cocacola.png", status: "futuro",
+    desc: "Distribuidora de bebidas (Coca-Cola): custo real de refrigerantes, sucos e água para manter o CMV das bebidas sempre preciso.",
+    features: ["Custo real das bebidas", "Atualização de preços de refrigerantes", "Notas e histórico de compra"],
+  },
+  claudiahortifruti: {
+    nome: "Cláudia Hortifruti", icon: "🍓", logo: "/assets/logo-claudia.svg", status: "futuro",
+    desc: "Fornecedor de hortifrúti: custo real dos vegetais e frutas usados nos sanduíches e saladas, com controle de perdas de itens frescos.",
+    features: ["Custo real de vegetais e frutas", "Controle de perdas de itens frescos", "Notas e histórico de compra"],
   },
   whatsapp: {
     nome: "WhatsApp", icon: "💬", status: "planejamento",

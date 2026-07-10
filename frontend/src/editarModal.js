@@ -62,13 +62,18 @@ function render(p) {
         <span>Categoria</span>
         <select id="ed-tipo">${TIPOS.map(([v, l]) => `<option value="${v}" ${v === p.tipo ? "selected" : ""}>${l}</option>`).join("")}</select>
       </label>
+      <label class="ed-campo">
+        <span>Custo (R$)</span>
+        <input id="ed-custo" type="number" min="0" step="0.01" value="${p.custo_manual ?? ""}" placeholder="auto: ${fmtMoeda(p.custo_calculado ?? p.custo)}" />
+        <small class="ed-hint">Vazio = custo calculado pela ficha técnica</small>
+      </label>
       <label class="ed-campo ed-check">
         <input id="ed-ativo" type="checkbox" ${p.ativo ? "checked" : ""} />
         <span>Produto ativo</span>
       </label>
     </div>
 
-    <div class="modal-sec-titulo">💵 Preços <small>(custo: ${fmtMoeda(p.custo)})</small></div>
+    <div class="modal-sec-titulo">💵 Preços</div>
     <div class="tabela-wrap">
       <table class="grid grid-modal">
         <thead><tr><th>Canal</th><th>Tabela</th><th class="num">Preço</th></tr></thead>
@@ -106,6 +111,7 @@ async function salvar(id, m) {
     nome,
     tipo: m.querySelector("#ed-tipo").value,
     ativo: m.querySelector("#ed-ativo").checked,
+    custo: m.querySelector("#ed-custo").value,
     precos,
   };
 

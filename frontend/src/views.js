@@ -3,7 +3,6 @@ import { INTEGRACOES, STATUS_INTEGRACAO } from "./config.js";
 import { ACOES_TABELA } from "./actions.js";
 import { el, fmtMoeda, fmtPct, fmtTexto, fmtHora, fmtRelativo, escapeHtml, temValor, statusCmv } from "./utils.js";
 import { renderGraficos } from "./charts.js";
-import { montarCardapioIfood, montarJanelaIfood } from "./cardapio.js";
 import { obterHistoricoRecente } from "./api.js";
 import { abrirHistoricoModal, fmtValor } from "./historicoModal.js";
 
@@ -262,32 +261,7 @@ export function renderIntegracoes() {
 export function renderIntegracaoDetalhe(key) {
   const ig = INTEGRACOES[key];
   if (!ig) { el("#view").innerHTML = estadoVazio("🔌", "Integração", "Não encontrada."); return; }
-
-  let html = `<div class="integra-grid" style="grid-template-columns:minmax(0,560px)">${integraCard(ig)}</div>`;
-
-  // Aba iFood: janela da loja no iFood + vitrine do cardápio do sistema
-  if (key === "ifood") {
-    html += `
-      <div id="ifood-window"></div>
-      <div class="cardapio-wrap">
-        <div class="cardapio-head">
-          <div>
-            <h3>📋 Cardápio do sistema</h3>
-            <p>Prévia do cardápio montada com os dados ao vivo da Subway Saci.</p>
-          </div>
-          <button id="cardapio-refresh" class="btn btn-ghost btn-sm">🔄 Atualizar</button>
-        </div>
-        <div id="cardapio-live"></div>
-      </div>`;
-  }
-
-  el("#view").innerHTML = html;
-
-  if (key === "ifood") {
-    montarJanelaIfood();
-    montarCardapioIfood();
-    el("#cardapio-refresh")?.addEventListener("click", montarCardapioIfood);
-  }
+  el("#view").innerHTML = `<div class="integra-grid" style="grid-template-columns:minmax(0,560px)">${integraCard(ig)}</div>`;
 }
 
 // ======================= PÁGINAS EM CONSTRUÇÃO =======================
