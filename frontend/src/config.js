@@ -3,7 +3,7 @@ export const API_BASE = ""; // mesma origem (backend serve o front)
 
 export const TABELAS = {
   balcao: ["A", "B", "C", "D", "E", "F", "AERO A", "AERO B"],
-  ifood: ["A", "B", "C", "D"],
+  ifood: ["A", "B", "C", "D", "E", "F", "G", "H", "Z1", "Z2", "Z3", "Z4"],
 };
 
 // Limites de CMV (%) para classificar status
