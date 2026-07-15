@@ -18,7 +18,8 @@ export function createApp() {
   // CSP desligado em dev p/ simplificar; reativar/afinar antes de produção.
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors());
-  app.use(express.json());
+  // limite maior por causa dos relatórios do SW enviados em base64 (importação de vendas)
+  app.use(express.json({ limit: "30mb" }));
   app.use(morgan("dev"));
 
   // Frontend estático (shell público — a proteção real está na API de dados)

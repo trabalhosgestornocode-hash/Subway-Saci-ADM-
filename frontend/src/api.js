@@ -88,6 +88,42 @@ export async function excluirUsuario(id) {
   return tratar(r);
 }
 
+// ---------- Vendas (consolidação SW / PDV / iFood) ----------
+function qs(params = {}) {
+  const p = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "" && v !== "todos")
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  return p ? `?${p}` : "";
+}
+export const vendasVisaoGeral   = (f) => getJson(`/api/v1/vendas/visao-geral${qs(f)}`);
+export const vendasFaturamento  = (f) => getJson(`/api/v1/vendas/faturamento${qs(f)}`);
+export const vendasProdutos     = (f) => getJson(`/api/v1/vendas/produtos${qs(f)}`);
+export const vendasImportacoes  = () => getJson(`/api/v1/vendas/importacoes`);
+export async function vendasExcluirImportacao(id) {
+  const r = await fetch(`${API_BASE}/api/v1/vendas/importacoes/${id}`, { method: "DELETE", headers: await comAuth() });
+  return tratar(r);
+}
+export const vendasDivergencias = () => getJson(`/api/v1/vendas/divergencias`);
+export const listarProdutosSistema = () => getJson(`/api/v1/produtos?vendavel=true`);
+
+async function postJson(url, body) {
+  const r = await fetch(`${API_BASE}${url}`, {
+    method: "POST", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(body),
+  });
+  return tratar(r);
+}
+export const vendasPreview = (payload) => postJson(`/api/v1/vendas/importar/preview`, payload);
+export const vendasImportar = (payload) => postJson(`/api/v1/vendas/importar`, payload);
+export const vendasVincular = (dados) => postJson(`/api/v1/vendas/vincular`, dados);
+export const vendasVincularLote = (itens) => postJson(`/api/v1/vendas/vincular-lote`, { itens });
+export const vendasComponentesCombo = (codigo) => getJson(`/api/v1/vendas/combos/${encodeURIComponent(codigo)}/componentes`);
+export const vendasArquivoOriginal = (id) => getJson(`/api/v1/vendas/importacoes/${id}/arquivo`);
+export async function vendasResolverDivergencia(id, resolvida = true) {
+  const r = await fetch(`${API_BASE}/api/v1/vendas/divergencias/${id}`, {
+    method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify({ resolvida }),
+  });
+  return tratar(r);
+}
+
 export async function health() {
   return getJson("/health");
 }

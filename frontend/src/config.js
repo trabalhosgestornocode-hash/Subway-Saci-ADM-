@@ -27,7 +27,7 @@ export const MENU = [
   { id: "dashboard",     label: "Dashboard",       icon: "📊", tipo: "pagina",      secao: "OPERAÇÃO" },
   { id: "produtos",      label: "Produtos / CMV",  icon: "🥪", tipo: "pagina",      secao: "OPERAÇÃO" },
   { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO" },
-  { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "construcao",  secao: "OPERAÇÃO" },
+  { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO" },
   { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO" },
   { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "integracao",  integ: "martinbrower", secao: "INTEGRAÇÕES" },
   { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES" },

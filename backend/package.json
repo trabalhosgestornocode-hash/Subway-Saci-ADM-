@@ -6,7 +6,8 @@
   "description": "API do sistema de gestão Subway Saci",
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "node --test test/"
   },
   "engines": {
     "node": ">=20.6.0"
@@ -17,6 +18,8 @@
     "express": "^4.19.2",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
-    "ws": "^8.21.0"
+    "pdf-parse": "^1.1.1",
+    "ws": "^8.21.0",
+    "xlsx": "^0.18.5"
   }
 }
