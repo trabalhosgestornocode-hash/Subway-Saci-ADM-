@@ -29,7 +29,7 @@ export const MENU = [
   { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO" },
   { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO" },
   { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO" },
-  { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "integracao",  integ: "martinbrower", secao: "INTEGRAÇÕES" },
+  { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES" },
   { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES" },
   { id: "ifood",         label: "iFood",           icon: "🛵", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES" },
   { id: "cocacola",      label: "Coca-Cola",       icon: "🥤", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES" },

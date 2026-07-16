@@ -1155,6 +1155,68 @@ body {
   .vd-cards, .vd-cards-sub { grid-template-columns: 1fr; }
 }
 
+/* ===================== ABA MARTIN BROWER (mb-) ===================== */
+.mb-page { display: flex; flex-direction: column; gap: 14px; height: calc(100dvh - 122px); min-height: 520px; animation: fadeIn .25s ease; }
+.mb-head { margin-bottom: 0; flex-wrap: wrap; }
+.mb-head-id { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.mb-head-logo { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; border: 1px solid var(--linha); box-shadow: var(--sombra-sm); flex-shrink: 0; }
+.mb-head .vd-head-txt h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mb-head .vd-head-txt h2 .pill { font-weight: 650; }
+.mb-head-acoes { display: flex; gap: 10px; flex-shrink: 0; }
+
+/* card que abriga o portal — ocupa toda a área útil restante */
+.mb-frame-card {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
+  box-shadow: var(--sombra-md); animation: fadeInUp .3s ease;
+}
+.mb-corpo { position: relative; flex: 1; min-height: 0; }
+.mb-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .35s ease; background: #fff; }
+.mb-frame.visivel { opacity: 1; }
+
+/* estado carregando: spinner + skeleton por cima do iframe */
+.mb-overlay {
+  position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px; padding: 24px;
+  background: var(--superficie-2); animation: fadeIn .2s ease;
+}
+.mb-overlay p { font-size: 13.5px; color: var(--cinza); font-weight: 600; }
+.mb-skels { width: min(720px, 92%); margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+.mb-skel-topo { height: 52px; }
+.mb-skel-corpo { height: 200px; }
+
+/* estados erro / bloqueado: painel elegante de acesso externo */
+.mb-externo {
+  position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; text-align: center;
+  padding: 32px 22px; background: var(--superficie-2); animation: fadeIn .25s ease;
+}
+.mb-externo-logo img { width: 72px; height: 72px; border-radius: 18px; object-fit: cover; border: 1px solid var(--linha); box-shadow: var(--sombra-md); margin-bottom: 12px; animation: pop .3s ease; }
+.mb-externo h3 { font-size: 18px; font-weight: 800; letter-spacing: -.2px; }
+.mb-externo p { font-size: 13.5px; color: var(--cinza); max-width: 520px; line-height: 1.55; margin-bottom: 14px; }
+.mb-btn-destaque { font-size: 15px; padding: 12px 26px; margin-bottom: 8px; }
+
+/* aviso discreto sob o portal carregado */
+.mb-hint {
+  display: none; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-top: 1px solid var(--linha); background: var(--superficie-2);
+  font-size: 12px; color: var(--cinza-claro);
+}
+.mb-hint.visivel { display: flex; }
+.mb-hint-btn { border: 0; background: none; color: var(--verde-med); font-weight: 700; font-size: 12px; cursor: pointer; padding: 2px 4px; }
+.mb-hint-btn:hover { text-decoration: underline; }
+
+[data-theme="dark"] .mb-hint-btn { color: #3ce07e; }
+[data-theme="dark"] .mb-frame { background: var(--card); }
+
+@media (max-width: 720px) {
+  .mb-page { height: auto; min-height: 0; }
+  .mb-head { flex-direction: column; align-items: stretch; }
+  .mb-head-acoes { width: 100%; }
+  .mb-head-acoes .btn { flex: 1; }
+  .mb-corpo { min-height: 62dvh; }
+}
+
 /* ===================== TEMA ESCURO (individual, por dispositivo) ===================== */
 :root[data-theme="dark"] {
   --bg: #0d1512; --card: #16201c; --texto: #e7efeb; --cinza: #9fb0a9; --cinza-claro: #6e807a; --linha: #26332f;
