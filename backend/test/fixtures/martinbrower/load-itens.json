@@ -1,0 +1,218 @@
+{
+  "data": {
+    "groups": [
+      {
+        "group": "ALIMENTOS - CONGELADOS - CONGELADOS",
+        "itens": [
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2208537,
+              "product": {
+                "id": 6095,
+                "code": "1001088",
+                "description": "BACON TIRAS CX 4 PCT X 1 KG",
+                "price": 486.01,
+                "weight": 4.62,
+                "volume": 0.026,
+                "family": "CON",
+                "familyDescription": "Congelados",
+                "group": { "id": 246, "description": "ALIMENTOS - CONGELADOS" },
+                "unit": "CX",
+                "unitDescription": "CAIXA",
+                "ncode": 2664329
+              },
+              "multiple": 1,
+              "type": "W"
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0,
+            "averageQuantity": 1
+          },
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2208540,
+              "product": {
+                "id": 6100,
+                "code": "1000891",
+                "description": "  FRANGO   DEFUMADO  CX 2 X 2,5 KG ",
+                "price": 312.5,
+                "weight": 5.4,
+                "volume": 0.031,
+                "family": "CON",
+                "familyDescription": "Congelados",
+                "group": { "id": 246, "description": "ALIMENTOS - CONGELADOS" },
+                "unit": "CX",
+                "unitDescription": "CAIXA",
+                "ncode": 2664330
+              },
+              "multiple": 1,
+              "type": "W"
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 2,
+            "averageQuantity": 1.5
+          }
+        ]
+      },
+      {
+        "group": "EMBALAGENS - DESCARTAVEIS",
+        "itens": [
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2208601,
+              "product": {
+                "id": 7211,
+                "code": "0002045",
+                "description": "GUARDANAPO SUBWAY CX 4000 UN",
+                "price": 158.9,
+                "weight": 12.3,
+                "volume": 0.08,
+                "family": "EMB",
+                "familyDescription": "Embalagens",
+                "group": { "id": 301, "description": "EMBALAGENS" },
+                "unit": "CX",
+                "unitDescription": "CAIXA",
+                "ncode": 2701122
+              },
+              "multiple": 1,
+              "type": "N"
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0,
+            "averageQuantity": 3
+          },
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2208602,
+              "product": {
+                "id": 7212,
+                "code": "0002046",
+                "description": "COPO 300ML PCT 100 UN",
+                "price": null,
+                "weight": 2.1,
+                "volume": 0.04,
+                "family": "EMB",
+                "familyDescription": "Embalagens",
+                "unit": "PCT",
+                "unitDescription": "PACOTE",
+                "ncode": 2701123
+              },
+              "multiple": 2,
+              "type": "N"
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0,
+            "averageQuantity": 1
+          }
+        ]
+      },
+      {
+        "group": "UNIFORMES - VESTUARIO",
+        "itens": [
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2209001,
+              "product": {
+                "id": 9001,
+                "code": "5000101",
+                "description": "CAMISETA POLO SUBWAY TAM M",
+                "price": 62.4,
+                "weight": 0.3,
+                "volume": 0.002,
+                "family": "UNI",
+                "familyDescription": "Uniformes",
+                "group": { "id": 410, "description": "UNIFORMES" },
+                "unit": "UN",
+                "unitDescription": "UNIDADE",
+                "ncode": 2810001
+              },
+              "multiple": 1,
+              "type": "N"
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0,
+            "averageQuantity": 0
+          },
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2209002,
+              "product": {
+                "id": 9002,
+                "code": "5000102",
+                "description": "AVENTAL PRETO SUBWAY",
+                "price": 41.9,
+                "weight": 0.25,
+                "volume": 0.002,
+                "family": "DIV",
+                "familyDescription": "Diversos",
+                "group": { "id": 415, "description": "DIVERSOS" },
+                "unit": "UN",
+                "unitDescription": "UNIDADE",
+                "ncode": 2810002
+              },
+              "multiple": 1,
+              "type": "N"
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0,
+            "averageQuantity": 0
+          }
+        ]
+      },
+      {
+        "group": "ITENS PROBLEMATICOS",
+        "itens": [
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2209100,
+              "product": {
+                "id": 9100,
+                "description": "PRODUTO SEM CODIGO",
+                "price": 10,
+                "family": "DIV"
+              },
+              "multiple": 1
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0
+          },
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2209101,
+              "product": { "id": 9101, "code": "5000199", "price": 10, "family": "DIV" },
+              "multiple": 1
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0
+          },
+          {
+            "orderHeaderId": 612694,
+            "appClientProduct": {
+              "id": 2209102,
+              "product": {
+                "id": 9102,
+                "code": "1001088",
+                "description": "BACON TIRAS DUPLICADO",
+                "price": 999.99,
+                "family": "CON"
+              },
+              "multiple": 1
+            },
+            "sysStatusItem": { "id": 1 },
+            "quantity": 0
+          },
+          { "orderHeaderId": 612694, "sysStatusItem": { "id": 1 }, "quantity": 0 }
+        ]
+      }
+    ]
+  },
+  "errors": []
+}

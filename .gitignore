@@ -5,6 +5,19 @@ node_modules/
 .env
 .env.*
 !.env.example
+!.env.test.example
+
+# Artefatos de empacotamento (a extensão será distribuída como .zip).
+# Um .env dentro de um pacote publicado é um vazamento irreversível: depois de
+# subir na Chrome Web Store, não dá para "despublicar" o que já foi baixado.
+# O script de empacotamento (etapa 7) deve montar a lista de arquivos de forma
+# EXPLÍCITA, nunca com "zip -r ." — e falhar se encontrar .env no resultado.
+*.zip
+*.tgz
+*.tar.gz
+dist/
+build/
+extension-martinbrower/*.zip
 
 # Logs
 *.log

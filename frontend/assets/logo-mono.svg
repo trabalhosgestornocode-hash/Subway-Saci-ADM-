@@ -1,0 +1,5 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Crescer com Delivery">
+  <rect width="64" height="64" rx="14" fill="#0b0b0d"/>
+  <!-- "C" geométrico limpo, coerente com a wordmark (sem coroa, sem 3D) -->
+  <path d="M41.2 20.2 A15 15 0 1 0 41.2 43.8" fill="none" stroke="#ffffff" stroke-width="8.6"/>
+</svg>

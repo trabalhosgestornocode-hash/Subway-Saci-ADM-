@@ -4,28 +4,30 @@
    Todas as classes usadas por HTML/JS são preservadas.
    ========================================================================= */
 :root {
-  /* Verdes */
-  --verde: #009645;
-  --verde-vivo: #00c25a;
-  --verde-med: #068a45;
-  --verde-escuro: #0a4a2c;
-  --verde-900: #06381f;
-  --verde-950: #052b18;
-  /* Amarelos */
-  --amarelo: #ffc600;
-  --amarelo-vivo: #ffd633;
-  --amarelo-escuro: #b98900;
+  /* Marca Crescer com Delivery — VERMELHO. Os nomes --verde* são preservados
+     de propósito: recolorem todo o app (que já referencia essas variáveis)
+     sem reescrever centenas de usos. */
+  --verde: #D81324;
+  --verde-vivo: #F42433;
+  --verde-med: #AE0D1A;
+  --verde-escuro: #3a070c;
+  --verde-900: #24060a;
+  --verde-950: #150407;
+  /* Destaque (nomes --amarelo* preservados) — vermelho claro */
+  --amarelo: #F42433;
+  --amarelo-vivo: #ff5b64;
+  --amarelo-escuro: #AE0D1A;
   /* Neutros */
-  --bg: #eef2f0;
+  --bg: #f1f2f4;
   --card: #ffffff;
-  --texto: #14201b;
-  --cinza: #63706b;
-  --cinza-claro: #9aa5a0;
-  --linha: #e7ece9;
-  --campo-bg: #f6f9f7;      /* fundo de inputs/superfícies internas */
-  --superficie-2: #f7faf8;  /* cabeçalhos de tabela, chips, hovers claros */
+  --texto: #17181c;
+  --cinza: #666b73;
+  --cinza-claro: #9a9ea6;
+  --linha: #e8e9ee;
+  --campo-bg: #f6f7f9;      /* fundo de inputs/superfícies internas */
+  --superficie-2: #f7f8fa;  /* cabeçalhos de tabela, chips, hovers claros */
   --topbar-bg: rgba(255,255,255,.82);
-  /* Status */
+  /* Status (semânticos — mantidos: verde=ok, vermelho=erro, etc.) */
   --ok: #0e9d57;    --ok-bg: #e2f7ec;
   --warn: #c48a12;  --warn-bg: #fdf3d9;
   --bad: #db3b3b;   --bad-bg: #fce3e3;
@@ -33,15 +35,15 @@
   --info: #2f77c4;  --info-bg: #e3eefb;
   /* Gradientes */
   --grad-verde: linear-gradient(135deg, var(--verde-vivo), var(--verde-med));
-  --grad-sidebar: linear-gradient(180deg, var(--verde-escuro) 0%, var(--verde-950) 100%);
-  --grad-login: linear-gradient(135deg, #0b5a34 0%, #063d24 45%, #04241560 100%);
+  --grad-sidebar: linear-gradient(180deg, #260609 0%, #140407 100%);
+  --grad-login: linear-gradient(135deg, #4a0a10 0%, #2a0609 45%, #14040660 100%);
   /* Sombras */
-  --sombra-sm: 0 1px 2px rgba(12,38,26,.06);
-  --sombra: 0 2px 10px rgba(12,38,26,.07);
-  --sombra-md: 0 10px 28px rgba(12,38,26,.10);
-  --sombra-lg: 0 20px 46px rgba(12,38,26,.17);
-  --glow-verde: 0 10px 26px rgba(0,150,69,.30);
-  --glow-amarelo: 0 8px 22px rgba(255,198,0,.32);
+  --sombra-sm: 0 1px 2px rgba(20,10,12,.06);
+  --sombra: 0 2px 10px rgba(20,10,12,.07);
+  --sombra-md: 0 10px 28px rgba(20,10,12,.10);
+  --sombra-lg: 0 20px 46px rgba(20,10,12,.17);
+  --glow-verde: 0 10px 26px rgba(216,19,36,.30);
+  --glow-amarelo: 0 8px 22px rgba(244,36,51,.30);
   /* Formas */
   --raio: 14px;
   --raio-sm: 10px;
@@ -99,203 +101,16 @@ body {
 .icon-btn { background: transparent; border: none; font-size: 22px; cursor: pointer; padding: 6px 9px; border-radius: 10px; color: var(--texto); display: none; transition: background var(--t); }
 .icon-btn:hover { background: #eef3f0; }
 
-/* ===================== LOGIN (dark premium / enterprise) ===================== */
-.login-screen {
-  position: relative; overflow: hidden;
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  padding: 24px; color: #F5F7F6;
-  background:
-    radial-gradient(900px 620px at 50% -10%, rgba(0,200,83,.20), transparent 60%),
-    radial-gradient(760px 560px at 82% 116%, rgba(11,138,62,.24), transparent 55%),
-    linear-gradient(165deg, #0B3D2E 0%, #06281E 58%, #05130D 100%);
-  animation: fadeIn .5s ease both;
-}
-.login-screen::before, .login-screen::after {
-  content: ""; position: absolute; border-radius: 50%; filter: blur(90px); z-index: 0; pointer-events: none;
-}
-.login-screen::before { width: 480px; height: 480px; background: radial-gradient(circle, #00C853, transparent 66%); opacity: .38; top: -170px; left: -130px; animation: floatBlob 12s ease-in-out infinite; }
-.login-screen::after { width: 400px; height: 400px; background: radial-gradient(circle, #FFC72C, transparent 62%); opacity: .22; bottom: -150px; right: -110px; animation: floatBlob 15s ease-in-out infinite reverse; }
-
-/* Container split (vitrine + formulário) */
-.login-split {
-  position: relative; z-index: 1; width: 100%; max-width: 1000px;
-  display: grid; grid-template-columns: 1.05fr .95fr;
-  background: linear-gradient(180deg, rgba(20,34,27,.72), rgba(8,18,13,.6));
-  -webkit-backdrop-filter: blur(26px) saturate(1.4); backdrop-filter: blur(26px) saturate(1.4);
-  border: 1px solid rgba(255,255,255,.10); border-radius: 26px; overflow: hidden;
-  box-shadow: 0 44px 100px rgba(0,0,0,.6), 0 0 70px rgba(0,200,83,.10), inset 0 1px 0 rgba(255,255,255,.08);
-  animation: fadeInUp .6s cubic-bezier(.2,.8,.2,1) both;
-}
-
-/* ---- Vitrine (esquerda) ---- */
-.login-hero {
-  position: relative; overflow: hidden; padding: 46px 42px;
-  display: flex; flex-direction: column; justify-content: space-between; gap: 26px;
-  background: linear-gradient(160deg, #0F7E41 0%, #0B3D2E 56%, #06281E 100%);
-  border-right: 1px solid rgba(255,255,255,.06);
-}
-.login-hero::before {
-  content: ""; position: absolute; width: 340px; height: 340px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(0,230,106,.35), transparent 66%); top: -120px; right: -90px; filter: blur(30px); pointer-events: none;
-}
-.login-hero::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
-  background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
-  background-size: 40px 40px;
-  -webkit-mask: radial-gradient(120% 80% at 30% 20%, #000, transparent 75%); mask: radial-gradient(120% 80% at 30% 20%, #000, transparent 75%);
-}
-.hero-marca { position: relative; display: flex; align-items: center; gap: 10px; }
-.hero-marca-logo {
-  width: 40px; height: 40px; border-radius: 11px; object-fit: cover; display: block; flex-shrink: 0;
-  background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.18);
-}
-.hero-marca-txt { font-size: 15px; font-weight: 700; letter-spacing: .2px; color: #eafff2; }
-.hero-marca-txt b { font-weight: 800; color: #fff; }
-.hero-centro { position: relative; display: flex; flex-direction: column; gap: 18px; align-items: flex-start; }
-.hero-eyebrow {
-  display: inline-flex; align-items: center; gap: 8px;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.3px;
-  color: rgba(125,255,176,.9); padding: 6px 12px; border-radius: 999px;
-  background: rgba(0,200,83,.10); border: 1px solid rgba(0,200,83,.24);
-}
-.hero-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #35e07f; box-shadow: 0 0 8px rgba(53,224,127,.8); }
-.hero-frase { font-size: 30px; font-weight: 800; line-height: 1.16; letter-spacing: -.6px; color: #F5F7F6; max-width: 15ch; }
-.hero-sub { font-size: 14px; line-height: 1.5; color: rgba(234,255,242,.72); max-width: 34ch; }
-.hero-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-top: 6px; max-width: 384px; }
-.hero-mini {
-  position: relative; overflow: hidden;
-  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 14px;
-  padding: 13px 15px; min-width: 128px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  display: flex; flex-direction: column; gap: 4px; animation: flutua 6s ease-in-out infinite;
-  transition: border-color var(--t), box-shadow var(--t), background var(--t);
-}
-.hero-mini::after {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
-  background: radial-gradient(120% 90% at 50% 0%, rgba(0,230,106,.22), transparent 62%);
-  transition: opacity var(--t);
-}
-.hero-mini:hover {
-  border-color: rgba(0,230,106,.4); background: rgba(255,255,255,.11);
-  box-shadow: 0 16px 34px rgba(0,0,0,.30), 0 0 22px rgba(0,200,83,.16);
-}
-.hero-mini:hover::after { opacity: 1; }
-.hero-mini:nth-child(2) { animation-delay: 1.4s; }
-.hero-mini:nth-child(3) { animation-delay: .7s; }
-.hero-mini:nth-child(4) { animation-delay: 2.1s; }
-.hero-mini.destaque { background: linear-gradient(135deg, rgba(0,200,83,.28), rgba(0,200,83,.08)); border-color: rgba(0,230,106,.4); }
-.hero-mini > * { position: relative; z-index: 1; }
-
-/* Pills de recursos ao vivo */
-.hero-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
-.hero-pill {
-  display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600;
-  color: rgba(234,255,242,.82); padding: 6px 12px; border-radius: 999px;
-  background: rgba(255,255,255,.055); border: 1px solid rgba(255,255,255,.11);
-  transition: border-color var(--t), background var(--t);
-}
-.hero-pill:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.18); }
-.hero-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(234,255,242,.5); flex-shrink: 0; }
-.hero-pill-dot.live { background: #35e07f; animation: pulseLive 1.9s ease-out infinite; }
-@keyframes pulseLive {
-  0% { box-shadow: 0 0 0 0 rgba(53,224,127,.55); }
-  70% { box-shadow: 0 0 0 7px rgba(53,224,127,0); }
-  100% { box-shadow: 0 0 0 0 rgba(53,224,127,0); }
-}
-.hero-mini-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: rgba(234,255,242,.7); font-weight: 700; }
-.hero-mini-valor { font-size: 20px; font-weight: 800; color: #fff; }
-.hero-mini-valor.hero-mini-valor-txt { font-size: 15px; letter-spacing: -.2px; line-height: 1.2; }
-.hero-mini-sub { font-size: 11px; color: #7dffb0; font-weight: 600; }
-.hero-spark { display: flex; align-items: flex-end; gap: 3px; height: 22px; margin-top: 2px; }
-.hero-spark i { flex: 1; background: linear-gradient(180deg, #00E06A, #0B8A3E); border-radius: 2px; opacity: .9; }
-.hero-badge {
-  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; padding: 12px 16px;
-  font-size: 12px; color: rgba(234,255,242,.8); text-align: center; align-self: center; animation: flutua 7s ease-in-out .7s infinite;
-}
-.hero-badge b { display: block; font-size: 20px; color: #fff; margin-top: 2px; }
-.hero-rodape { position: relative; font-size: 12px; color: rgba(234,255,242,.55); letter-spacing: .2px; }
-@keyframes flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
-
-/* ---- Coluna do formulário (direita) ---- */
-.login-form-col {
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 46px 44px; gap: 16px; background: rgba(6,18,13,.25);
-}
-
-/* Card do formulário — dentro do split, sem "chrome" próprio (o container é o split) */
-.login-card {
-  position: relative; z-index: 1; display: flex; flex-direction: column; gap: 15px;
-  width: 100%; background: none; border: none; box-shadow: none; padding: 0;
-}
-.login-card::before { display: none; }
-.login-card:hover { transform: none; box-shadow: none; }
-
-.login-logo {
-  width: 92px; height: 92px; object-fit: contain; display: block; margin: 0 auto 4px;
-  background: #fff; border-radius: 22px; padding: 9px;
-  box-shadow: 0 14px 34px rgba(0,150,64,.32), 0 0 0 1px rgba(255,255,255,.12), inset 0 1px 0 rgba(255,255,255,.6);
-  animation: logoIn .7s cubic-bezier(.2,.8,.2,1) both;
-  transition: transform var(--t);
-}
-.login-logo:hover { transform: translateY(-2px) scale(1.03); }
+/* ===================== LOGIN — utilitários compartilhados =====================
+   O layout do login v1 (login-hero, hero-mini, login-card, campo, marca-sw...)
+   foi REMOVIDO nesta faxina — substituído pelo bloco "LOGIN v3" no fim do
+   arquivo. Sobraram aqui apenas as regras que continuam em uso.
+   ============================================================================= */
 @keyframes logoIn { from { opacity: 0; transform: translateY(-10px) scale(.88); } to { opacity: 1; transform: none; } }
 
-.login-brand { text-align: center; font-size: 25px; font-weight: 800; letter-spacing: -.4px; color: #F5F7F6; }
-.login-sub { text-align: center; color: rgba(245,247,246,.62); font-size: 13.5px; font-weight: 600; margin: -8px 0 0; }
-.login-sub2 { text-align: center; color: rgba(245,247,246,.42); font-size: 12px; line-height: 1.5; font-weight: 400; margin: 0 auto 8px; max-width: 34ch; }
-
-/* Wordmark "SUBWAY SACI" no estilo da marca (fonte display pesada + cores Subway).
-   Usado no hero (esquerda) e no brand do formulário (direita). */
-.marca-sw {
-  font-family: "Archivo Black", "Inter", -apple-system, sans-serif; font-weight: 400;
-  text-transform: uppercase; letter-spacing: -.5px; white-space: nowrap; line-height: 1;
-}
-.marca-sw .sw-sub  { color: #FFC72C; }                    /* amarelo Subway */
-.marca-sw .sw-way  { color: #45E585; }                    /* verde legível no fundo escuro */
-.marca-sw .sw-saci { color: #FFFFFF; margin-left: .3em; } /* "SACI" em branco, com respiro */
-.login-brand.marca-sw { font-size: clamp(18px, 4.8vw, 24px); letter-spacing: -.6px; }
-@media (min-width: 1001px) { .login-brand.marca-sw { font-size: 25px; } }
-.hero-marca-txt.marca-sw { font-size: 16px; }
-
-.campo { display: flex; flex-direction: column; gap: 8px; }
-.campo > span { font-size: 12px; font-weight: 600; color: rgba(245,247,246,.62); letter-spacing: .3px; }
-.input-wrap { position: relative; display: flex; align-items: center; }
-.input-icon { position: absolute; left: 14px; width: 18px; height: 18px; color: rgba(245,247,246,.4); pointer-events: none; transition: color var(--t); }
-.campo input {
-  width: 100%; padding: 14px 14px 14px 44px; font-family: inherit; font-size: 15px; color: #F5F7F6;
-  background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.12); border-radius: 13px;
-  transition: border-color var(--t), box-shadow var(--t), background var(--t);
-}
-.input-senha input { padding-right: 46px; }
-.campo input::placeholder { color: rgba(245,247,246,.32); }
-.campo input:hover { border-color: rgba(255,255,255,.20); background: rgba(255,255,255,.06); }
-.campo input:focus { outline: none; border-color: #00C853; background: rgba(0,200,83,.07); box-shadow: 0 0 0 4px rgba(0,200,83,.16), inset 0 1px 0 rgba(255,255,255,.04); }
-.campo:focus-within > span { color: rgba(125,255,176,.9); }
-.campo:focus-within .input-icon { color: #00C853; }
-
-.toggle-senha {
-  position: absolute; right: 7px; width: 34px; height: 34px; display: grid; place-items: center;
-  background: transparent; border: none; color: rgba(245,247,246,.45); cursor: pointer; border-radius: 9px;
-  transition: color var(--t), background var(--t);
-}
-.toggle-senha svg { width: 19px; height: 19px; }
-.toggle-senha:hover { color: #F5F7F6; background: rgba(255,255,255,.07); }
-.toggle-senha.ativo { color: #00C853; }
-
-.login-erro {
-  background: rgba(219,59,59,.15); color: #ff9a9a; padding: 10px 13px; border-radius: 11px; font-size: 13px;
-  border: 1px solid rgba(219,59,59,.32); animation: fadeIn .2s;
-}
-
-.login-card .btn-primary {
-  background: linear-gradient(135deg, #00E060, #0B8A3E); color: #04160C; font-weight: 700; font-size: 15px;
-  padding: 14px; border-radius: 13px; letter-spacing: .3px; margin-top: 4px;
-  box-shadow: 0 12px 32px rgba(0,200,83,.34);
-}
-.login-card .btn-primary::after { background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.4) 50%, transparent 70%); }
-.login-card .btn-primary:hover { transform: translateY(-2px) scale(1.012); box-shadow: 0 20px 46px rgba(0,200,83,.5); }
-.login-card .btn-primary:active { transform: translateY(0) scale(.995); }
-
-/* Estado de loading do botão (apenas visual — não altera a autenticação) */
+/* Estado de loading do botão (apenas visual — não altera a autenticação).
+   Spinner agora BRANCO: o botão novo é vermelho com texto branco (antes era
+   escuro, herdado do botão verde antigo, e ficava quase invisível). */
 .login-btn-txt { transition: opacity var(--t); }
 .login-btn-spin { display: none; }
 .login-btn.carregando { pointer-events: none; }
@@ -303,14 +118,10 @@ body {
 .login-btn.carregando .login-btn-spin {
   display: block; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px;
   margin: -9px 0 0 -9px; border-radius: 50%;
-  border: 2px solid rgba(4,22,12,.28); border-top-color: #04160C;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #ffffff;
   animation: spin .6s linear infinite;
 }
 .login-btn:disabled { opacity: 1; }
-
-.login-nota { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: rgba(245,247,246,.45); margin-top: 4px; letter-spacing: .2px; }
-.nota-lock { width: 13px; height: 13px; color: rgba(245,247,246,.4); flex-shrink: 0; }
-.login-rodape { text-align: center; color: rgba(245,247,246,.4); font-size: 12.5px; letter-spacing: .3px; margin-top: 4px; }
 
 /* ===================== ASSINATURA DO DESENVOLVEDOR (PeuCode) =====================
    Discreta, fixa no canto inferior esquerdo. Para REMOVER: apague o bloco
@@ -330,26 +141,16 @@ body {
 .dev-credito:hover { color: rgba(245,247,246,.7); }
 .dev-credito-mark {
   font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 10px; font-weight: 700; letter-spacing: -.5px; line-height: 1; color: rgba(125,255,176,.75);
+  font-size: 10px; font-weight: 700; letter-spacing: -.5px; line-height: 1; color: rgba(255,190,197,.75);
   padding: 3px 6px; border-radius: 7px;
-  background: rgba(0,200,83,.10); border: 1px solid rgba(0,200,83,.22);
+  background: rgba(216,19,36,.10); border: 1px solid rgba(216,19,36,.22);
 }
 .dev-credito-txt b { font-weight: 700; color: rgba(245,247,246,.7); }
 
 @media (max-width: 880px) {
-  .login-hero { display: none; }
-  .login-split { grid-template-columns: 1fr; max-width: 420px; }
-  .login-form-col { padding: 40px 32px; }
-  /* No mobile: assinatura centralizada, discreta, abaixo do card */
+  /* No mobile: assinatura centralizada e discreta */
   .dev-credito { left: 50%; right: auto; transform: translateX(-50%); bottom: 16px; --dev-fs: 11px; --dev-op: .38; }
 }
-@media (max-width: 480px) {
-  .login-split { border-radius: 20px; }
-  .login-form-col { padding: 32px 24px; }
-  .login-logo { width: 74px; height: 74px; }
-  .login-brand { font-size: 22px; }
-}
-
 /* ===================== APP SHELL ===================== */
 .app { display: flex; min-height: 100vh; }
 .backdrop { display: none; position: fixed; inset: 0; background: rgba(6,40,25,.45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); z-index: 40; animation: fadeIn .2s; }
@@ -360,7 +161,9 @@ body {
   box-shadow: 4px 0 24px rgba(6,40,25,.16);
 }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 800; padding: 18px 22px; letter-spacing: -.2px; border-bottom: 1px solid rgba(255,255,255,.08); }
-.brand-logo { width: 30px; height: 30px; object-fit: contain; background: #fff; border-radius: 8px; padding: 3px; flex-shrink: 0; }
+.brand-logo { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: block;
+  background-image: url("/assets/logo-mono.svg");
+  background-size: cover; background-position: center; background-repeat: no-repeat; }
 .sidebar-brand span { border-bottom: 3px solid var(--amarelo); padding-bottom: 2px; }
 .menu { flex: 1; overflow-y: auto; padding: 12px 10px; }
 .menu ul { list-style: none; }
@@ -398,7 +201,7 @@ body {
 .select-sm:hover, .toolbar select:hover { border-color: #cfe0d7; }
 .select-sm:focus, .toolbar select:focus { outline: none; border-color: var(--verde-vivo); box-shadow: 0 0 0 3px rgba(0,194,90,.13); }
 .chip { font-size: 13px; padding: 6px 13px; border-radius: 20px; background: #eef3f0; color: var(--texto); white-space: nowrap; font-weight: 500; }
-.chip-unidade { background: var(--ok-bg); color: var(--ok); font-weight: 650; box-shadow: inset 0 0 0 1px rgba(14,157,87,.15); }
+.chip-unidade { background: rgba(216,19,36,.08); color: var(--verde-med); font-weight: 650; box-shadow: inset 0 0 0 1px rgba(216,19,36,.15); }
 .user-box { display: flex; align-items: center; gap: 8px; }
 .user-chip { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 22px; transition: background var(--t); }
 .user-chip:hover { background: #eef3f0; }
@@ -536,7 +339,7 @@ body {
 .cardapio-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cardapio-head h3 { font-size: 17px; font-weight: 750; }
 .cardapio-head p { font-size: 13px; color: var(--cinza); margin-top: 2px; max-width: 460px; }
-.cardapio-banner { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 14px 0 18px; border-radius: var(--raio); background: linear-gradient(135deg, #0B3D2E, #06281E); color: #fff; }
+.cardapio-banner { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 14px 0 18px; border-radius: var(--raio); background: linear-gradient(135deg, #2a0609, #1a0407); color: #fff; }
 .cardapio-logo { width: 44px; height: 44px; border-radius: 10px; background: #fff; padding: 4px; object-fit: contain; flex-shrink: 0; }
 .cardapio-banner-nome { font-size: 17px; font-weight: 800; }
 .cardapio-banner-sub { font-size: 12.5px; color: rgba(255,255,255,.72); margin-top: 1px; }
@@ -737,7 +540,6 @@ body {
   .user-nome, .chip-unidade { display: none; }
   .card-valor { font-size: 24px; }
   .cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  .login-card { padding: 30px 22px 24px; }
   .toolbar { gap: 8px; }
   .busca { min-width: 100%; }
 }
@@ -938,7 +740,7 @@ body {
 .sidebar-peucode { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,.34); text-decoration: none; letter-spacing: .2px; transition: color var(--t); }
 .sidebar-peucode:hover { color: rgba(255,255,255,.6); }
 .sidebar-peucode b { font-weight: 700; color: rgba(255,255,255,.5); }
-.sidebar-peucode-mark { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 9.5px; color: rgba(125,255,176,.6); }
+.sidebar-peucode-mark { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 9.5px; color: rgba(255,190,197,.6); }
 
 /* ===================== VENDAS ===================== */
 /* cabeçalho da página: título/contexto + ação principal */
@@ -1209,6 +1011,85 @@ body {
 [data-theme="dark"] .mb-hint-btn { color: #3ce07e; }
 [data-theme="dark"] .mb-frame { background: var(--card); }
 
+/* ---- Painel de integração Martin Brower (acima do portal embutido) ---- */
+/* Reaproveita os tokens do tema — nenhuma cor nova é introduzida. */
+.mb-int-card {
+  background: var(--card); border: 1px solid var(--linha); border-radius: 14px;
+  box-shadow: var(--sombra-sm); padding: 16px 18px; flex-shrink: 0;
+}
+.mb-int-carregando { color: var(--cinza); font-size: 13.5px; padding: 6px 0; }
+
+.mb-int-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.mb-int-titulo h3 { font-size: 15.5px; font-weight: 800; letter-spacing: -.2px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.mb-int-titulo p { font-size: 12.5px; color: var(--cinza); margin-top: 3px; }
+.mb-int-acoes { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+.mb-int-acoes .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.mb-int-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 14px; }
+.mb-int-info {
+  background: var(--campo-bg); border: 1px solid var(--linha); border-radius: 10px;
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.mb-int-info span { font-size: 11px; color: var(--cinza-claro); font-weight: 650; text-transform: uppercase; letter-spacing: .3px; }
+.mb-int-info strong { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.mb-int-aviso { margin-top: 12px; padding: 9px 12px; border-radius: 9px; font-size: 12.5px; line-height: 1.5; }
+.mb-int-aviso.bad  { background: var(--bad-bg);  color: var(--bad); }
+.mb-int-aviso.info { background: var(--info-bg); color: var(--info); }
+
+.mb-int-progresso { margin-top: 12px; display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--cinza); font-weight: 600; }
+.spinner-sm { width: 15px; height: 15px; border-width: 2px; }
+
+.mb-int-abas { display: flex; gap: 4px; margin-top: 15px; border-bottom: 1px solid var(--linha); flex-wrap: wrap; }
+.mb-int-aba {
+  border: 0; background: none; cursor: pointer; padding: 8px 12px; font-size: 12.5px;
+  font-weight: 650; color: var(--cinza); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.mb-int-aba:hover { color: var(--texto); }
+.mb-int-aba.ativa { color: var(--verde-med); border-bottom-color: var(--verde-med); }
+
+.mb-int-conteudo { padding-top: 13px; }
+.mb-int-vazio { font-size: 13px; color: var(--cinza); padding: 14px 2px; }
+.mb-int-vazio.bad { color: var(--bad); }
+.mb-int-nota { font-size: 12.5px; color: var(--cinza); line-height: 1.6; margin-bottom: 11px; }
+.mb-int-nota code { background: var(--campo-bg); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+
+.mb-int-tabela-wrap { overflow-x: auto; max-height: 380px; overflow-y: auto; border: 1px solid var(--linha); border-radius: 10px; }
+.mb-int-tabela { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mb-int-tabela th {
+  position: sticky; top: 0; background: var(--superficie-2); text-align: left;
+  padding: 9px 11px; font-weight: 700; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .3px; color: var(--cinza); border-bottom: 1px solid var(--linha); white-space: nowrap;
+}
+.mb-int-tabela td { padding: 8px 11px; border-bottom: 1px solid var(--linha); }
+.mb-int-tabela tbody tr:last-child td { border-bottom: 0; }
+.mb-int-tabela tbody tr:hover { background: var(--campo-bg); }
+.mb-int-tabela .num { text-align: right; white-space: nowrap; }
+.mb-int-tabela .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+.mb-int-ignorado td { opacity: .58; }
+.mb-int-sem { color: var(--cinza-claro); font-style: italic; }
+.mb-int-alta { color: var(--bad); font-weight: 700; }
+.mb-int-baixa { color: var(--ok); font-weight: 700; }
+
+.mb-int-textarea {
+  width: 100%; border: 1px solid var(--linha); border-radius: 10px; padding: 11px;
+  background: var(--campo-bg); color: var(--texto); font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px; line-height: 1.5; resize: vertical;
+}
+.mb-int-textarea:focus { outline: 2px solid var(--verde-med); outline-offset: -1px; }
+.mb-int-form-acoes { display: flex; align-items: center; gap: 12px; margin-top: 11px; }
+.mb-int-form-msg { font-size: 12.5px; color: var(--cinza); }
+.mb-int-form-msg.bad { color: var(--bad); }
+.mb-int-detalhe-tecnico { margin-top: 6px; font-size: 11.5px; opacity: .75; font-family: ui-monospace, Menlo, monospace; word-break: break-word; }
+
+.mb-int-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 9px; margin-top: 14px; }
+.mb-int-resumo-item { background: var(--campo-bg); border: 1px solid var(--linha); border-radius: 10px; padding: 9px 11px; }
+.mb-int-resumo-item span { display: block; font-size: 10.5px; color: var(--cinza-claro); font-weight: 650; text-transform: uppercase; letter-spacing: .3px; }
+.mb-int-resumo-item strong { font-size: 17px; font-weight: 800; }
+
+/* O portal ocupa o espaço restante; o painel nunca o espreme demais. */
+.mb-page .mb-frame-card { min-height: 320px; }
+
 @media (max-width: 720px) {
   .mb-page { height: auto; min-height: 0; }
   .mb-head { flex-direction: column; align-items: stretch; }
@@ -1233,7 +1114,7 @@ body {
 [data-theme="dark"] .btn, [data-theme="dark"] .btn-ghost { background: var(--card); color: var(--texto); }
 [data-theme="dark"] .btn-ghost:hover { background: #1e2925; border-color: #33443e; }
 [data-theme="dark"] .cfg-card:hover { border-color: #33443e; }
-[data-theme="dark"] .cfg-card-ico { background: linear-gradient(135deg, rgba(0,230,106,.16), rgba(0,230,106,.04)); }
+[data-theme="dark"] .cfg-card-ico { background: linear-gradient(135deg, rgba(244,36,51,.16), rgba(244,36,51,.04)); }
 [data-theme="dark"] .grid tbody tr:hover,
 [data-theme="dark"] .ultima-mudanca:hover { background: #1b2621; }
 [data-theme="dark"] .hist-resumo { background: #14201c; }
@@ -1243,4 +1124,203 @@ body {
 /* ===================== ACESSIBILIDADE ===================== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+
+/* =========================================================================
+   LOGIN v3 — Crescer com Delivery (vitrine + formulário)
+   Substitui o layout de login anterior: as regras antigas (login-hero,
+   hero-mini, login-card, campo...) acima ficaram inertes, nenhum HTML as usa.
+   IDs preservados p/ o JS: #login-form #login-user #login-pass #login-erro
+   #toggle-senha + classes login-btn / login-btn-txt / login-btn-spin.
+   ========================================================================= */
+.login-screen { background: #08080a; padding: 0; }
+.login-screen::before, .login-screen::after { display: none; }
+
+/* TELA CHEIA: o split ocupa 100% da viewport, sem card/margens. */
+.lg-split {
+  position: relative; z-index: 1; width: 100%; min-height: 100vh;
+  display: grid; grid-template-columns: 1.08fr .92fr;
+  border: 0; border-radius: 0; overflow: hidden; box-shadow: none;
+  animation: fadeInUp .6s cubic-bezier(.2,.8,.2,1) both;
+}
+/* assinatura do dev vai p/ a direita no desktop (à esquerda colidiria com o fluxo) */
+@media (min-width: 1001px) {
+  .dev-credito { left: auto; right: 26px; bottom: 18px; transform: none; }
+}
+
+/* ---------- vitrine (esquerda) ---------- */
+/* CLEAN: fundo sóbrio, brilho vermelho bem discreto (era um radial forte). */
+.lg-vitrine {
+  position: relative; overflow: hidden; padding: clamp(34px, 4.5vw, 78px);
+  background:
+    radial-gradient(680px 460px at 10% 16%, rgba(150,12,26,.16), transparent 64%),
+    linear-gradient(150deg, #0e0507 0%, #0b0305 55%, #09090b 100%);
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+/* fio vermelho sutil na borda esquerda (sem o glow forte) */
+.lg-vitrine::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; pointer-events: none;
+  background: linear-gradient(180deg, transparent, #E01020 32%, #E01020 68%, transparent);
+  opacity: .55;
+}
+.lg-vitrine-int {
+  position: relative; z-index: 2; height: 100%;
+  display: flex; flex-direction: column; justify-content: center; gap: clamp(20px, 2.2vh, 30px);
+  /* limita a largura do texto em telas muito largas (linhas longas cansam a leitura) */
+  width: 100%; max-width: 780px; margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------------
+   WORDMARK OFICIAL "Crescer com Delivery" — reproduzida em CSS puro.
+   A arte oficial é só tipografia, então texto real é melhor que imagem:
+   nítido em qualquer tamanho, ~0 KB, herda cor (funciona em tema claro).
+   As duas linhas são alinhadas à DIREITA, como na arte.
+   Tamanho controlado por --cd-tam (font-size da linha grande).
+   --------------------------------------------------------------------- */
+.cd-marca {
+  --cd-tam: 30px;
+  display: inline-flex; flex-direction: column; align-items: flex-end;
+  line-height: .96; color: #fff;
+  font-weight: 800; letter-spacing: -.022em;
+}
+.cd-l1, .cd-l2 { display: block; font-size: var(--cd-tam); white-space: nowrap; }
+.cd-l1 em { font-style: normal; font-size: .54em; font-weight: 800; margin-left: .22em; letter-spacing: -.01em; }
+.cd-l2 { margin-top: .06em; }
+
+.lg-lockup { display: flex; align-items: center; }
+.lg-lockup .cd-marca { --cd-tam: clamp(27px, 2.5vw, 36px); }
+
+.lg-titulo { font-size: clamp(25px, 2.5vw, 35px); font-weight: 800; line-height: 1.16; letter-spacing: -.8px; color: #fff; }
+.lg-red { color: var(--verde-vivo); }
+.lg-desc { font-size: 14.5px; line-height: 1.6; color: #9d9da6; max-width: 48ch; }
+
+/* cards de recursos (2x2) */
+.lg-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.lg-card {
+  display: flex; gap: 12px; align-items: flex-start; padding: 14px 15px; border-radius: 12px;
+  background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.07);
+  transition: border-color var(--t), background var(--t);
+}
+.lg-card:hover { border-color: rgba(240,32,47,.32); background: rgba(255,255,255,.045); }
+.lg-card-ic {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px; display: grid; place-items: center;
+  background: rgba(224,16,32,.10); border: 1px solid rgba(224,16,32,.26); color: var(--verde-vivo);
+}
+.lg-card-ic svg { width: 19px; height: 19px; }
+.lg-card h3 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 3px; }
+.lg-card p { font-size: 12.5px; line-height: 1.45; color: #8e8e98; }
+
+/* fluxo: Crescer -> Empresas -> Unidades -> Resultados */
+.lg-fluxo { display: flex; align-items: center; gap: 6px; }
+.lg-fx { display: flex; flex-direction: column; align-items: center; gap: 7px; min-width: 76px; }
+.lg-fx-ic {
+  width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+  background: rgba(224,16,32,.08); border: 1px solid rgba(224,16,32,.22); color: var(--verde-vivo);
+}
+.lg-fx-ic svg { width: 20px; height: 20px; }
+.lg-fx small { font-size: 11px; color: #9a9aa3; text-align: center; line-height: 1.3; }
+.lg-fx-seta { flex: 1; min-width: 20px; max-width: 54px; color: rgba(240,32,47,.55); margin-bottom: 18px; }
+.lg-fx-seta svg { width: 100%; height: 8px; }
+
+/* ---------- formulário (direita) ---------- */
+.lg-form-col { background: #121214; display: flex; align-items: center; justify-content: center; padding: clamp(34px, 3.5vw, 60px); }
+.lg-form { width: 100%; max-width: 396px; }
+/* CLEAN: monograma sóbrio, sem o anel vermelho brilhante. */
+.lg-app-ic {
+  width: 68px; height: 68px; border-radius: 16px; display: block; margin: 0 auto 18px;
+  background-image: url("/assets/logo-mono.svg");
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.10);
+  animation: logoIn .7s cubic-bezier(.2,.8,.2,1) both;
+}
+.lg-bemvindo { font-size: 25px; font-weight: 800; line-height: 1.25; letter-spacing: -.5px; text-align: center; color: #fff; }
+.lg-sub { font-size: 13.5px; color: #8e8e98; text-align: center; margin: 8px 0 26px; }
+
+.lg-campo { display: block; margin-bottom: 16px; }
+.lg-label { display: block; font-size: 12.5px; font-weight: 600; color: #c9c9d1; margin-bottom: 7px; }
+.lg-input { position: relative; display: flex; align-items: center; }
+.lg-input-ic { position: absolute; left: 15px; width: 19px; height: 19px; color: #6d6d77; pointer-events: none; transition: color var(--t); }
+.lg-input input {
+  width: 100%; height: 52px; padding: 0 46px; border-radius: 11px;
+  background: #17171b; border: 1px solid rgba(255,255,255,.09); color: #fff;
+  font-size: 14.5px; font-family: inherit; transition: border-color var(--t), box-shadow var(--t);
+}
+.lg-input input::placeholder { color: #5e5e68; }
+.lg-input input:focus { outline: none; border-color: rgba(240,30,45,.6); box-shadow: 0 0 0 3px rgba(224,16,32,.14); }
+.lg-input:focus-within .lg-input-ic { color: var(--verde-vivo); }
+.lg-olho {
+  position: absolute; right: 10px; width: 34px; height: 34px; border: 0; background: none;
+  color: #6d6d77; cursor: pointer; display: grid; place-items: center; border-radius: 8px; transition: color var(--t), background var(--t);
+}
+.lg-olho:hover { color: #c9c9d1; background: rgba(255,255,255,.05); }
+.lg-olho.ativo { color: var(--verde-vivo); }
+.lg-olho svg { width: 19px; height: 19px; }
+
+.lg-erro {
+  background: rgba(224,16,32,.12); border: 1px solid rgba(224,16,32,.34); color: #ff9aa2;
+  font-size: 13px; padding: 10px 13px; border-radius: 10px; margin-bottom: 12px;
+}
+
+.lg-btn {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; height: 56px; margin-top: 6px; border: 0; border-radius: 11px; cursor: pointer;
+  background: linear-gradient(135deg, #F0202F, #C10D1B); color: #fff;
+  font-size: 15.5px; font-weight: 700; font-family: inherit;
+  box-shadow: 0 6px 18px rgba(224,16,32,.20);
+  transition: transform var(--t), box-shadow var(--t), filter var(--t);
+}
+.lg-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(224,16,32,.30); filter: brightness(1.06); }
+.lg-btn-seta { width: 19px; height: 19px; transition: opacity var(--t), transform var(--t); }
+.lg-btn:hover .lg-btn-seta { transform: translateX(3px); }
+.login-btn.carregando .lg-btn-seta { opacity: 0; }
+
+.lg-seguro { display: flex; align-items: center; gap: 12px; margin: 18px 0 16px; }
+.lg-seguro-ln { flex: 1; height: 1px; background: rgba(255,255,255,.09); }
+.lg-seguro-tx { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: #7e7e88; white-space: nowrap; }
+.lg-seguro-tx svg { width: 14px; height: 14px; }
+
+.lg-aviso {
+  display: flex; gap: 11px; align-items: flex-start; padding: 13px 14px; border-radius: 11px;
+  background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.07);
+}
+.lg-aviso svg { width: 19px; height: 19px; flex-shrink: 0; color: var(--verde-vivo); margin-top: 1px; }
+.lg-aviso p { font-size: 12px; line-height: 1.5; color: #8e8e98; }
+
+/* responsivo: abaixo de 1000px some a vitrine e fica só o formulário */
+@media (max-width: 1000px) {
+  .lg-split { grid-template-columns: 1fr; }
+  .lg-vitrine { display: none; }
+  .lg-form-col { padding: 38px 26px; }
+}
+@media (max-width: 1180px) and (min-width: 1001px) {
+  .lg-vitrine { padding: 32px 30px; }
+  .lg-cards { gap: 10px; }
+  .lg-card p { font-size: 12px; }
+}
+/* telas BAIXAS (notebooks 1366x768 com barra, 16:10 curtos): compacta para
+   caber na altura sem rolagem, mantendo a tela cheia preenchida. */
+@media (min-width: 1001px) and (max-height: 780px) {
+  .lg-vitrine { padding: clamp(24px, 3vw, 46px); }
+  .lg-vitrine-int { gap: 15px; max-width: 720px; }
+  .lg-lockup .cd-marca { --cd-tam: 25px; }
+  .lg-titulo { font-size: clamp(21px, 1.9vw, 27px); }
+  .lg-desc { font-size: 13px; line-height: 1.5; }
+  .lg-cards { gap: 9px; }
+  .lg-card { padding: 11px 12px; }
+  .lg-card-ic { width: 33px; height: 33px; }
+  .lg-card-ic svg { width: 17px; height: 17px; }
+  .lg-card h3 { font-size: 13px; }
+  .lg-card p { font-size: 11.5px; line-height: 1.4; }
+  .lg-fx-ic { width: 34px; height: 34px; }
+  .lg-fx-ic svg { width: 17px; height: 17px; }
+  .lg-fx small { font-size: 10px; }
+  .lg-fx-seta { margin-bottom: 15px; }
+  /* formulário também encolhe um pouco */
+  .lg-app-ic { width: 58px; height: 58px; margin-bottom: 13px; }
+  .lg-bemvindo { font-size: 22px; }
+  .lg-sub { margin-bottom: 18px; }
+  .lg-campo { margin-bottom: 13px; }
+  .lg-input input { height: 47px; }
+  .lg-btn { height: 50px; }
+  .lg-seguro { margin: 14px 0 12px; }
 }

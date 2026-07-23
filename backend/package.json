@@ -7,10 +7,14 @@
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
     "start": "node src/server.js",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "test:isolation": "node --env-file-if-exists=.env.test --test test/isolamento-tenant.test.js",
+    "test:isolation:mb": "node --env-file-if-exists=.env.test --test test/isolamento-martinbrower.test.js",
+    "test:isolation:all": "node --env-file-if-exists=.env.test --test test/isolamento-tenant.test.js test/isolamento-martinbrower.test.js",
+    "diagnosticar:chaves": "node --env-file-if-exists=.env.test scripts/diagnosticar-chaves.js"
   },
   "engines": {
-    "node": ">=20.6.0"
+    "node": ">=20.12.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

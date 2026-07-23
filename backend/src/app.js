@@ -9,24 +9,39 @@ import { requireAuth } from "./middlewares/auth.js";
 import { notFound } from "./middlewares/notFound.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { router } from "./routes.js";
+import { corsOptions, helmetOptions, LIMITES_CORPO, emProducao, cspEmModoBloqueio } from "./config/seguranca.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(__dirname, "../../frontend");
 
 export function createApp() {
   const app = express();
-  // CSP desligado em dev p/ simplificar; reativar/afinar antes de produção.
-  app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors());
-  // limite maior por causa dos relatórios do SW enviados em base64 (importação de vendas)
-  app.use(express.json({ limit: "30mb" }));
-  app.use(morgan("dev"));
+  app.disable("x-powered-by");
+  // O Render fica atrás de proxy: sem isto, req.ip é sempre o do proxy.
+  if (emProducao) app.set("trust proxy", 1);
+
+  // CSP montada a partir do que o frontend realmente usa — inclusive o
+  // frame-src do portal Martin Brower. Sobe em Report-Only até CSP_ENFORCE=true.
+  app.use(helmet(helmetOptions));
+  // CORS restrito por allowlist. Sem CORS_ORIGINS = só mesma origem.
+  app.use(cors(corsOptions));
+
+  // Limites de corpo POR ROTA. O teto de 30 MB existe apenas onde é
+  // necessário (relatórios do SW em base64) em vez de valer para a API toda.
+  // A primeira chamada que casar vence — express.json não reprocessa req.body.
+  app.use("/api/v1/vendas/importar", express.json({ limit: LIMITES_CORPO.vendasImportacao }));
+  app.use("/api/v1/integracoes/martin-brower/import-manual", express.json({ limit: LIMITES_CORPO.martinBrowerImportacao }));
+  app.use(express.json({ limit: LIMITES_CORPO.padrao }));
+
+  app.use(morgan(emProducao ? "combined" : "dev", {
+    skip: (req) => req.path === "/health",   // não polui o log com o probe
+  }));
 
   // Frontend estático (shell público — a proteção real está na API de dados)
   app.use(express.static(frontendDir));
 
   app.get("/health", (_req, res) =>
-    res.json({ ok: true, service: "subway-saci", ts: new Date().toISOString() })
+    res.json({ ok: true, service: "subway-saci", ts: new Date().toISOString(), csp: cspEmModoBloqueio ? "enforce" : "report-only" })
   );
 
   // Config pública para o frontend inicializar o Supabase Auth (chave anon é pública por design)

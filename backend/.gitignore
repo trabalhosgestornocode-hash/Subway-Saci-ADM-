@@ -1,4 +1,7 @@
 node_modules/
 .env
+.env.test
+# o template (sem segredos) deve ser versionado, apesar do .env.* da raiz
+!.env.test.example
 *.log
 .DS_Store

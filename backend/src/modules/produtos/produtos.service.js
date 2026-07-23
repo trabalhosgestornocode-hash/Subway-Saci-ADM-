@@ -26,15 +26,27 @@ export async function obterProduto({ organizacaoId, id }) {
   if (error || !produto) throw ApiError.notFound("Produto não encontrado");
 
   // Datasets pequenos: carrega tudo e resolve a árvore em memória.
-  const [fichasRes, insumosRes, produtosRes, precosRes] = await Promise.all([
-    supabase.from("ficha_tecnica").select("produto_id, insumo_id, subproduto_id, quantidade"),
+  // Insumos, produtos e preços já saem escopados ao tenant. A ficha técnica não
+  // tem organizacao_id próprio (herda via produto_id), então a escopamos pelos
+  // produtos DESTA organização — nunca carregar a ficha de todos os tenants.
+  const [insumosRes, produtosRes, precosRes] = await Promise.all([
     supabase.from("insumos").select("id, nome, unidade_medida, preco_unitario").eq("organizacao_id", organizacaoId),
     supabase.from("produtos").select("id, nome").eq("organizacao_id", organizacaoId),
     supabase.from("produto_precos").select("canal, tabela, preco, desatualizado").eq("produto_id", id).order("canal"),
   ]);
-  for (const r of [fichasRes, insumosRes, produtosRes, precosRes]) {
+  for (const r of [insumosRes, produtosRes, precosRes]) {
     if (r.error) throw ApiError.internal(r.error.message);
   }
+
+  // Ficha técnica APENAS dos produtos desta organização (isolamento por tenant).
+  const orgProdutoIds = (produtosRes.data ?? []).map((p) => p.id);
+  const fichasRes = orgProdutoIds.length
+    ? await supabase
+        .from("ficha_tecnica")
+        .select("produto_id, insumo_id, subproduto_id, quantidade")
+        .in("produto_id", orgProdutoIds)
+    : { data: [], error: null };
+  if (fichasRes.error) throw ApiError.internal(fichasRes.error.message);
 
   const insumoById = Object.fromEntries((insumosRes.data ?? []).map((i) => [i.id, i]));
   const nomeProdById = Object.fromEntries((produtosRes.data ?? []).map((p) => [p.id, p.nome]));

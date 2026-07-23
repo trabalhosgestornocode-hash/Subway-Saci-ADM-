@@ -124,6 +124,39 @@ export async function vendasResolverDivergencia(id, resolvida = true) {
   return tratar(r);
 }
 
+// ---------- Martin Brower (integração com o portal da distribuidora) ----------
+// Nenhuma credencial trafega aqui na fase atual: a sincronização automatizada
+// depende de MB_PLAYWRIGHT_ENABLED no backend, e enquanto estiver desligada o
+// formulário de senha nem é exibido.
+const MB = "/api/v1/integracoes/martin-brower";
+
+export const mbConfiguracao   = () => getJson(`${MB}/settings`);
+export const mbProdutos       = (f) => getJson(`${MB}/products${qs(f)}`);
+export const mbHistoricoPrecos = (f) => getJson(`${MB}/price-history${qs(f)}`);
+export const mbHistoricoSincronizacoes = () => getJson(`${MB}/sync-history`);
+export const mbSemVinculo     = () => getJson(`${MB}/unlinked`);
+export const mbStatusSessao   = (sessionId) => getJson(`${MB}/${sessionId}/status`);
+
+export async function mbSalvarConfiguracao(dados) {
+  const r = await fetch(`${API_BASE}${MB}/settings`, {
+    method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+export const mbVincular = (dados) => postJson(`${MB}/links`, dados);
+export async function mbDesvincular(mbProdutoId) {
+  return tratar(await fetch(`${API_BASE}${MB}/links/${mbProdutoId}`, { method: "DELETE", headers: await comAuth() }));
+}
+
+// Importação manual do JSON de loadItens — ferramenta TEMPORÁRIA de teste,
+// usada para validar normalização/filtros/upsert enquanto o worker não existe.
+export const mbImportarManual = (payload) => postJson(`${MB}/import-manual`, payload);
+
+// Sincronização automatizada (Fase 3). Só respondem com o worker habilitado.
+export const mbIniciarSincronizacao = (credenciais) => postJson(`${MB}/start`, credenciais);
+export const mbInformarCodigo = (sessionId, codigo) => postJson(`${MB}/${sessionId}/code`, { codigo });
+export const mbCancelarSincronizacao = (sessionId) => postJson(`${MB}/${sessionId}/cancel`, {});
+
 export async function health() {
   return getJson("/health");
 }

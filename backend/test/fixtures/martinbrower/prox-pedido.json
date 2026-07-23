@@ -1,0 +1,14 @@
+{
+  "data": {
+    "actualDate": 20260721,
+    "actualTime": 2338,
+    "inicialDate": 20260725,
+    "inicialTime": 111000,
+    "finalDate": 20260731,
+    "finalTime": 183000,
+    "perc": 70,
+    "orderId": 612694,
+    "financialRestriction": null
+  },
+  "errors": []
+}

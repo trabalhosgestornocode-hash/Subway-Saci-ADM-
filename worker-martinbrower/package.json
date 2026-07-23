@@ -1,0 +1,19 @@
+{
+  "name": "mb-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Worker Playwright da integração Martin Brower — roda SEPARADO do backend principal (Cloud Run)",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "1.49.1"
+  }
+}
