@@ -1,11 +1,43 @@
 // Estado global do app. Único ponto de verdade da UI.
+
+/**
+ * @typedef {object} Sessao
+ * @property {{id: string, nome: string, email: string, superadmin: boolean}|null} usuario
+ * @property {boolean} superadmin
+ * @property {Array<object>} acessos           empresas/unidades disponíveis
+ * @property {{id: string, nome: string, logoUrl: string|null, status: string}|null} empresa
+ * @property {{id: string, nome: string}|null} unidade
+ * @property {string|null} papel
+ * @property {string|null} papelRotulo
+ * @property {string[]} permissoes
+ * @property {boolean} impersonando
+ */
+
 export const state = {
-  // sessão
+  // Sessão e contexto. O `usuario` é a identidade (login); `empresa`/`unidade`
+  // são o contexto escolhido depois. Antes, `usuario` era um e-mail solto e
+  // `unidade` era a string fixa "Matriz" — as duas coisas viraram estado real.
+  /** @type {Sessao} */
+  sessao: {
+    usuario: null,
+    superadmin: false,
+    acessos: [],
+    empresa: null,
+    unidade: null,
+    papel: null,
+    papelRotulo: null,
+    permissoes: [],
+    impersonando: false,
+  },
+
+  // Compatibilidade: views antigas leem state.usuario / state.unidade. São
+  // espelhos preenchidos no boot — a fonte é state.sessao.
   usuario: null,
-  unidade: "Matriz",
+  unidade: "—",
 
   // navegação
   rota: "dashboard",
+  telaAdmin: "dashboard",
 
   // filtros globais
   canal: "balcao",

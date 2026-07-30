@@ -51,6 +51,9 @@ export function createApp() {
 
   // 🔒 A PARTIR DAQUI: toda rota de dados exige autenticação real (JWT do Supabase).
   app.use("/api/v1", requireAuth);
+  // Identidade do usuário — inclui `superadmin`, que é o que o frontend usa
+  // para decidir entre o Painel SuperAdmin e a tela de seleção de empresa.
+  // Não traz empresa alguma: isso é papel de /api/v1/sessao.
   app.get("/api/v1/me", (req, res) => res.json({ data: req.user }));
   app.use("/api/v1", router);
 

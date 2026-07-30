@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
+import * as v from "../../shared/validar.js";
+import {
+  carregarGrafo, componentesDiretos, custoTotalProduto, ingredientesExplodidos,
+  produtosAfetadosPorInsumo, recalcularCache,
+} from "./custo.js";
+import {
+  converterQuantidade, statusFicha, validarComponenteFicha, UNIDADES,
+} from "../insumos/insumos.calc.js";
 
 export async function listarProdutos({ organizacaoId, vendavel, tipo }) {
   let q = supabase
@@ -15,83 +23,47 @@ export async function listarProdutos({ organizacaoId, vendavel, tipo }) {
   return data;
 }
 
-// Produto + ficha técnica EXPLODIDA (até o insumo cru) + preços.
+// Produto + ficha técnica editável + ingredientes explodidos + preços + CMV/margem.
+// Usa o grafo de custo compartilhado (custo.js) — mesma fonte do recálculo, sem
+// duplicar fórmula. Isolamento por organização é garantido pelo grafo.
 export async function obterProduto({ organizacaoId, id }) {
+  const produtoId = v.uuid(id, "Produto");
   const { data: produto, error } = await supabase
-    .from("produtos")
-    .select("*")
-    .eq("organizacao_id", organizacaoId)
-    .eq("id", id)
-    .single();
+    .from("produtos").select("*").eq("organizacao_id", organizacaoId).eq("id", produtoId).single();
   if (error || !produto) throw ApiError.notFound("Produto não encontrado");
 
-  // Datasets pequenos: carrega tudo e resolve a árvore em memória.
-  // Insumos, produtos e preços já saem escopados ao tenant. A ficha técnica não
-  // tem organizacao_id próprio (herda via produto_id), então a escopamos pelos
-  // produtos DESTA organização — nunca carregar a ficha de todos os tenants.
-  const [insumosRes, produtosRes, precosRes] = await Promise.all([
-    supabase.from("insumos").select("id, nome, unidade_medida, preco_unitario").eq("organizacao_id", organizacaoId),
-    supabase.from("produtos").select("id, nome").eq("organizacao_id", organizacaoId),
-    supabase.from("produto_precos").select("canal, tabela, preco, desatualizado").eq("produto_id", id).order("canal"),
+  const [grafo, precosRes] = await Promise.all([
+    carregarGrafo(organizacaoId),
+    supabase.from("produto_precos").select("canal, tabela, preco, desatualizado").eq("produto_id", produtoId).order("canal"),
   ]);
-  for (const r of [insumosRes, produtosRes, precosRes]) {
-    if (r.error) throw ApiError.internal(r.error.message);
-  }
+  if (precosRes.error) throw ApiError.internal(precosRes.error.message);
+  const precos = precosRes.data ?? [];
 
-  // Ficha técnica APENAS dos produtos desta organização (isolamento por tenant).
-  const orgProdutoIds = (produtosRes.data ?? []).map((p) => p.id);
-  const fichasRes = orgProdutoIds.length
-    ? await supabase
-        .from("ficha_tecnica")
-        .select("produto_id, insumo_id, subproduto_id, quantidade")
-        .in("produto_id", orgProdutoIds)
-    : { data: [], error: null };
-  if (fichasRes.error) throw ApiError.internal(fichasRes.error.message);
-
-  const insumoById = Object.fromEntries((insumosRes.data ?? []).map((i) => [i.id, i]));
-  const nomeProdById = Object.fromEntries((produtosRes.data ?? []).map((p) => [p.id, p.nome]));
-  const fichaByProd = {};
-  for (const f of fichasRes.data ?? []) (fichaByProd[f.produto_id] ??= []).push(f);
-
-  // Explode recursivamente acumulando quantidade por insumo cru.
-  const acumulado = {};
-  const explode = (pid, mult, prof = 0) => {
-    if (prof > 10) return; // trava de segurança contra ciclo
-    for (const f of fichaByProd[pid] ?? []) {
-      const q = Number(f.quantidade) * mult;
-      if (f.insumo_id) acumulado[f.insumo_id] = (acumulado[f.insumo_id] ?? 0) + q;
-      else if (f.subproduto_id) explode(f.subproduto_id, q, prof + 1);
-    }
-  };
-  explode(id, 1);
-
-  const ingredientes = Object.entries(acumulado)
-    .map(([iid, q]) => {
-      const ins = insumoById[iid] ?? {};
-      const custoUnit = Number(ins.preco_unitario ?? 0);
-      return {
-        nome: ins.nome ?? "?",
-        unidade: ins.unidade_medida ?? null,
-        quantidade: q,
-        custo_unitario: custoUnit,
-        custo_total: q * custoUnit,
-      };
-    })
-    .sort((a, b) => b.custo_total - a.custo_total);
-
-  // Componentes diretos (1 nível — mostra a estrutura: insumos + sub-montagens)
-  const componentes = (fichaByProd[id] ?? []).map((f) =>
-    f.insumo_id
-      ? { tipo: "insumo", nome: insumoById[f.insumo_id]?.nome ?? "?", quantidade: Number(f.quantidade), unidade: insumoById[f.insumo_id]?.unidade_medida ?? null }
-      : { tipo: "submontagem", nome: nomeProdById[f.subproduto_id] ?? "?", quantidade: Number(f.quantidade), unidade: null }
-  );
-
-  const custoCalculado = ingredientes.reduce((s, r) => s + r.custo_total, 0);
-  // Custo manual (override) vence o calculado quando definido.
+  const ficha = componentesDiretos(produtoId, grafo);            // 1 nível, editável
+  const ingredientes = ingredientesExplodidos(produtoId, grafo); // até o insumo cru (compat modal)
+  const custoCalculado = custoTotalProduto(produtoId, grafo);
   const custoManual = produto.custo_manual != null ? Number(produto.custo_manual) : null;
   const custo = custoManual != null ? custoManual : custoCalculado;
 
-  return { ...produto, custo, custo_calculado: custoCalculado, custo_manual: custoManual, ingredientes, componentes, precos: precosRes.data ?? [] };
+  const temPreco = precos.some((p) => Number(p.preco) > 0);
+  const status = statusFicha({
+    componentes: ficha.map((c) => ({ custoUnitarioBase: c.custo_unitario_base, insumoAtivo: c.insumo_ativo })),
+    temPreco,
+  });
+
+  // Componentes no formato legado (mantém o modal atual funcionando).
+  const componentes = ficha.map((c) => ({
+    tipo: c.tipo, nome: c.nome, quantidade: c.quantidade, unidade: c.tipo === "insumo" ? c.unidade : null,
+  }));
+
+  return {
+    ...produto,
+    custo, custo_calculado: custoCalculado, custo_manual: custoManual,
+    ingredientes, componentes, ficha, precos,
+    qtd_componentes: ficha.length,
+    status_ficha: status,
+    unidades: UNIDADES,
+  };
 }
 
 // Atualiza campos do produto e/ou preços (upsert por canal/tabela).
@@ -302,4 +274,126 @@ export async function listarHistoricoRecente({ organizacaoId, limite = 8 }) {
     eventos = eventos.map((e) => ({ ...e, produto_nome: nomeById[e.produto_id] ?? "Produto" }));
   }
   return { pendente: false, eventos };
+}
+
+// ===========================================================================
+// FICHA TÉCNICA EDITÁVEL — adicionar / editar / remover componente
+//
+// Toda mutação: (1) valida o acesso do produto à organização; (2) valida o
+// insumo/unidade; (3) grava a quantidade SEMPRE na unidade-base do insumo
+// (mantendo fn_custo_produto e a baixa de estoque intactos); (4) recalcula em
+// cascata o custo_cache do produto e de quem o usa como submontagem.
+// ===========================================================================
+
+const RE_COL_FICHA = /does not exist|schema cache|could not find/i;
+
+/** Garante que o produto existe e pertence à organização. */
+async function garantirProduto(organizacaoId, produtoId) {
+  const { data } = await supabase
+    .from("produtos").select("id, custo_manual").eq("organizacao_id", organizacaoId).eq("id", produtoId).single();
+  if (!data) throw ApiError.notFound("Produto não encontrado");
+  return data;
+}
+
+/** Recalcula em cascata e devolve o produto já atualizado + quantos recalcularam. */
+async function recalcularEObter(organizacaoId, produtoId) {
+  const grafo = await carregarGrafo(organizacaoId);
+  const afetados = produtosAfetadosPorProduto(produtoId, grafo);
+  const recalculados = await recalcularCache({ organizacaoId, produtoIds: afetados, grafo });
+  const produto = await obterProduto({ organizacaoId, id: produtoId });
+  return { produto, recalculados };
+}
+
+export async function adicionarComponente({ organizacaoId, produtoId, dados, usuario }) {
+  const pid = v.uuid(produtoId, "Produto");
+  await garantirProduto(organizacaoId, pid);
+  const b = v.corpo(dados);
+  const insumoId = v.uuid(b.insumo_id, "Insumo");
+
+  // Insumo precisa ser DESTA organização e estar ativo.
+  const { data: insumo } = await supabase
+    .from("insumos").select("id, unidade_medida, ativo").eq("organizacao_id", organizacaoId).eq("id", insumoId).single();
+  if (!insumo) throw ApiError.notFound("Insumo não encontrado nesta empresa.");
+  if (insumo.ativo === false) throw ApiError.badRequest("Não é possível adicionar um insumo inativo à ficha.");
+
+  const unidadeUso = v.umDe(b.unidade ?? insumo.unidade_medida, "Unidade utilizada", UNIDADES);
+  const quantidade = v.numero(b.quantidade, "Quantidade utilizada", { min: 0 });
+  const erro = validarComponenteFicha({ quantidade, unidadeUso, unidadeBase: insumo.unidade_medida });
+  if (erro) throw ApiError.badRequest(erro);
+
+  const qtdBase = converterQuantidade(quantidade, unidadeUso, insumo.unidade_medida);
+  const linha = {
+    produto_id: pid, insumo_id: insumoId, quantidade: qtdBase,
+    unidade_uso: unidadeUso, quantidade_informada: quantidade,
+    observacao: v.textoOpcional(b.observacao, "Observação", { max: 300 }),
+    created_by: usuario?.id ?? null,
+  };
+
+  let res = await supabase.from("ficha_tecnica").insert(linha).select("id").single();
+  if (res.error && RE_COL_FICHA.test(res.error.message)) {
+    res = await supabase.from("ficha_tecnica")
+      .insert({ produto_id: pid, insumo_id: insumoId, quantidade: qtdBase, observacao: linha.observacao })
+      .select("id").single();
+  }
+  if (res.error) {
+    if (/duplicate key|unique/i.test(res.error.message)) {
+      throw ApiError.badRequest("Este insumo já está na ficha. Edite a quantidade em vez de duplicar.");
+    }
+    throw ApiError.badRequest(res.error.message);
+  }
+  return recalcularEObter(organizacaoId, pid);
+}
+
+export async function atualizarComponente({ organizacaoId, produtoId, fichaId, dados }) {
+  const pid = v.uuid(produtoId, "Produto");
+  const fid = v.uuid(fichaId, "Item da ficha");
+  await garantirProduto(organizacaoId, pid);
+
+  const { data: linha } = await supabase
+    .from("ficha_tecnica").select("id, produto_id, insumo_id, subproduto_id").eq("id", fid).single();
+  if (!linha || linha.produto_id !== pid) throw ApiError.notFound("Item da ficha não encontrado.");
+
+  const b = v.corpo(dados);
+  const patch = {};
+
+  if (linha.insumo_id) {
+    const { data: insumo } = await supabase
+      .from("insumos").select("unidade_medida").eq("organizacao_id", organizacaoId).eq("id", linha.insumo_id).single();
+    if (!insumo) throw ApiError.notFound("Insumo não encontrado.");
+    const unidadeUso = v.umDe(b.unidade ?? insumo.unidade_medida, "Unidade utilizada", UNIDADES);
+    const quantidade = v.numero(b.quantidade, "Quantidade utilizada", { min: 0 });
+    const erro = validarComponenteFicha({ quantidade, unidadeUso, unidadeBase: insumo.unidade_medida });
+    if (erro) throw ApiError.badRequest(erro);
+    patch.quantidade = converterQuantidade(quantidade, unidadeUso, insumo.unidade_medida);
+    patch.unidade_uso = unidadeUso;
+    patch.quantidade_informada = quantidade;
+  } else {
+    // Submontagem/combo: quantidade em unidades do subproduto.
+    const quantidade = v.numero(b.quantidade, "Quantidade", { min: 0 });
+    if (quantidade <= 0) throw ApiError.badRequest("A quantidade deve ser maior que zero.");
+    patch.quantidade = quantidade;
+  }
+  if (b.ativo !== undefined) patch.ativo = v.booleano(b.ativo, true);
+
+  let res = await supabase.from("ficha_tecnica").update(patch).eq("id", fid);
+  if (res.error && RE_COL_FICHA.test(res.error.message)) {
+    res = await supabase.from("ficha_tecnica").update({ quantidade: patch.quantidade }).eq("id", fid);
+  }
+  if (res.error) throw ApiError.badRequest(res.error.message);
+  return recalcularEObter(organizacaoId, pid);
+}
+
+export async function removerComponente({ organizacaoId, produtoId, fichaId }) {
+  const pid = v.uuid(produtoId, "Produto");
+  const fid = v.uuid(fichaId, "Item da ficha");
+  await garantirProduto(organizacaoId, pid);
+
+  const { data: linha } = await supabase
+    .from("ficha_tecnica").select("id, produto_id").eq("id", fid).single();
+  if (!linha || linha.produto_id !== pid) throw ApiError.notFound("Item da ficha não encontrado.");
+
+  // Remover da ficha NÃO exclui o insumo da unidade — só a linha da ficha.
+  const { error } = await supabase.from("ficha_tecnica").delete().eq("id", fid);
+  if (error) throw ApiError.badRequest(error.message);
+  return recalcularEObter(organizacaoId, pid);
 }

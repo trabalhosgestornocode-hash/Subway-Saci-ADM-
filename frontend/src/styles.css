@@ -106,7 +106,9 @@ body {
    foi REMOVIDO nesta faxina — substituído pelo bloco "LOGIN v3" no fim do
    arquivo. Sobraram aqui apenas as regras que continuam em uso.
    ============================================================================= */
-@keyframes logoIn { from { opacity: 0; transform: translateY(-10px) scale(.88); } to { opacity: 1; transform: none; } }
+/* Entrada única da logo: fade + subida ≤8px + escala mínima (.97), ~600ms.
+   Depois permanece parada (não é animação contínua). */
+@keyframes logoIn { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
 
 /* Estado de loading do botão (apenas visual — não altera a autenticação).
    Spinner agora BRANCO: o botão novo é vermelho com texto branco (antes era
@@ -162,7 +164,7 @@ body {
 }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 800; padding: 18px 22px; letter-spacing: -.2px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .brand-logo { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: block;
-  background-image: url("/assets/logo-mono.svg");
+  background-image: url("/assets/logo-crescercomdeliverylogin.png");
   background-size: cover; background-position: center; background-repeat: no-repeat; }
 .sidebar-brand span { border-bottom: 3px solid var(--amarelo); padding-bottom: 2px; }
 .menu { flex: 1; overflow-y: auto; padding: 12px 10px; }
@@ -1163,6 +1165,21 @@ body {
   background: linear-gradient(180deg, transparent, #E01020 32%, #E01020 68%, transparent);
   opacity: .55;
 }
+/* Brilho vermelho MUITO sutil que passeia lentamente pelo fundo (ciclo 14s,
+   baixa opacidade). Fica atrás do conteúdo (z-index 0 < .lg-vitrine-int z-index 2)
+   e usa só transform/opacity (sem filtros pesados). */
+.lg-vitrine::after {
+  content: ""; position: absolute; z-index: 0; pointer-events: none;
+  top: -15%; left: -12%; width: 75%; height: 75%;
+  background: radial-gradient(closest-side, rgba(224,16,32,.20), transparent 70%);
+  opacity: .5; will-change: transform, opacity;
+  animation: lgGlow 14s ease-in-out infinite;
+}
+@keyframes lgGlow {
+  0%   { transform: translate(-6%, -8%)  scale(1);    opacity: .35; }
+  50%  { transform: translate(22%, 26%)  scale(1.14); opacity: .55; }
+  100% { transform: translate(-6%, -8%)  scale(1);    opacity: .35; }
+}
 .lg-vitrine-int {
   position: relative; z-index: 2; height: 100%;
   display: flex; flex-direction: column; justify-content: center; gap: clamp(20px, 2.2vh, 30px);
@@ -1188,7 +1205,7 @@ body {
 .cd-l2 { margin-top: .06em; }
 
 .lg-lockup { display: flex; align-items: center; }
-.lg-lockup .cd-marca { --cd-tam: clamp(27px, 2.5vw, 36px); }
+.lg-lockup .cd-marca { --cd-tam: clamp(36px, 3.8vw, 56px); }
 
 .lg-titulo { font-size: clamp(25px, 2.5vw, 35px); font-weight: 800; line-height: 1.16; letter-spacing: -.8px; color: #fff; }
 .lg-red { color: var(--verde-vivo); }
@@ -1199,13 +1216,21 @@ body {
 .lg-card {
   display: flex; gap: 12px; align-items: flex-start; padding: 14px 15px; border-radius: 12px;
   background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.07);
-  transition: border-color var(--t), background var(--t);
+  transition: transform .22s cubic-bezier(.4,0,.2,1), border-color .22s ease, box-shadow .22s ease, background .22s ease;
 }
-.lg-card:hover { border-color: rgba(240,32,47,.32); background: rgba(255,255,255,.045); }
+/* Hover discreto: sobe 3px, borda mais vermelha, sombra vermelha suave. Sem 3D/rotação. */
+.lg-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(240,32,47,.5);
+  background: rgba(255,255,255,.045);
+  box-shadow: 0 8px 22px rgba(224,16,32,.16);
+}
 .lg-card-ic {
   width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px; display: grid; place-items: center;
   background: rgba(224,16,32,.10); border: 1px solid rgba(224,16,32,.26); color: var(--verde-vivo);
+  transition: box-shadow .22s ease, color .22s ease;
 }
+.lg-card:hover .lg-card-ic { box-shadow: 0 0 14px rgba(244,36,51,.45); color: #ff5964; }
 .lg-card-ic svg { width: 19px; height: 19px; }
 .lg-card h3 { font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 3px; }
 .lg-card p { font-size: 12.5px; line-height: 1.45; color: #8e8e98; }
@@ -1219,19 +1244,42 @@ body {
 }
 .lg-fx-ic svg { width: 20px; height: 20px; }
 .lg-fx small { font-size: 11px; color: #9a9aa3; text-align: center; line-height: 1.3; }
-.lg-fx-seta { flex: 1; min-width: 20px; max-width: 54px; color: rgba(240,32,47,.55); margin-bottom: 18px; }
+.lg-fx-seta { flex: 1; min-width: 20px; max-width: 54px; color: rgba(240,32,47,.55); margin-bottom: 18px; position: relative; overflow: hidden; }
 .lg-fx-seta svg { width: 100%; height: 8px; }
+/* Pequena luz vermelha que percorre cada conexão. Não pisca: aparece, desliza
+   uma vez e some; o ciclo de 9s repete a passagem (~a cada 8-10s). As 3 setas
+   são escalonadas para dar a sensação de a luz "andar" pelo fluxo. */
+.lg-fx-seta::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 22px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(244,36,51,.95), transparent);
+  transform: translateX(-26px); opacity: 0; will-change: transform, opacity;
+  animation: lgFluxo 9s ease-in-out infinite;
+}
+.lg-fx-seta:nth-of-type(1)::after { animation-delay: 0s; }
+.lg-fx-seta:nth-of-type(2)::after { animation-delay: .5s; }
+.lg-fx-seta:nth-of-type(3)::after { animation-delay: 1s; }
+@keyframes lgFluxo {
+  0%   { transform: translateX(-26px); opacity: 0; }
+  6%   { opacity: 1; }
+  14%  { opacity: 1; }
+  20%  { transform: translateX(64px); opacity: 0; }
+  100% { transform: translateX(64px); opacity: 0; }
+}
 
 /* ---------- formulário (direita) ---------- */
 .lg-form-col { background: #121214; display: flex; align-items: center; justify-content: center; padding: clamp(34px, 3.5vw, 60px); }
 .lg-form { width: 100%; max-width: 396px; }
-/* CLEAN: monograma sóbrio, sem o anel vermelho brilhante. */
+/* Lockup oficial (coroa + C + wordmark + fio vermelho) já vem pronto na arte PNG,
+   sobre fundo preto. Exibido GRANDE e SEM moldura/anel: a máscara radial dissolve
+   as bordas do quadrado preto no fundo escuro do formulário — fica igual à arte,
+   sem "caixinha". contain preserva a proporção (arte 1254x1254, sem corte). */
 .lg-app-ic {
-  width: 68px; height: 68px; border-radius: 16px; display: block; margin: 0 auto 18px;
-  background-image: url("/assets/logo-mono.svg");
-  background-size: cover; background-position: center; background-repeat: no-repeat;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.10);
-  animation: logoIn .7s cubic-bezier(.2,.8,.2,1) both;
+  width: 210px; height: 210px; border-radius: 0; display: block; margin: 0 auto 6px;
+  background-image: url("/assets/logo-crescercomdeliverylogin.png");
+  background-size: contain; background-position: center; background-repeat: no-repeat;
+  -webkit-mask-image: radial-gradient(closest-side, #000 82%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 82%, transparent 100%);
+  animation: logoIn .6s cubic-bezier(.2,.8,.2,1) both;
 }
 .lg-bemvindo { font-size: 25px; font-weight: 800; line-height: 1.25; letter-spacing: -.5px; text-align: center; color: #fff; }
 .lg-sub { font-size: 13.5px; color: #8e8e98; text-align: center; margin: 8px 0 26px; }
@@ -1259,7 +1307,11 @@ body {
 .lg-erro {
   background: rgba(224,16,32,.12); border: 1px solid rgba(224,16,32,.34); color: #ff9aa2;
   font-size: 13px; padding: 10px 13px; border-radius: 10px; margin-bottom: 12px;
+  /* Entrada suave sempre que sai de hidden (display:none→block reinicia a animação).
+     Sem tremor no formulário — apenas fade + pequeno translateY. */
+  animation: lgErro .25s ease both;
 }
+@keyframes lgErro { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 .lg-btn {
   position: relative; display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -1268,8 +1320,18 @@ body {
   font-size: 15.5px; font-weight: 700; font-family: inherit;
   box-shadow: 0 6px 18px rgba(224,16,32,.20);
   transition: transform var(--t), box-shadow var(--t), filter var(--t);
+  overflow: hidden;   /* recorta o brilho horizontal (sheen); não afeta a sombra externa */
 }
-.lg-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(224,16,32,.30); filter: brightness(1.06); }
+.lg-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(224,16,32,.32); filter: brightness(1.06); }
+/* Brilho horizontal muito leve que cruza o botão no hover (uma passada, não pisca).
+   pointer-events:none p/ não interferir no clique; não altera a largura/altura. */
+.lg-btn::after {
+  content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent);
+  transform: skewX(-18deg); opacity: 0;
+}
+.lg-btn:hover::after { animation: lgSheen .7s ease; }
+@keyframes lgSheen { 0% { left: -60%; opacity: 0; } 20% { opacity: .9; } 100% { left: 130%; opacity: 0; } }
 .lg-btn-seta { width: 19px; height: 19px; transition: opacity var(--t), transform var(--t); }
 .lg-btn:hover .lg-btn-seta { transform: translateX(3px); }
 .login-btn.carregando .lg-btn-seta { opacity: 0; }
@@ -1302,7 +1364,7 @@ body {
 @media (min-width: 1001px) and (max-height: 780px) {
   .lg-vitrine { padding: clamp(24px, 3vw, 46px); }
   .lg-vitrine-int { gap: 15px; max-width: 720px; }
-  .lg-lockup .cd-marca { --cd-tam: 25px; }
+  .lg-lockup .cd-marca { --cd-tam: 40px; }
   .lg-titulo { font-size: clamp(21px, 1.9vw, 27px); }
   .lg-desc { font-size: 13px; line-height: 1.5; }
   .lg-cards { gap: 9px; }
@@ -1316,7 +1378,7 @@ body {
   .lg-fx small { font-size: 10px; }
   .lg-fx-seta { margin-bottom: 15px; }
   /* formulário também encolhe um pouco */
-  .lg-app-ic { width: 58px; height: 58px; margin-bottom: 13px; }
+  .lg-app-ic { width: 158px; height: 158px; margin-bottom: 6px; }
   .lg-bemvindo { font-size: 22px; }
   .lg-sub { margin-bottom: 18px; }
   .lg-campo { margin-bottom: 13px; }
@@ -1324,3 +1386,437 @@ body {
   .lg-btn { height: 50px; }
   .lg-seguro { margin: 14px 0 12px; }
 }
+
+/* Acessibilidade/performance: quem prefere menos movimento vê tudo imediatamente,
+   sem animações contínuas nem transições longas. */
+@media (prefers-reduced-motion: reduce) {
+  .lg-split,
+  .lg-app-ic,
+  .lg-vitrine::after,
+  .lg-fx-seta::after,
+  .lg-erro,
+  .lg-btn:hover::after { animation: none !important; }
+  .lg-vitrine::after { opacity: .4; }
+  .lg-card, .lg-card-ic, .lg-btn, .lg-input input { transition: none !important; }
+}
+
+/* =========================================================================
+   MULTIEMPRESA v1 — seleção de unidade, menu do usuário, impersonação
+   e Painel SuperAdmin.
+   Tudo aqui usa as variáveis de tema já existentes, então o modo escuro
+   funciona sem regras duplicadas.
+   ========================================================================= */
+
+/* ---------- botão de ação destrutiva (faltava no design system) ---------- */
+.btn-perigo { background: var(--bad); color: #fff; border-color: transparent; box-shadow: 0 8px 20px rgba(219,59,59,.28); }
+.btn-perigo:hover { filter: brightness(1.06); transform: translateY(-1px); }
+
+/* =========================================================================
+   1. TELA DE SELEÇÃO DE UNIDADE
+   ========================================================================= */
+.sel-screen {
+  min-height: 100dvh; display: grid; place-items: center; padding: 28px 18px;
+  background: var(--grad-login); animation: fadeIn .3s;
+}
+.sel-wrap {
+  width: 100%; max-width: 620px; background: var(--card); border-radius: var(--raio-lg);
+  box-shadow: var(--sombra-lg); padding: clamp(22px, 4vw, 38px); animation: fadeInUp .35s;
+}
+.sel-head { text-align: center; margin-bottom: 22px; }
+/* Logo oficial (arte com fundo preto) em badge escuro arredondado: fica limpa
+   tanto no card claro quanto no escuro. Preserva a proporção (contain, sem corte). */
+.sel-brand-logo {
+  display: block; width: 118px; height: 118px; margin: 0 auto 16px; border-radius: 18px;
+  background: #0a0a0c; object-fit: contain;
+  box-shadow: 0 6px 18px rgba(0,0,0,.22);
+  animation: logoIn .6s cubic-bezier(.2,.8,.2,1) both;
+}
+.cd-marca--sm { --cd-tam: 22px; display: inline-flex; margin-bottom: 16px; }
+.sel-titulo { font-size: clamp(20px, 3vw, 26px); letter-spacing: -.5px; margin-bottom: 6px; }
+.sel-sub { color: var(--cinza); font-size: 14px; }
+
+.sel-lista { display: grid; gap: 11px; }
+.sel-item {
+  display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 14px;
+  padding: 13px 15px; border: 1.5px solid var(--linha); border-radius: var(--raio);
+  background: var(--card); transition: var(--t);
+}
+.sel-item:hover:not(.sel-item--off) { border-color: var(--verde); box-shadow: var(--sombra-md); transform: translateY(-2px); }
+.sel-item--off { opacity: .62; }
+.sel-logo { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; display: grid; place-items: center; }
+.sel-logo--txt { background: var(--grad-verde); color: #fff; font-weight: 800; font-size: 19px; }
+.sel-item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sel-item-info b { font-size: 15.5px; letter-spacing: -.2px; }
+.sel-item-info small { color: var(--cinza); font-size: 12.5px; }
+.sel-item-info .pill { align-self: flex-start; margin-top: 3px; }
+
+.sel-vazio { text-align: center; padding: 30px 14px; color: var(--cinza); }
+.sel-vazio-ic { font-size: 38px; display: block; margin-bottom: 10px; }
+.sel-vazio h3 { font-size: 16.5px; color: var(--texto); margin-bottom: 7px; }
+.sel-vazio p { font-size: 13.5px; max-width: 420px; margin: 0 auto; }
+
+.sel-foot { display: flex; justify-content: center; gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--linha); }
+
+@media (max-width: 520px) {
+  .sel-item { grid-template-columns: 40px 1fr; }
+  .sel-logo { width: 40px; height: 40px; }
+  .sel-item .sel-btn { grid-column: 1 / -1; width: 100%; }
+}
+
+/* =========================================================================
+   2. MENU DO USUÁRIO (topbar do tenant e do painel)
+   ========================================================================= */
+.user-box { position: relative; }
+.user-chip {
+  display: flex; align-items: center; gap: 9px; padding: 5px 9px 5px 5px;
+  background: var(--superficie-2); border: 1px solid var(--linha); border-radius: 30px;
+  cursor: pointer; transition: var(--t); font: inherit; color: inherit; max-width: 230px;
+}
+.user-chip:hover { border-color: #cfd6d3; box-shadow: var(--sombra-sm); }
+.user-meta { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.25; }
+.user-nome { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.user-empresa { font-size: 11px; color: var(--cinza); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.user-seta { width: 15px; height: 15px; color: var(--cinza-claro); flex: 0 0 auto; }
+
+.user-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; width: 258px;
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
+  box-shadow: var(--sombra-lg); padding: 7px; animation: pop .16s;
+}
+.user-menu-head { padding: 10px 11px 12px; border-bottom: 1px solid var(--linha); margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; }
+.user-menu-head b { font-size: 14px; }
+.user-menu-head small { font-size: 12px; color: var(--cinza); word-break: break-all; }
+.user-menu-head .pill { align-self: flex-start; margin-top: 3px; }
+.user-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px;
+  background: none; border: 0; border-radius: var(--raio-sm); cursor: pointer;
+  font: inherit; font-size: 13.5px; color: var(--texto); text-align: left; transition: var(--t);
+}
+.user-menu-item:hover { background: var(--superficie-2); }
+.user-menu-item svg { width: 17px; height: 17px; color: var(--cinza); flex: 0 0 auto; }
+.user-menu-item--danger { color: var(--bad); }
+.user-menu-item--danger svg { color: var(--bad); }
+.user-menu-item--danger:hover { background: var(--bad-bg); }
+.user-menu-sep { height: 1px; background: var(--linha); margin: 6px 4px; }
+
+/* =========================================================================
+   3. BARRA DE IMPERSONAÇÃO
+   ========================================================================= */
+.imp-barra {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 18px; background: linear-gradient(90deg, var(--warn-bg), transparent 85%);
+  border-bottom: 2px solid var(--warn); color: #6b4d05; font-size: 13.5px;
+  position: sticky; top: 0; z-index: 40;
+}
+[data-theme="dark"] .imp-barra { color: #ffd97a; background: linear-gradient(90deg, rgba(196,138,18,.22), transparent 85%); }
+.imp-ic { display: grid; place-items: center; width: 24px; height: 24px; color: var(--warn); flex: 0 0 auto; }
+.imp-ic svg { width: 20px; height: 20px; }
+.imp-txt { flex: 1 1 260px; }
+.imp-btn { background: var(--warn); color: #fff; border-color: transparent; }
+.imp-btn:hover { filter: brightness(1.07); }
+
+/* =========================================================================
+   4. SHELL DO PAINEL SUPERADMIN
+   ========================================================================= */
+.adm { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100dvh; animation: fadeIn .25s; }
+
+.adm-sidebar {
+  background: linear-gradient(180deg, #101a2c 0%, #0a1220 100%);
+  color: #dbe4f1; display: flex; flex-direction: column; padding: 18px 12px;
+  position: sticky; top: 0; height: 100dvh;
+}
+.adm-brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 20px; }
+.adm-brand-mark {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #3d6fd8, #1e3f8f); color: #fff; flex: 0 0 auto;
+}
+.adm-brand-mark svg { width: 20px; height: 20px; }
+.adm-brand-txt { display: flex; flex-direction: column; line-height: 1.2; }
+.adm-brand-txt b { font-size: 14.5px; letter-spacing: -.2px; }
+.adm-brand-txt small { font-size: 11px; color: #8fa3c4; }
+
+.adm-menu { flex: 1; overflow-y: auto; }
+.adm-menu ul { list-style: none; }
+.adm-menu .menu-secao {
+  font-size: 10.5px; letter-spacing: .9px; text-transform: uppercase; color: #6d82a6;
+  padding: 15px 10px 6px; font-weight: 700;
+}
+.adm-menu li[data-tela] {
+  display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--raio-sm);
+  cursor: pointer; font-size: 13.5px; transition: var(--t); color: #c3d1e6;
+}
+.adm-menu li[data-tela]:hover { background: rgba(255,255,255,.07); color: #fff; }
+.adm-menu li[data-tela].ativo { background: linear-gradient(135deg, #3d6fd8, #2a51a8); color: #fff; box-shadow: 0 8px 20px rgba(61,111,216,.32); }
+.adm-menu .m-icon { width: 20px; text-align: center; flex: 0 0 auto; }
+
+.adm-sidebar-foot { padding: 14px 10px 2px; border-top: 1px solid rgba(255,255,255,.09); }
+.adm-versao { font-size: 11px; color: #6d82a6; }
+
+.adm-main { display: flex; flex-direction: column; min-width: 0; }
+.adm-topbar {
+  display: flex; align-items: center; gap: 14px; padding: 12px 20px;
+  background: var(--topbar-bg); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--linha); position: sticky; top: 0; z-index: 30;
+}
+.adm-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 11px; }
+.adm-badge { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; padding: 5px 11px; border-radius: 20px; }
+.adm-badge--plataforma { background: #e6edfb; color: #2a51a8; }
+[data-theme="dark"] .adm-badge--plataforma { background: rgba(61,111,216,.2); color: #93b4f5; }
+.adm-content { padding: 22px; display: flex; flex-direction: column; gap: 20px; }
+#adm-btn-menu { display: none; }
+
+/* ---------- KPIs ---------- */
+.adm-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 13px; }
+.adm-kpi {
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 15px 17px; display: flex; flex-direction: column; gap: 5px;
+  box-shadow: var(--sombra-sm); transition: var(--t); position: relative; overflow: hidden;
+}
+.adm-kpi:hover { transform: translateY(-3px); box-shadow: var(--sombra-md); }
+.adm-kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--linha); }
+.adm-kpi--ok::before { background: var(--ok); }
+.adm-kpi--warn::before { background: var(--warn); }
+.adm-kpi--bad::before { background: var(--bad); }
+.adm-kpi--info::before { background: var(--info); }
+.adm-kpi--vazio { border-style: dashed; opacity: .82; }
+.adm-kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--cinza); font-weight: 700; }
+.adm-kpi-valor { font-size: 25px; font-weight: 800; letter-spacing: -.6px; }
+.adm-kpi-sub { font-size: 12px; color: var(--cinza); }
+
+/* ---------- Seções ---------- */
+.adm-secao { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); box-shadow: var(--sombra-sm); overflow: hidden; }
+.adm-secao-head { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border-bottom: 1px solid var(--linha); flex-wrap: wrap; }
+.adm-secao-head h2 { font-size: 16px; letter-spacing: -.3px; }
+.adm-secao-acoes { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.adm-secao-acoes--fim { margin: 14px 0 0; justify-content: flex-end; }
+.adm-secao-body { padding: 16px 18px; }
+.adm-nota { font-size: 12.5px; color: var(--cinza); padding: 11px 18px 0; line-height: 1.5; }
+.adm-secao-body > .adm-nota:first-child { padding: 0 0 12px; }
+
+/* ---------- Tabelas ---------- */
+.adm-tabela-wrap { overflow-x: auto; margin: -4px; padding: 4px; }
+.adm-tabela { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.adm-tabela th {
+  text-align: left; padding: 9px 11px; background: var(--superficie-2); color: var(--cinza);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .6px; font-weight: 700; white-space: nowrap;
+}
+.adm-tabela th:first-child { border-radius: var(--raio-sm) 0 0 var(--raio-sm); }
+.adm-tabela th:last-child { border-radius: 0 var(--raio-sm) var(--raio-sm) 0; }
+.adm-tabela td { padding: 11px; border-bottom: 1px solid var(--linha); vertical-align: middle; }
+.adm-tabela tbody tr:last-child td { border-bottom: 0; }
+.adm-tabela tbody tr:hover { background: var(--superficie-2); }
+.adm-tabela small { color: var(--cinza); font-size: 11.5px; }
+
+.adm-cel-empresa { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+.adm-cel-empresa > span { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.adm-logo { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; display: grid; place-items: center; }
+.adm-logo--txt { background: var(--grad-verde); color: #fff; font-weight: 800; font-size: 14px; }
+.adm-acoes-cel { display: flex; gap: 6px; flex-wrap: wrap; }
+.adm-tag { display: inline-block; font-size: 11.5px; padding: 3px 9px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--linha); margin: 1px 0; }
+.adm-tag--off { opacity: .5; text-decoration: line-through; }
+.adm-json { font-size: 11px; background: var(--campo-bg); padding: 9px; border-radius: var(--raio-sm); max-width: 340px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
+/* ---------- Gráficos ---------- */
+.adm-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.adm-grafico { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.adm-grafico-lbl { font-size: 12px; font-weight: 650; color: var(--cinza); }
+.adm-grafico svg { width: 100%; height: auto; max-height: 150px; overflow: visible; }
+.adm-barra { fill: var(--verde); transition: var(--t); }
+.adm-barra:hover { fill: var(--verde-vivo); }
+.adm-barra-lbl { font-size: 8.5px; fill: var(--cinza); text-anchor: middle; }
+.adm-barra-val { font-size: 9px; fill: var(--texto); text-anchor: middle; font-weight: 700; }
+
+/* ---------- Monitoramento ---------- */
+.adm-mon-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 13px; }
+.adm-mon { border: 1px solid var(--linha); border-left-width: 3px; border-radius: var(--raio); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; background: var(--card); }
+.adm-mon header { display: flex; align-items: center; gap: 9px; justify-content: space-between; }
+.adm-mon header b { font-size: 14px; }
+.adm-mon p { font-size: 12.5px; color: var(--cinza); line-height: 1.5; }
+.adm-mon footer { display: flex; gap: 10px; justify-content: space-between; font-size: 11px; color: var(--cinza-claro); border-top: 1px solid var(--linha); padding-top: 8px; }
+.adm-mon code { background: var(--campo-bg); padding: 1px 5px; border-radius: 5px; font-size: 11.5px; }
+.adm-mon--operacional { border-left-color: var(--ok); }
+.adm-mon--degradado { border-left-color: var(--warn); }
+.adm-mon--falha { border-left-color: var(--bad); }
+.adm-mon--sem_sonda { border-left-color: var(--info); }
+.adm-mon--desligado { border-left-color: var(--muted); }
+
+/* ---------- Avisos e blocos reservados ---------- */
+.adm-aviso {
+  padding: 12px 15px; border-radius: var(--raio-sm); background: var(--warn-bg); color: #6b4d05;
+  font-size: 13px; line-height: 1.5; border-left: 3px solid var(--warn); margin-bottom: 14px;
+}
+[data-theme="dark"] .adm-aviso { color: #ffd97a; background: rgba(196,138,18,.16); }
+.adm-aviso--info { background: var(--info-bg); color: #1c4f87; border-left-color: var(--info); }
+[data-theme="dark"] .adm-aviso--info { color: #9dc2f5; background: rgba(47,119,196,.16); }
+.adm-aviso--perigo { background: var(--bad-bg); color: #8f2020; border-left-color: var(--bad); }
+[data-theme="dark"] .adm-aviso--perigo { color: #ffaeae; background: rgba(219,59,59,.16); }
+
+.adm-reservado { display: flex; gap: 13px; align-items: flex-start; padding: 16px; border: 1.5px dashed var(--linha); border-radius: var(--raio); background: var(--campo-bg); }
+.adm-reservado-ic { font-size: 24px; flex: 0 0 auto; }
+.adm-reservado b { font-size: 14px; display: block; margin-bottom: 4px; }
+.adm-reservado p { font-size: 12.5px; color: var(--cinza); line-height: 1.55; }
+
+.adm-zona-perigo { margin-top: 18px; padding: 15px; border: 1.5px solid var(--bad); border-radius: var(--raio); background: var(--bad-bg); }
+[data-theme="dark"] .adm-zona-perigo { background: rgba(219,59,59,.12); }
+.adm-zona-perigo b { color: var(--bad); font-size: 14px; display: block; margin-bottom: 5px; }
+.adm-zona-perigo p { font-size: 12.5px; color: var(--cinza); line-height: 1.55; margin-bottom: 11px; }
+
+.adm-passos { padding-left: 22px; font-size: 13.5px; line-height: 1.8; color: var(--texto); }
+.adm-passos code { background: var(--campo-bg); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+
+/* ---------- Detalhes (modal) ---------- */
+.adm-det { display: grid; gap: 1px; background: var(--linha); border-radius: var(--raio-sm); overflow: hidden; margin-bottom: 6px; }
+.adm-det-linha { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 13px; background: var(--card); font-size: 13.5px; }
+.adm-det-linha > span:first-child { color: var(--cinza); font-size: 12.5px; }
+.adm-det-tit { font-size: 13px; text-transform: uppercase; letter-spacing: .7px; color: var(--cinza); margin: 20px 0 9px; font-weight: 700; }
+.adm-det-lista { list-style: none; display: grid; gap: 7px; font-size: 13.5px; }
+.adm-det-lista li { padding: 9px 12px; background: var(--campo-bg); border-radius: var(--raio-sm); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.adm-det-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* ---------- Vínculos e associação ---------- */
+.adm-vinculos { display: grid; gap: 8px; }
+.adm-vinculo { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 11px 13px; background: var(--campo-bg); border-radius: var(--raio-sm); }
+.adm-vinculo-nome { display: flex; align-items: center; gap: 8px; flex: 1 1 170px; min-width: 0; font-size: 13.5px; }
+.adm-vinculo-papel { flex: 0 0 auto; }
+
+.adm-assoc-lista { display: grid; gap: 7px; max-height: 260px; overflow-y: auto; padding: 3px; }
+.adm-assoc { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; padding: 10px 12px; background: var(--campo-bg); border-radius: var(--raio-sm); cursor: pointer; }
+.adm-assoc:hover { background: var(--superficie-2); }
+.adm-assoc-nome { display: flex; align-items: center; gap: 8px; font-size: 13.5px; min-width: 0; }
+
+/* ---------- Formulários do painel ---------- */
+.adm-form-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); gap: 13px; }
+.adm-campo { display: flex; flex-direction: column; gap: 5px; font-size: 13px; }
+.adm-campo--full { grid-column: 1 / -1; }
+.adm-campo > span { font-weight: 650; color: var(--texto); }
+.adm-campo .req { color: var(--bad); font-style: normal; }
+.adm-campo input, .adm-campo select, .adm-campo textarea {
+  padding: 10px 12px; border: 1.5px solid var(--linha); border-radius: var(--raio-sm);
+  font: inherit; font-size: 13.5px; background: var(--card); color: var(--texto); transition: var(--t); width: 100%;
+}
+.adm-campo input:focus, .adm-campo select:focus, .adm-campo textarea:focus {
+  outline: none; border-color: var(--verde); box-shadow: 0 0 0 3px rgba(216,19,36,.12);
+}
+.adm-campo textarea { resize: vertical; min-height: 66px; }
+.adm-campo small { font-size: 11.5px; color: var(--cinza); line-height: 1.45; }
+.adm-campo--check { justify-content: flex-end; }
+.adm-campo--check > span:last-child { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; color: var(--cinza); }
+.adm-campo--check input { width: auto; }
+.adm-secreto { font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: .6px; background: var(--warn-bg); color: var(--warn); padding: 2px 6px; border-radius: 5px; font-weight: 700; }
+
+.adm-filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 11px; align-items: end; padding-bottom: 16px; margin-bottom: 14px; border-bottom: 1px solid var(--linha); }
+.adm-filtros-acoes { display: flex; gap: 8px; align-items: end; }
+
+/* ---------- Modal do painel ---------- */
+.admod { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 18px; animation: fadeIn .18s; }
+.admod-fundo { position: absolute; inset: 0; background: rgba(10,14,20,.55); backdrop-filter: blur(3px); }
+.admod-card {
+  position: relative; width: 100%; max-width: 720px; max-height: 90dvh; display: flex; flex-direction: column;
+  background: var(--card); border-radius: var(--raio-lg); box-shadow: var(--sombra-lg); animation: pop .2s;
+}
+.admod-head { display: flex; align-items: center; gap: 12px; padding: 17px 20px; border-bottom: 1px solid var(--linha); }
+.admod-head h2 { font-size: 18px; letter-spacing: -.3px; flex: 1; min-width: 0; }
+.admod-x { width: 32px; height: 32px; border-radius: 9px; border: 0; background: var(--superficie-2); color: var(--cinza); cursor: pointer; font-size: 15px; transition: var(--t); flex: 0 0 auto; }
+.admod-x:hover { background: var(--bad-bg); color: var(--bad); transform: rotate(90deg); }
+.admod-body { padding: 20px; overflow-y: auto; flex: 1; }
+.admod-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px; border-top: 1px solid var(--linha); }
+[data-theme="dark"] .admod input:not([type="checkbox"]), [data-theme="dark"] .admod select, [data-theme="dark"] .admod textarea { background: var(--campo-bg); }
+
+/* ---------- Responsivo do painel ---------- */
+@media (max-width: 980px) {
+  .adm { grid-template-columns: 1fr; }
+  #adm-btn-menu { display: inline-flex; }
+  .adm-sidebar {
+    position: fixed; inset: 0 auto 0 0; width: var(--sidebar-w); z-index: 90;
+    transform: translateX(-100%); transition: transform var(--t-lenta);
+  }
+  .adm.menu-aberto .adm-sidebar { transform: none; box-shadow: var(--sombra-lg); }
+  #adm-backdrop { display: none; }
+  .adm.menu-aberto #adm-backdrop { display: block; position: fixed; inset: 0; z-index: 80; background: rgba(10,14,20,.5); }
+  .adm-content { padding: 15px; gap: 15px; }
+  .adm-kpis { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .adm-kpi-valor { font-size: 21px; }
+}
+@media (max-width: 620px) {
+  .adm-topbar { padding: 10px 13px; gap: 9px; }
+  .adm-badge { display: none; }
+  .user-meta { display: none; }
+  .user-chip { max-width: none; padding: 5px; }
+  .adm-secao-head { padding: 13px 14px; }
+  .adm-secao-body { padding: 13px 14px; }
+  .adm-secao-acoes { width: 100%; margin-left: 0; }
+  .adm-secao-acoes .btn { flex: 1; }
+  .adm-form-grade { grid-template-columns: 1fr; }
+  .adm-filtros { grid-template-columns: 1fr; }
+  .admod-card { max-height: 94dvh; }
+  .admod-body { padding: 15px; }
+  .adm-vinculo { flex-direction: column; align-items: stretch; }
+  .adm-assoc { grid-template-columns: auto 1fr; }
+  .adm-assoc select { grid-column: 1 / -1; }
+}
+
+/* =========================================================================
+   DEFINIR SENHA (primeiro acesso) — reaproveita a base .sel-* e os campos .lg-*
+   ========================================================================= */
+.sel-wrap--estreito { max-width: 460px; }
+
+.senha-ic {
+  width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center;
+  margin: 4px auto 14px; background: var(--grad-verde); color: #fff; box-shadow: var(--glow-verde);
+}
+.senha-ic svg { width: 26px; height: 26px; }
+
+.senha-form { display: block; margin-top: 6px; text-align: left; }
+.senha-form .lg-campo { margin-bottom: 14px; }
+
+.senha-reqs { list-style: none; display: grid; gap: 7px; margin: 4px 0 16px; padding: 0; }
+.senha-reqs li {
+  display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--cinza);
+  transition: color var(--t);
+}
+.senha-req-dot {
+  width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; position: relative;
+  border: 1.6px solid var(--linha); transition: var(--t);
+}
+.senha-reqs li.ok { color: var(--ok); }
+.senha-reqs li.ok .senha-req-dot { background: var(--ok); border-color: var(--ok); }
+/* check branco desenhado com dois traços via ::after */
+.senha-reqs li.ok .senha-req-dot::after {
+  content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+/* ============================================================
+   INSUMOS / FICHA TÉCNICA EDITÁVEL (módulo Produtos-CMV + Insumos)
+   Reutiliza o padrão visual existente (cards, grid, pills, modal).
+   ============================================================ */
+/* inputs numéricos/data seguem o mesmo visual dos demais campos */
+.ed-campo input[type="number"], .ed-campo input[type="date"] {
+  padding: 10px 12px; border: 1.5px solid var(--linha); border-radius: 10px; font-size: 15px; background: #fff; color: var(--texto);
+}
+.ed-campo input[type="number"]:focus, .ed-campo input[type="date"]:focus {
+  outline: none; border-color: var(--verde-vivo); box-shadow: 0 0 0 3px rgba(0,194,90,.13);
+}
+.ed-campo-full { grid-column: 1 / -1; }
+
+.ins-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--cinza); white-space: nowrap; }
+.cu-un { color: var(--cinza); font-weight: 600; font-size: .82em; }
+.cu-cod { display: block; color: var(--cinza); font-size: 11px; margin-top: 2px; }
+tr.linha-inativa { opacity: .55; }
+
+/* grade de indicadores dentro do modal de produto */
+.modal-cmv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0; }
+.modal-cmv-grid .modal-custo { margin: 0; }
+.modal-cmv-grid .modal-custo strong { font-size: 19px; }
+@media (max-width: 620px) { .modal-cmv-grid { grid-template-columns: 1fr; } }
+
+/* linha de edição/adição de componente da ficha */
+.pm-editrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pm-editrow label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--cinza); }
+.pm-editrow input, .pm-editrow select {
+  padding: 7px 9px; border: 1.5px solid var(--linha); border-radius: 9px; font-size: 14px; background: #fff; color: var(--texto); max-width: 160px;
+}
+.pm-editrow input:focus, .pm-editrow select:focus { outline: none; border-color: var(--verde-vivo); box-shadow: 0 0 0 3px rgba(0,194,90,.13); }
+.pm-prev { font-size: 13px; font-weight: 700; color: var(--verde-vivo); }
+.pm-addbox { border: 1px dashed var(--linha); border-radius: 12px; padding: 12px; margin-top: 8px; background: var(--superficie-2); }
+#pm-add-area { margin: 8px 0 4px; }

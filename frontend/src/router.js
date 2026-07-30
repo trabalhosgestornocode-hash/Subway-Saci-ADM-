@@ -5,6 +5,7 @@ import * as views from "./views.js";
 import { renderConfiguracoes } from "./configuracoes.js";
 import { renderVendas } from "./vendas.js";
 import { renderMartinBrower } from "./martinbrower.js";
+import { renderInsumos } from "./insumos.js";
 
 // Navega para uma rota da sidebar
 export function irPara(rotaId) {
@@ -35,6 +36,9 @@ export function renderRotaAtual() {
       break;
     case "vendas":
       renderVendas();
+      break;
+    case "insumos":
+      renderInsumos();
       break;
     case "martinbrower":
       renderMartinBrower();

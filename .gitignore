@@ -37,3 +37,9 @@ Thumbs.db
 
 # Planilhas de origem — dados internos sensíveis (já embutidos nos seeds)
 planilhasveryimportants/
+
+# Backups de dados (dumps de produção com preços/insumos — não versionar)
+backend/backups/
+
+# Grafo gerado localmente (regenerável com `graphify update .`)
+graphify-out/

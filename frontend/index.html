@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crescer com Delivery — Plataforma de Gestão</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/logo-mono.svg" />
+  <link rel="icon" type="image/png" href="/assets/logo-crescercomdeliverylogin.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <!-- ?v= força o navegador a baixar o CSS novo após um deploy (evita tela antiga em cache).
        Incremente este número sempre que mudar o styles.css. -->
-  <link rel="stylesheet" href="/src/styles.css?v=8" />
+  <link rel="stylesheet" href="/src/styles.css?v=13" />
   <!-- Tema individual (por dispositivo): aplica antes da pintura p/ evitar flash.
        Em arquivo próprio (não inline) para a CSP dispensar 'unsafe-inline'. -->
   <script src="/src/tema.js"></script>
@@ -91,7 +91,7 @@
           <p class="lg-sub">Acesse seu ambiente de gestão.</p>
 
           <label class="lg-campo">
-            <span class="lg-label">E-mail profissional</span>
+            <span class="lg-label">Email</span>
             <div class="lg-input">
               <svg class="lg-input-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
               <input id="login-user" type="email" placeholder="seu@email.com" autocomplete="username" />
@@ -135,13 +135,94 @@
     </div>
 
     <!-- Assinatura discreta do desenvolvedor (para remover, apague este bloco) -->
-    <div class="dev-credito" aria-label="Desenvolvido por PeuCode">
+    <div class="dev-credito" aria-label="Desenvolvido por atlaz.company">
       <span class="dev-credito-mark">&lt;/&gt;</span>
-      <span class="dev-credito-txt">Desenvolvido por <b>PeuCode</b></span>
+      <span class="dev-credito-txt">Desenvolvido por <b>atlaz.company</b></span>
     </div>
   </div>
 
-  <!-- ===================== APP ===================== -->
+  <!-- ============= SELEÇÃO DE UNIDADE (pós-login) =============
+       Aparece somente quando o usuário tem acesso a DUAS OU MAIS
+       empresas/unidades. Com apenas uma, o app entra direto nela. -->
+  <div id="selecao-screen" class="sel-screen" hidden>
+    <div class="sel-wrap">
+      <header class="sel-head">
+        <img class="sel-brand-logo" src="/assets/logo-crescercomdeliverylogin.png" alt="Crescer com Delivery" />
+        <h1 class="sel-titulo">Escolha uma unidade para continuar</h1>
+        <p class="sel-sub">Olá, <b id="sel-nome">—</b>. Você tem acesso a mais de um ambiente.</p>
+      </header>
+
+      <div id="sel-lista" class="sel-lista" role="list"></div>
+
+      <div id="sel-erro" class="lg-erro" hidden></div>
+
+      <footer class="sel-foot">
+        <button id="sel-admin" class="btn btn-ghost btn-sm" hidden>Ir para o Painel SuperAdmin</button>
+        <button id="sel-sair" class="btn btn-ghost btn-sm">Sair</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ============= DEFINIR SENHA (primeiro acesso) =============
+       Aparece quando a conta tem senha provisória (definida por um
+       administrador). Bloqueia o resto do sistema até o usuário criar a sua. -->
+  <div id="senha-screen" class="sel-screen" hidden>
+    <div class="sel-wrap sel-wrap--estreito">
+      <header class="sel-head">
+        <span class="cd-marca cd-marca--sm" role="img" aria-label="Crescer com Delivery">
+          <span class="cd-l1">Crescer<em>com</em></span>
+          <span class="cd-l2">Delivery</span>
+        </span>
+        <span class="senha-ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><circle cx="12" cy="16" r="1.3"/></svg>
+        </span>
+        <h1 class="sel-titulo">Crie sua senha de acesso</h1>
+        <p class="sel-sub">Olá, <b id="senha-nome">—</b>. Este é seu primeiro acesso — defina uma senha pessoal para continuar.</p>
+      </header>
+
+      <form id="senha-form" class="senha-form" autocomplete="off">
+        <label class="lg-campo">
+          <span class="lg-label">Nova senha</span>
+          <div class="lg-input">
+            <svg class="lg-input-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <input id="senha-nova" type="password" placeholder="mínimo 8 caracteres" autocomplete="new-password" />
+            <button type="button" class="lg-olho" id="senha-olho" aria-label="Mostrar senha">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </label>
+
+        <label class="lg-campo">
+          <span class="lg-label">Confirme a nova senha</span>
+          <div class="lg-input">
+            <svg class="lg-input-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <input id="senha-conf" type="password" placeholder="repita a senha" autocomplete="new-password" />
+          </div>
+        </label>
+
+        <ul class="senha-reqs" id="senha-reqs" aria-live="polite">
+          <li data-req="tam"><span class="senha-req-dot"></span>Pelo menos 8 caracteres</li>
+          <li data-req="letra"><span class="senha-req-dot"></span>Uma letra</li>
+          <li data-req="numero"><span class="senha-req-dot"></span>Um número</li>
+          <li data-req="igual"><span class="senha-req-dot"></span>As duas senhas coincidem</li>
+        </ul>
+
+        <div id="senha-erro" class="lg-erro" hidden></div>
+
+        <button type="submit" class="lg-btn login-btn" id="senha-btn">
+          <span class="login-btn-txt">Definir senha e continuar</span>
+          <svg class="lg-btn-seta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+          <span class="login-btn-spin" aria-hidden="true"></span>
+        </button>
+      </form>
+
+      <footer class="sel-foot">
+        <button id="senha-sair" class="btn btn-ghost btn-sm">Sair</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ===================== APP (TENANT) ===================== -->
   <div id="app" class="app" hidden>
     <div id="backdrop" class="backdrop"></div>
 
@@ -149,8 +230,8 @@
       <div class="sidebar-brand"><span class="brand-logo" aria-hidden="true"></span><span>Crescer com Delivery</span></div>
       <nav class="menu"><ul id="menu"></ul></nav>
       <div class="sidebar-footer">
-        <a class="sidebar-peucode" href="#" onclick="return false" title="Desenvolvido por PeuCode">
-          <span class="sidebar-peucode-mark">&lt;/&gt;</span> by <b>PeuCode</b>
+        <a class="sidebar-atlaz" href="#" onclick="return false" title="Desenvolvido por atlaz.company">
+          <span class="sidebar-atlaz-mark">&lt;/&gt;</span> by <b>atlaz.company</b>
         </a>
       </div>
     </aside>
@@ -179,18 +260,130 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
             <span class="notif-badge" id="notif-badge" hidden>0</span>
           </button>
-          <div class="chip chip-unidade" id="chip-unidade">🏪 Matriz</div>
+          <div class="chip chip-unidade" id="chip-unidade">🏪 —</div>
+
+          <!-- Menu do usuário: nome, empresa atual e as ações de sessão. -->
           <div class="user-box">
-            <div class="user-chip" id="user-chip">
+            <button class="user-chip" id="user-chip" aria-haspopup="true" aria-expanded="false">
               <span class="avatar" id="user-avatar">U</span>
-              <span class="user-nome" id="user-nome">usuário</span>
+              <span class="user-meta">
+                <span class="user-nome" id="user-nome">usuário</span>
+                <span class="user-empresa" id="user-empresa">—</span>
+              </span>
+              <svg class="user-seta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="user-menu" id="user-menu" hidden role="menu">
+              <div class="user-menu-head">
+                <b id="um-nome">usuário</b>
+                <small id="um-email">—</small>
+                <span class="pill info" id="um-papel">—</span>
+              </div>
+              <button class="user-menu-item" id="um-trocar" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18l-1.5-5h-15L3 9z"/><path d="M5 9v11h14V9"/></svg>
+                Trocar unidade
+              </button>
+              <button class="user-menu-item" id="um-conta" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+                Minha conta
+              </button>
+              <button class="user-menu-item" id="um-painel" role="menuitem" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                Painel SuperAdmin
+              </button>
+              <div class="user-menu-sep"></div>
+              <button class="user-menu-item user-menu-item--danger" id="btn-logout" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+                Sair
+              </button>
             </div>
-            <button id="btn-logout" class="btn btn-ghost btn-sm">Sair</button>
           </div>
         </div>
       </header>
 
+      <!-- Barra de impersonação: permanente enquanto o SuperAdmin estiver
+           operando dentro de uma empresa. -->
+      <div id="imp-barra" class="imp-barra" hidden role="status">
+        <span class="imp-ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        </span>
+        <span class="imp-txt">Você está utilizando o sistema como <b>SuperAdmin</b> na empresa <b id="imp-empresa">—</b>.</span>
+        <button class="btn btn-sm imp-btn" id="imp-sair">Sair da empresa</button>
+      </div>
+
       <main id="view" class="content" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <!-- ===================== PAINEL SUPERADMIN =====================
+       Shell PRÓPRIO, irmão de #app e nunca visível junto com ele. O painel da
+       plataforma não tem empresa: nenhuma tela daqui usa o Context Token, e a
+       única ponte para dentro de um cliente é "Entrar como empresa", que emite
+       um contexto de impersonação e troca para o shell #app. -->
+  <div id="admin" class="adm" hidden>
+    <div id="adm-backdrop" class="backdrop"></div>
+
+    <aside id="adm-sidebar" class="adm-sidebar">
+      <div class="adm-brand">
+        <span class="adm-brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7.5V12c0 5 3.8 8.9 9 10 5.2-1.1 9-5 9-10V7.5L12 3z"/><path d="m9 12 2 2 4-4"/></svg>
+        </span>
+        <span class="adm-brand-txt">
+          <b>SuperAdmin</b>
+          <small>Crescer com Delivery</small>
+        </span>
+      </div>
+      <nav class="adm-menu"><ul id="adm-menu"></ul></nav>
+      <div class="adm-sidebar-foot">
+        <span class="adm-versao" id="adm-versao">—</span>
+      </div>
+    </aside>
+
+    <div class="adm-main">
+      <header class="adm-topbar">
+        <button id="adm-btn-menu" class="icon-btn" aria-label="Menu">☰</button>
+        <h1 id="adm-titulo" class="page-title">Dashboard Global</h1>
+        <div class="adm-topbar-right">
+          <span class="adm-badge adm-badge--plataforma">Plataforma</span>
+          <button id="adm-refresh" class="icon-btn2" title="Atualizar" aria-label="Atualizar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+          </button>
+          <div class="user-box">
+            <button class="user-chip" id="adm-user-chip" aria-haspopup="true" aria-expanded="false">
+              <span class="avatar" id="adm-avatar">S</span>
+              <span class="user-meta">
+                <span class="user-nome" id="adm-nome">superadmin</span>
+                <span class="user-empresa">Administração do SaaS</span>
+              </span>
+              <svg class="user-seta" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="user-menu" id="adm-user-menu" hidden role="menu">
+              <div class="user-menu-head">
+                <b id="adm-um-nome">superadmin</b>
+                <small id="adm-um-email">—</small>
+                <span class="pill warn">SuperAdmin da Plataforma</span>
+              </div>
+              <button class="user-menu-item" id="adm-um-empresas" role="menuitem">Minhas empresas</button>
+              <div class="user-menu-sep"></div>
+              <button class="user-menu-item user-menu-item--danger" id="adm-logout" role="menuitem">Sair</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main id="adm-view" class="adm-content" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <!-- Modal genérico do painel (formulários de empresa, usuário, plano…) -->
+  <div id="adm-modal" class="admod" hidden>
+    <div class="admod-fundo" data-fechar-modal></div>
+    <div class="admod-card" role="dialog" aria-modal="true" aria-labelledby="adm-modal-titulo">
+      <header class="admod-head">
+        <h2 id="adm-modal-titulo">—</h2>
+        <button class="admod-x" data-fechar-modal aria-label="Fechar">✕</button>
+      </header>
+      <div class="admod-body" id="adm-modal-body"></div>
+      <footer class="admod-foot" id="adm-modal-foot"></footer>
     </div>
   </div>
 

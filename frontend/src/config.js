@@ -6,8 +6,10 @@ export const TABELAS = {
   ifood: ["A", "B", "C", "D", "E", "F", "G", "H", "Z1", "Z2", "Z3", "Z4"],
 };
 
-// Limites de CMV (%) para classificar status
-export const CMV_LIMITES = { saudavel: 28, atencao: 35 };
+// Limites de CMV (%) para classificar status.
+// Alinhado à planilha de referência da Crescer com Delivery (aba "Base de
+// Insumos" e fichas): Saudável < 32% · Atenção 32–40% · Crítico ≥ 40%.
+export const CMV_LIMITES = { saudavel: 32, atencao: 40 };
 
 // Comissão por canal (espelha canais_venda no banco) — usada no simulador de preço
 export const COMISSAO = { balcao: 0, ifood: 0.27, uber: 0.15, app: 0, outro: 0 };
@@ -26,6 +28,7 @@ export const SECOES = ["OPERAÇÃO", "INTEGRAÇÕES", "INTELIGÊNCIA", "SISTEMA"
 export const MENU = [
   { id: "dashboard",     label: "Dashboard",       icon: "📊", tipo: "pagina",      secao: "OPERAÇÃO" },
   { id: "produtos",      label: "Produtos / CMV",  icon: "🥪", tipo: "pagina",      secao: "OPERAÇÃO" },
+  { id: "insumos",       label: "Insumos",         icon: "🧀", tipo: "insumos",     secao: "OPERAÇÃO" },
   { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO" },
   { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO" },
   { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO" },
@@ -39,6 +42,24 @@ export const MENU = [
   { id: "integracoes",   label: "Integrações",     icon: "🔌", tipo: "integracoes", secao: "INTELIGÊNCIA" },
   { id: "configuracoes", label: "Configurações",   icon: "⚙️", tipo: "configuracoes", secao: "SISTEMA" },
 ];
+
+// ---------- Insumos / Ficha técnica ----------
+// "Categoria" do insumo = enum tipo_insumo do banco (espelha o backend).
+export const CATEGORIAS_INSUMO = [
+  ["proteina", "Proteína"], ["queijo", "Queijo"], ["molho", "Molho"], ["vegetal", "Vegetal"],
+  ["pao", "Pão"], ["embalagem", "Embalagem"], ["bebida", "Bebida"], ["descartavel", "Descartável"],
+  ["doce", "Doce"], ["chips", "Chips"], ["outro", "Outro"],
+];
+export const CATEGORIA_INSUMO_ROTULO = Object.fromEntries(CATEGORIAS_INSUMO);
+
+// Unidades-base suportadas na 1ª versão (unidade, massa, volume).
+export const UNIDADES_BASE = [
+  ["un", "unidade"], ["g", "grama"], ["kg", "quilograma"], ["ml", "mililitro"], ["l", "litro"],
+];
+export const UNIDADE_ROTULO = { ...Object.fromEntries(UNIDADES_BASE), fatia: "fatia", porcao: "porção", folha: "folha" };
+
+// Sugestões de forma de compra (campo descritivo — não é unidade de medida).
+export const FORMAS_COMPRA = ["caixa", "pacote", "saco", "garrafa", "bandeja", "fardo", "unidade"];
 
 // Status possíveis de integração
 export const STATUS_INTEGRACAO = {

@@ -7,7 +7,18 @@ import { TABELAS, CMV_LIMITES } from "./config.js";
 import { obterUsuarios, criarUsuario, atualizarUsuario, excluirUsuario } from "./api.js";
 
 // Perfis da UI <-> enum papel_usuario do banco (migration 003)
-const PAPEL_LABEL = { desenvolvedor: "Desenvolvedor", admin: "Administrador", gerente: "Gestor", financeiro: "Financeiro", operador: "Operacional", leitura: "Somente leitura" };
+// Cargos do modelo multiempresa (enum papel_acesso). O cargo pertence ao
+// VÍNCULO usuário<->empresa, não ao usuário: o mesmo login pode ser
+// Administrador aqui e Financeiro em outra unidade do grupo.
+// Os nomes antigos ('admin', 'operador', 'desenvolvedor') saíram de cena junto
+// com o vínculo único de `perfis`.
+const PAPEL_LABEL = {
+  organization_admin: "Administrador",
+  unit_manager: "Gestor de Unidade",
+  finance: "Financeiro",
+  operations: "Operação",
+  viewer: "Consulta",
+};
 const PAPEL_ENUM = Object.fromEntries(Object.entries(PAPEL_LABEL).map(([k, v]) => [v, k]));
 const PERFIS = Object.values(PAPEL_LABEL);
 
@@ -225,12 +236,12 @@ const DETALHES = {
     }
 
     function desenhar(lista) {
-      root.innerHTML = painel("Equipe da unidade", `
+      root.innerHTML = painel("Equipe desta empresa", `
           <div class="cfg-users">
-            ${lista.length ? lista.map(linhaUsuario).join("") : `<div class="estado-mini">Nenhum usuário cadastrado ainda.</div>`}
+            ${lista.length ? lista.map(linhaUsuario).join("") : `<div class="estado-mini">Nenhum usuário com acesso a esta empresa ainda.</div>`}
           </div>
-          <div class="cfg-legenda">Perfis: ${PERFIS.map((p) => `<span class="cfg-chip">${p}</span>`).join("")}</div>
-        `, "Perfil 'Desenvolvedor' tem acesso total (todas as permissões de Administrador).")
+          <div class="cfg-legenda">Cargos: ${PERFIS.map((p) => `<span class="cfg-chip">${p}</span>`).join("")}</div>
+        `, "O cargo vale apenas nesta empresa. O mesmo usuário pode ter outro cargo em outra unidade do grupo.")
         + painel("Criar usuário", `
           <div class="cfg-form-grid">
             ${campo("Nome", "u-nome")}
@@ -238,10 +249,10 @@ const DETALHES = {
             <label class="cfg-campo"><span>Senha</span>
               <span class="cfg-senha-wrap"><input id="u-senha" type="text" placeholder="mínimo 8 caracteres"><button type="button" class="btn btn-ghost btn-sm" id="u-gerar">Gerar</button></span>
             </label>
-            ${select("Perfil", "u-perfil", PERFIS, "Operacional")}
+            ${select("Cargo", "u-perfil", PERFIS, "Operação")}
           </div>
           <div class="cfg-acoes cfg-acoes--start"><button class="btn btn-primary" id="u-add">+ Criar usuário</button></div>
-        `, "A conta é criada no Supabase Auth e já pode fazer login com a senha definida. Anote e repasse a senha.");
+        `, "Se o e-mail já tiver conta na plataforma, o acesso a esta empresa é apenas concedido e a senha atual é mantida. Caso contrário, a conta é criada e já pode fazer login com a senha definida — anote e repasse.");
 
       root.querySelector("#u-gerar").addEventListener("click", () => { root.querySelector("#u-senha").value = gerarSenha(); });
       root.querySelector("#u-add").addEventListener("click", criar);
@@ -270,8 +281,10 @@ const DETALHES = {
 
     async function excluir(id, lista) {
       const u = (lista || []).find((x) => x.id === id);
-      if (!confirm(`Excluir o usuário "${u?.nome || u?.email || id}"? Isso remove o acesso no Supabase Auth.`)) return;
-      try { await excluirUsuario(id); toast("Usuário excluído."); carregar(); }
+      // A conta NÃO é apagada: ela pode dar acesso a outras empresas. O que se
+      // remove aqui é o acesso a ESTA empresa. Exclusão de conta é do SuperAdmin.
+      if (!confirm(`Remover o acesso de "${u?.nome || u?.email || id}" a esta empresa?\n\nA conta continua existindo e mantém o acesso às outras empresas em que estiver vinculada.`)) return;
+      try { await excluirUsuario(id); toast("Acesso removido desta empresa."); carregar(); }
       catch (e) { toast("Erro: " + e.message); }
     }
 

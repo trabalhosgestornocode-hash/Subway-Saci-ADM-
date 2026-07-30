@@ -1,13 +1,26 @@
 import { API_BASE } from "./config.js";
 import { statusCmv } from "./utils.js";
 import { tokenAtual } from "./supabaseClient.js";
+import { contextTokenAtual, limparContexto } from "./sessao.js";
 
-// Anexa o token JWT da sessão a cada requisição.
+// Anexa as DUAS credenciais a cada requisição:
+//   Authorization    -> quem sou eu (Access Token do Supabase)
+//   x-context-token  -> em qual empresa estou (token assinado pelo servidor)
+// Nenhum organizacao_id/unidade_id trafega mais em header ou corpo: o servidor
+// extrai a empresa do Context Token e ignora qualquer id que o cliente informe.
 async function comAuth(extra = {}) {
   const token = await tokenAtual();
-  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const ctx = contextTokenAtual();
+  return {
+    ...extra,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(ctx ? { "x-context-token": ctx } : {}),
+  };
 }
 
+// 401 e 409 significam coisas diferentes e levam a lugares diferentes:
+//   401 -> o login caiu; volta para a tela de login.
+//   409 -> o login está bom, o contexto caiu; volta para a seleção de unidade.
 async function tratar(r) {
   if (r.status === 401) {
     document.dispatchEvent(new CustomEvent("app:sessao-expirada"));
@@ -15,6 +28,10 @@ async function tratar(r) {
   }
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
+    if (r.status === 409 && j?.details?.contexto === "invalido") {
+      limparContexto();
+      document.dispatchEvent(new CustomEvent("app:contexto-invalido", { detail: j.error }));
+    }
     throw new Error(j.error || `${r.status} ${r.statusText}`);
   }
   return r.json();
@@ -56,6 +73,44 @@ export async function atualizarProduto(id, dados) {
     method: "PUT",
     headers: await comAuth({ "Content-Type": "application/json" }),
     body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+
+// ---------- Insumos ----------
+function qsInsumos(f = {}) {
+  const p = Object.entries(f).filter(([, v]) => v !== undefined && v !== null && v !== "" && v !== "todos")
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  return p ? `?${p}` : "";
+}
+export const listarInsumos = (f) => getJson(`/api/v1/insumos${qsInsumos(f)}`);
+export const obterInsumo = (id) => getJson(`/api/v1/insumos/${id}`);
+export const insumoProdutos = (id) => getJson(`/api/v1/insumos/${id}/produtos`);
+export const criarInsumo = (dados) => postJson(`/api/v1/insumos`, dados);
+export async function atualizarInsumo(id, dados) {
+  const r = await fetch(`${API_BASE}/api/v1/insumos/${id}`, {
+    method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+export async function definirStatusInsumo(id, ativo) {
+  const r = await fetch(`${API_BASE}/api/v1/insumos/${id}/status`, {
+    method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify({ ativo }),
+  });
+  return tratar(r);
+}
+
+// ---------- Ficha técnica (editor dentro do produto) ----------
+export const adicionarComponente = (produtoId, dados) => postJson(`/api/v1/produtos/${produtoId}/ficha`, dados);
+export async function atualizarComponente(produtoId, fichaId, dados) {
+  const r = await fetch(`${API_BASE}/api/v1/produtos/${produtoId}/ficha/${fichaId}`, {
+    method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+export async function removerComponente(produtoId, fichaId) {
+  const r = await fetch(`${API_BASE}/api/v1/produtos/${produtoId}/ficha/${fichaId}`, {
+    method: "DELETE", headers: await comAuth(),
   });
   return tratar(r);
 }

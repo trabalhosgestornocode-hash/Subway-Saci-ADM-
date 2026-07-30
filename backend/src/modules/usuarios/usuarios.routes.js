@@ -1,12 +1,19 @@
 import { Router } from "express";
 import * as controller from "./usuarios.controller.js";
-import { requirePapel } from "../../middlewares/auth.js";
+import { requirePermissao } from "../../middlewares/auth.js";
+import { PERMISSOES } from "../../shared/permissoes.js";
 
-// Gestão de usuários é restrita a Administrador / Desenvolvedor.
-const soAdmin = requirePapel("admin", "desenvolvedor");
+// A autorização passou de PAPEL para PERMISSÃO. O motivo prático: os papéis
+// mudaram de nome no modelo multiempresa ('admin' -> 'organization_admin'), e
+// listar nomes de papel em cada rota espalharia essa renomeação por todo o
+// código. `usuarios.gerenciar` continua significando a mesma coisa
+// independentemente de como os cargos venham a se chamar.
+const podeVer = requirePermissao(PERMISSOES.USUARIOS_VER);
+const podeGerenciar = requirePermissao(PERMISSOES.USUARIOS_GERENCIAR);
 
 export const usuariosRouter = Router();
-usuariosRouter.get("/", soAdmin, controller.listar);
-usuariosRouter.post("/", soAdmin, controller.criar);
-usuariosRouter.patch("/:id", soAdmin, controller.atualizar);
-usuariosRouter.delete("/:id", soAdmin, controller.excluir);
+usuariosRouter.get("/papeis", podeVer, controller.papeis);   // antes de qualquer /:id
+usuariosRouter.get("/", podeVer, controller.listar);
+usuariosRouter.post("/", podeGerenciar, controller.criar);
+usuariosRouter.patch("/:id", podeGerenciar, controller.atualizar);
+usuariosRouter.delete("/:id", podeGerenciar, controller.excluir);

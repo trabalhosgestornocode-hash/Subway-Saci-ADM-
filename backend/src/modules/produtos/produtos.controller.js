@@ -45,3 +45,33 @@ export const historicoRecente = asyncHandler(async (req, res) => {
   });
   res.json({ data });
 });
+
+// ---------- Ficha técnica editável ----------
+export const adicionarComponente = asyncHandler(async (req, res) => {
+  const data = await service.adicionarComponente({
+    organizacaoId: req.tenant.organizacaoId,
+    produtoId: req.params.id,
+    dados: req.body ?? {},
+    usuario: req.user,
+  });
+  res.status(201).json({ data });
+});
+
+export const atualizarComponente = asyncHandler(async (req, res) => {
+  const data = await service.atualizarComponente({
+    organizacaoId: req.tenant.organizacaoId,
+    produtoId: req.params.id,
+    fichaId: req.params.fichaId,
+    dados: req.body ?? {},
+  });
+  res.json({ data });
+});
+
+export const removerComponente = asyncHandler(async (req, res) => {
+  const data = await service.removerComponente({
+    organizacaoId: req.tenant.organizacaoId,
+    produtoId: req.params.id,
+    fichaId: req.params.fichaId,
+  });
+  res.json({ data });
+});
