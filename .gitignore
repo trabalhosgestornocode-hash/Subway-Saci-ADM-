@@ -43,3 +43,7 @@ backend/backups/
 
 # Grafo gerado localmente (regenerável com `graphify update .`)
 graphify-out/
+
+# Executáveis/instaladores — nunca fazem parte do código do projeto
+*.exe
+*.msi

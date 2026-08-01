@@ -1820,3 +1820,10 @@ tr.linha-inativa { opacity: .55; }
 .pm-prev { font-size: 13px; font-weight: 700; color: var(--verde-vivo); }
 .pm-addbox { border: 1px dashed var(--linha); border-radius: 12px; padding: 12px; margin-top: 8px; background: var(--superficie-2); }
 #pm-add-area { margin: 8px 0 4px; }
+
+/* Ação destrutiva (remover produto / insumo) — vermelho só no hover, para não
+   competir visualmente com as demais ações da linha. */
+.acao-btn.acao-perigo:hover {
+  border-color: rgba(214, 69, 69, .45);
+  background: rgba(214, 69, 69, .08);
+}

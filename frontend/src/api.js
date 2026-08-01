@@ -68,6 +68,11 @@ export async function obterHistoricoRecente(limite = 8) {
   return getJson(`/api/v1/produtos/historico/recentes?limite=${limite}`);
 }
 
+export async function excluirProduto(id) {
+  const r = await fetch(`${API_BASE}/api/v1/produtos/${id}`, { method: "DELETE", headers: await comAuth() });
+  return tratar(r);
+}
+
 export async function atualizarProduto(id, dados) {
   const r = await fetch(`${API_BASE}/api/v1/produtos/${id}`, {
     method: "PUT",
@@ -91,6 +96,10 @@ export async function atualizarInsumo(id, dados) {
   const r = await fetch(`${API_BASE}/api/v1/insumos/${id}`, {
     method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
   });
+  return tratar(r);
+}
+export async function excluirInsumo(id) {
+  const r = await fetch(`${API_BASE}/api/v1/insumos/${id}`, { method: "DELETE", headers: await comAuth() });
   return tratar(r);
 }
 export async function definirStatusInsumo(id, ativo) {

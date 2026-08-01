@@ -397,3 +397,48 @@ export async function removerComponente({ organizacaoId, produtoId, fichaId }) {
   if (error) throw ApiError.badRequest(error.message);
   return recalcularEObter(organizacaoId, pid);
 }
+
+// ===========================================================================
+// EXCLUSÃO DE PRODUTO
+//
+// Exclui de verdade, mas só quando é seguro. Dois vínculos BLOQUEIAM (são
+// `on delete restrict` no banco, e aqui viram mensagem clara em vez de erro
+// de constraint):
+//   * vendas_itens  -> o produto já foi vendido; apagá-lo reescreveria o
+//                      histórico comercial. O caminho é INATIVAR.
+//   * ficha_tecnica.subproduto_id -> o produto é componente de outra ficha.
+// O que sai junto (cascade, e deve mesmo sair): a ficha do próprio produto,
+// seus preços e seu histórico de alterações.
+// ===========================================================================
+export async function excluirProduto({ organizacaoId, id }) {
+  const produtoId = v.uuid(id, "Produto");
+
+  const { data: prod } = await supabase
+    .from("produtos").select("id, nome").eq("organizacao_id", organizacaoId).eq("id", produtoId).single();
+  if (!prod) throw ApiError.notFound("Produto não encontrado");
+
+  // 1) Foi vendido?
+  const { count: nVendas } = await supabase
+    .from("vendas_itens").select("id", { count: "exact", head: true }).eq("produto_id", produtoId);
+  if (nVendas > 0) {
+    throw new ApiError(409, `"${prod.nome}" não pode ser excluído: possui ${nVendas} venda(s) registrada(s). Inative o produto para tirá-lo de circulação preservando o histórico.`,
+      { bloqueio: "vendas", quantidade: nVendas, sugestao: "inativar" });
+  }
+
+  // 2) É componente da ficha de outro produto?
+  const { data: usos } = await supabase
+    .from("ficha_tecnica").select("produto_id").eq("subproduto_id", produtoId);
+  if (usos?.length) {
+    const ids = [...new Set(usos.map((u) => u.produto_id))];
+    const { data: pais } = await supabase
+      .from("produtos").select("nome").eq("organizacao_id", organizacaoId).in("id", ids);
+    const nomes = (pais ?? []).map((p) => p.nome).join(", ");
+    throw new ApiError(409, `"${prod.nome}" não pode ser excluído: é usado como componente em ${ids.length} produto(s) — ${nomes}. Remova-o dessas fichas primeiro.`,
+      { bloqueio: "submontagem", produtos: nomes, sugestao: "remover-das-fichas" });
+  }
+
+  // Seguro: a ficha, os preços e o histórico saem em cascade.
+  const { error } = await supabase.from("produtos").delete().eq("id", produtoId).eq("organizacao_id", organizacaoId);
+  if (error) throw ApiError.badRequest(error.message);
+  return { excluido: true, nome: prod.nome };
+}

@@ -46,6 +46,14 @@ export const historicoRecente = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
+export const remover = asyncHandler(async (req, res) => {
+  const data = await service.excluirProduto({
+    organizacaoId: req.tenant.organizacaoId,
+    id: req.params.id,
+  });
+  res.json({ data });
+});
+
 // ---------- Ficha técnica editável ----------
 export const adicionarComponente = asyncHandler(async (req, res) => {
   const data = await service.adicionarComponente({

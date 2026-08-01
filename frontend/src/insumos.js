@@ -3,7 +3,7 @@
 import { state } from "./state.js";
 import { el, els, fmtMoeda, fmtTexto, fmtDataHora, escapeHtml, toast } from "./utils.js";
 import { CATEGORIAS_INSUMO, CATEGORIA_INSUMO_ROTULO } from "./config.js";
-import { listarInsumos, definirStatusInsumo } from "./api.js";
+import { listarInsumos, definirStatusInsumo, excluirInsumo } from "./api.js";
 import { abrirInsumoModal } from "./insumoModal.js";
 
 // Filtros locais desta aba (não poluem o estado global de CMV).
@@ -120,6 +120,7 @@ function pintarTabela() {
       editar ? (i.ativo
         ? `<button class="acao-btn" data-acao="inativar" data-idx="${idx}" title="Inativar" aria-label="Inativar">🚫</button>`
         : `<button class="acao-btn" data-acao="reativar" data-idx="${idx}" title="Reativar" aria-label="Reativar">↩️</button>`) : "",
+      editar ? `<button class="acao-btn acao-perigo" data-acao="remover" data-idx="${idx}" title="Remover insumo" aria-label="Remover insumo">🗑️</button>` : "",
     ].join("");
     return `<tr class="${i.ativo ? "" : "linha-inativa"}">
       <td class="prod-nome"><button class="prod-link" data-acao="ver" data-idx="${idx}">${escapeHtml(i.nome)}</button>${i.codigo ? `<small class="cu-cod">${escapeHtml(i.codigo)}</small>` : ""}</td>
@@ -161,5 +162,30 @@ async function acao(nome, insumo) {
       toast(`"${insumo.nome}" reativado.`);
       carregar();
     } catch (e) { toast("Erro: " + e.message); }
+    return;
+  }
+
+  if (nome === "remover") {
+    if (!confirm(`Excluir o insumo "${insumo.nome}"?\n\nO histórico de preço dele será removido junto. Esta ação não pode ser desfeita.`)) return;
+    try {
+      await excluirInsumo(insumo.id);
+      toast(`"${insumo.nome}" foi excluído.`);
+      carregar();
+    } catch (e) {
+      const msg = e.message || "Não foi possível excluir.";
+      // O servidor recusa (409) quando o insumo está em alguma ficha técnica ou
+      // tem movimentação/compra. Nesses casos, inativar é a alternativa segura.
+      if (/não pode ser excluído/i.test(msg) && /inative/i.test(msg)) {
+        if (insumo.ativo && confirm(`${msg}\n\nDeseja INATIVAR "${insumo.nome}" agora?`)) {
+          try {
+            await definirStatusInsumo(insumo.id, false);
+            toast(`"${insumo.nome}" foi inativado.`);
+            carregar();
+          } catch (e2) { alert("Erro ao inativar: " + e2.message); }
+        } else if (!insumo.ativo) alert(msg);
+        return;
+      }
+      alert(msg);
+    }
   }
 }

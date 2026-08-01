@@ -1,3 +1,14 @@
+// ⚠️  OBSOLETO — NÃO USAR. Mantido apenas como referência histórica.
+//
+// Este script montava a ficha seguindo a REFERÊNCIA DE CÉLULA da fórmula de custo.
+// A aba "Sanduíches 15 cm" da planilha tem essas referências DESLOCADAS a partir da
+// linha 14, então ele atribuiu recheios trocados (o BMT recebeu "Carne Seca", o
+// Vegetariano recebeu frango). O artefato que ele consumia (backups/reconstrucao.json)
+// foi REMOVIDO de propósito para que este script não recrie os dados errados.
+//
+// USE NO LUGAR:  scripts/auditar-fichas.mjs  (monta a composição por RÓTULO)
+// ---------------------------------------------------------------------------
+//
 // RECONSTRUÇÃO da base de insumos + fichas técnicas a partir da planilha oficial.
 //
 // Segurança: exige --unit-id explícito e --apply para gravar. Sem --apply é

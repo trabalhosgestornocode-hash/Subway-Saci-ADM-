@@ -16,3 +16,4 @@ insumosRouter.get("/:id/produtos", verInsumos, controller.produtos);
 insumosRouter.post("/", editarInsumos, controller.criar);
 insumosRouter.put("/:id", editarInsumos, controller.atualizar);
 insumosRouter.patch("/:id/status", editarInsumos, controller.definirAtivo);
+insumosRouter.delete("/:id", editarInsumos, controller.remover);

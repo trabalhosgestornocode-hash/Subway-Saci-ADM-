@@ -325,3 +325,47 @@ export async function listarHistorico({ organizacaoId, insumoId }) {
   }
   return { pendente: false, itens: data ?? [] };
 }
+
+// ---------------------------------------------------------------------------
+// EXCLUSÃO DE INSUMO
+//
+// Exclui de verdade, mas só quando não há vínculo histórico. Três vínculos
+// BLOQUEIAM (são `on delete restrict` no banco; aqui viram mensagem clara):
+//   * ficha_tecnica          -> o insumo compõe produtos. O caminho é INATIVAR.
+//   * movimentacoes_estoque  -> há movimentação registrada.
+//   * pedidos_compra_itens   -> há compra registrada.
+// O histórico de preço (insumo_historico) e o saldo de estoque saem em cascade.
+// ---------------------------------------------------------------------------
+export async function excluirInsumo({ organizacaoId, id }) {
+  const insumoId = v.uuid(id, "Insumo");
+
+  const { data: insumo } = await supabase
+    .from("insumos").select("id, nome").eq("organizacao_id", organizacaoId).eq("id", insumoId).single();
+  if (!insumo) throw ApiError.notFound("Insumo não encontrado.");
+
+  // 1) Está em alguma ficha técnica? (bloqueio mais comum)
+  const { data: emFicha } = await supabase
+    .from("ficha_tecnica").select("produto_id").eq("insumo_id", insumoId);
+  if (emFicha?.length) {
+    const ids = [...new Set(emFicha.map((f) => f.produto_id))];
+    const { data: prods } = await supabase
+      .from("produtos").select("nome").eq("organizacao_id", organizacaoId).in("id", ids);
+    const nomes = (prods ?? []).map((p) => p.nome).slice(0, 8).join(", ");
+    throw new ApiError(409, `"${insumo.nome}" não pode ser excluído: é usado na ficha técnica de ${ids.length} produto(s) — ${nomes}${ids.length > 8 ? "…" : ""}. Remova-o dessas fichas ou inative o insumo.`,
+      { bloqueio: "ficha", quantidade: ids.length, produtos: nomes, sugestao: "inativar" });
+  }
+
+  // 2) Tem movimentação de estoque ou compra registrada?
+  for (const [tabela, rotulo] of [["movimentacoes_estoque", "movimentação de estoque"], ["pedidos_compra_itens", "item de pedido de compra"]]) {
+    const { count, error } = await supabase.from(tabela).select("id", { count: "exact", head: true }).eq("insumo_id", insumoId);
+    if (error) continue; // tabela ausente no ambiente: não é bloqueio
+    if (count > 0) {
+      throw new ApiError(409, `"${insumo.nome}" não pode ser excluído: possui ${count} ${rotulo}(ns) registrada(s). Inative o insumo para preservar o histórico.`,
+        { bloqueio: tabela, quantidade: count, sugestao: "inativar" });
+    }
+  }
+
+  const { error } = await supabase.from("insumos").delete().eq("id", insumoId).eq("organizacao_id", organizacaoId);
+  if (error) throw ApiError.badRequest(error.message);
+  return { excluido: true, nome: insumo.nome };
+}

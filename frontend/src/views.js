@@ -1,6 +1,6 @@
 import { state, linhasFiltradas } from "./state.js";
 import { INTEGRACOES, STATUS_INTEGRACAO } from "./config.js";
-import { ACOES_TABELA } from "./actions.js";
+import { acoesTabela } from "./actions.js";
 import { el, fmtMoeda, fmtPct, fmtTexto, fmtHora, fmtRelativo, escapeHtml, temValor, statusCmv } from "./utils.js";
 import { renderGraficos } from "./charts.js";
 import { obterHistoricoRecente } from "./api.js";
@@ -181,7 +181,7 @@ const linhaProduto = (r, i) => `
     <td class="num"><span class="pill ${r._status.classe}">${fmtPct(r.cmv_pct)}</span></td>
     <td class="num">${fmtMoeda(r.lucro_liquido)}</td>
     <td><span class="pill ${r._status.classe}">${r._status.label}</span></td>
-    <td><div class="acoes">${ACOES_TABELA.map((a) => `<button class="acao-btn" data-acao="${a.chave}" data-idx="${i}" title="${a.titulo}">${a.icon}</button>`).join("")}</div></td>
+    <td><div class="acoes">${acoesTabela().map((a) => `<button class="acao-btn${a.chave === "remover" ? " acao-perigo" : ""}" data-acao="${a.chave}" data-idx="${i}" title="${a.titulo}" aria-label="${a.titulo}">${a.icon}</button>`).join("")}</div></td>
   </tr>`;
 
 export function renderTabela() {

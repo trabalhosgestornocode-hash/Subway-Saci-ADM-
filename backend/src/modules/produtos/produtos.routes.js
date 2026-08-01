@@ -12,6 +12,7 @@ produtosRouter.get("/historico/recentes", controller.historicoRecente); // antes
 produtosRouter.get("/:id", controller.obter);
 produtosRouter.get("/:id/historico", controller.historico);
 produtosRouter.put("/:id", editarProdutos, controller.atualizar);
+produtosRouter.delete("/:id", editarProdutos, controller.remover);
 
 // Ficha técnica editável (escrita exige permissão de edição de produtos).
 produtosRouter.post("/:id/ficha", editarProdutos, controller.adicionarComponente);

@@ -1,0 +1,4775 @@
+{
+ "insumos": [
+  {
+   "key": 9,
+   "nome": "BACON TIRAS CX 4 PCT X 1 KG",
+   "codigo": "1001088",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 486.01,
+   "rendimento": 4.0,
+   "custo_unitario": 121.5025,
+   "composto": false
+  },
+  {
+   "key": 10,
+   "nome": "SHORT RIB 4KG 2X2KG",
+   "codigo": "1001180",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 342.23,
+   "rendimento": 4.0,
+   "custo_unitario": 85.5575,
+   "composto": false
+  },
+  {
+   "key": 11,
+   "nome": "FRANGO EMPANADO CX4X1KG",
+   "codigo": "1001043",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 121.42,
+   "rendimento": 4.0,
+   "custo_unitario": 30.355,
+   "composto": false
+  },
+  {
+   "key": 12,
+   "nome": "FRANGO CUBOSCX 2X2KG",
+   "codigo": "1000762",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 144.01,
+   "rendimento": 4.0,
+   "custo_unitario": 36.0025,
+   "composto": false
+  },
+  {
+   "key": 13,
+   "nome": "FRANGO EM TIRAS CX4X2KG",
+   "codigo": "1000885",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 394.32,
+   "rendimento": 8.0,
+   "custo_unitario": 49.29,
+   "composto": false
+  },
+  {
+   "key": 14,
+   "nome": "FRANGO ROTISSERIE CX8X1KG",
+   "codigo": "1001129",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 374.88,
+   "rendimento": 8.0,
+   "custo_unitario": 46.86,
+   "composto": false
+  },
+  {
+   "key": 15,
+   "nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+   "codigo": "1000976",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 184.75,
+   "rendimento": 3.6,
+   "custo_unitario": 51.31944444,
+   "composto": false
+  },
+  {
+   "key": 16,
+   "nome": "STEAK DE CHURRASCO CX4X2,04KG",
+   "codigo": "1000839",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 295.79,
+   "rendimento": 8.16,
+   "custo_unitario": 36.24877451,
+   "composto": false
+  },
+  {
+   "key": 17,
+   "nome": "CARNE SECA CX 12X0,25KG",
+   "codigo": "1001074",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 257.71,
+   "rendimento": 3.0,
+   "custo_unitario": 85.90333333,
+   "composto": false
+  },
+  {
+   "key": 18,
+   "nome": "PEPPERONI FATIADO CX4X500GR",
+   "codigo": "1000891",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 132.26,
+   "rendimento": 2.0,
+   "custo_unitario": 66.13,
+   "composto": false
+  },
+  {
+   "key": 19,
+   "nome": "ALMONDEGA CARNE BOV MOLH CX4KG",
+   "codigo": "1001163",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 151.03,
+   "rendimento": 4.0,
+   "custo_unitario": 37.7575,
+   "composto": false
+  },
+  {
+   "key": 20,
+   "nome": "SALAME ITALIANO FAT CX4X500GR",
+   "codigo": "1000892",
+   "categoria": "proteina",
+   "unidade": "kg",
+   "preco_caixa": 135.13,
+   "rendimento": 2.0,
+   "custo_unitario": 67.565,
+   "composto": false
+  },
+  {
+   "key": 23,
+   "nome": "CREAM CHEESE CX4X1,5KG",
+   "codigo": "1000764",
+   "categoria": "queijo",
+   "unidade": "kg",
+   "preco_caixa": 191.6,
+   "rendimento": 6.0,
+   "custo_unitario": 31.93333333,
+   "composto": false
+  },
+  {
+   "key": 24,
+   "nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+   "codigo": "1000799",
+   "categoria": "queijo",
+   "unidade": "kg",
+   "preco_caixa": 406.65,
+   "rendimento": 8.44,
+   "custo_unitario": 48.18127962,
+   "composto": false
+  },
+  {
+   "key": 25,
+   "nome": "QUEIJO PROC. EMENTA CX4X192FT",
+   "codigo": "1000797",
+   "categoria": "queijo",
+   "unidade": "kg",
+   "preco_caixa": 409.25,
+   "rendimento": 8.44,
+   "custo_unitario": 48.48933649,
+   "composto": false
+  },
+  {
+   "key": 26,
+   "nome": "QUEIJO MUSSARELA RALAD CX6X1KG",
+   "codigo": "1001122",
+   "categoria": "queijo",
+   "unidade": "kg",
+   "preco_caixa": 302.08,
+   "rendimento": 6.03,
+   "custo_unitario": 50.09618574,
+   "composto": false
+  },
+  {
+   "key": 27,
+   "nome": "QUEIJO RALADO 3QUEIJOS 500G",
+   "codigo": "1000981",
+   "categoria": "queijo",
+   "unidade": "kg",
+   "preco_caixa": 43.91,
+   "rendimento": 0.5,
+   "custo_unitario": 87.82,
+   "composto": false
+  },
+  {
+   "key": 30,
+   "nome": "MAIONESE CLASSICA 1.1KGX5",
+   "codigo": "1001156",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 102.96,
+   "rendimento": 5.5,
+   "custo_unitario": 18.72,
+   "composto": false
+  },
+  {
+   "key": 31,
+   "nome": "MOLHO CHEDDAR CX4X1,5KG",
+   "codigo": "1000834",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 225.47,
+   "rendimento": 6.0,
+   "custo_unitario": 37.57833333,
+   "composto": false
+  },
+  {
+   "key": 32,
+   "nome": "MOLHO MAIONESE VERDE CX5X1,1KG",
+   "codigo": "1001113",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 92.63,
+   "rendimento": 5.5,
+   "custo_unitario": 16.84181818,
+   "composto": false
+  },
+  {
+   "key": 33,
+   "nome": "MOLHO BARBECUE CX C/ 5X1,1KG",
+   "codigo": "1000510",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 104.56,
+   "rendimento": 5.5,
+   "custo_unitario": 19.01090909,
+   "composto": false
+  },
+  {
+   "key": 34,
+   "nome": "MOLHO CEBOLA AGRIDOCE 1,1KGX5",
+   "codigo": "1001157",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 71.74,
+   "rendimento": 5.5,
+   "custo_unitario": 13.04363636,
+   "composto": false
+  },
+  {
+   "key": 35,
+   "nome": "MOLHO CHIPOTLE 1,1KGX5",
+   "codigo": "1001159",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 92.94,
+   "rendimento": 5.5,
+   "custo_unitario": 16.89818182,
+   "composto": false
+  },
+  {
+   "key": 36,
+   "nome": "MOLHO MOSTAR MEL CX C/ 5X1,1KG",
+   "codigo": "1001106",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 95.63,
+   "rendimento": 5.5,
+   "custo_unitario": 17.38727273,
+   "composto": false
+  },
+  {
+   "key": 37,
+   "nome": "MOLHO PARMESAO CX5X1,1KG",
+   "codigo": "1000513",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 107.16,
+   "rendimento": 5.5,
+   "custo_unitario": 19.48363636,
+   "composto": false
+  },
+  {
+   "key": 38,
+   "nome": "MOLHO PIMENTAS BRAS CX 5,5KG",
+   "codigo": "1001169",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 108.93,
+   "rendimento": 5.5,
+   "custo_unitario": 19.80545455,
+   "composto": false
+  },
+  {
+   "key": 39,
+   "nome": "MOLHO SUPREME CX5X1,1KG",
+   "codigo": "1001018",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 117.11,
+   "rendimento": 5.5,
+   "custo_unitario": 21.29272727,
+   "composto": false
+  },
+  {
+   "key": 40,
+   "nome": "MOLHO TERIYAKI 5X1,1KG",
+   "codigo": "1001166",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 84.03,
+   "rendimento": 5.5,
+   "custo_unitario": 15.27818182,
+   "composto": false
+  },
+  {
+   "key": 41,
+   "nome": "MOLHO MAIONESE ALHO CX5X1,1KG",
+   "codigo": "1001127",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 112.51,
+   "rendimento": 5.5,
+   "custo_unitario": 20.45636364,
+   "composto": false
+  },
+  {
+   "key": 42,
+   "nome": "TOPPING PARMESAO E OREGANO1,1KG",
+   "codigo": "1000796",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 36.52,
+   "rendimento": 1.1,
+   "custo_unitario": 33.2,
+   "composto": false
+  },
+  {
+   "key": 43,
+   "nome": "TOPPING MIX AVEIA MEL PCT1,1KG",
+   "codigo": "1001181",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 107.26,
+   "rendimento": 1.1,
+   "custo_unitario": 97.50909091,
+   "composto": false
+  },
+  {
+   "key": 44,
+   "nome": "TOPPING ALHO MANTEIG PT1,1KG",
+   "codigo": "1001130",
+   "categoria": "molho",
+   "unidade": "kg",
+   "preco_caixa": 40.8,
+   "rendimento": 1.1,
+   "custo_unitario": 37.09090909,
+   "composto": false
+  },
+  {
+   "key": 45,
+   "nome": "Custo médio por kg de molho",
+   "codigo": null,
+   "categoria": "molho",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 19.6497096,
+   "composto": true
+  },
+  {
+   "key": 46,
+   "nome": "Molho da batata",
+   "codigo": null,
+   "categoria": "molho",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 19.6497096,
+   "composto": true
+  },
+  {
+   "key": 47,
+   "nome": "Molho de um sanduiche 4 molhos",
+   "codigo": null,
+   "categoria": "molho",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 19.6497096,
+   "composto": true
+  },
+  {
+   "key": 48,
+   "nome": "Molho de uma salada 4 molhos",
+   "codigo": null,
+   "categoria": "molho",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 19.6497096,
+   "composto": true
+  },
+  {
+   "key": 51,
+   "nome": "MASSA CONGELADA P/ PAO INTEG",
+   "codigo": "1001162",
+   "categoria": "pao",
+   "unidade": "un",
+   "preco_caixa": 234.29,
+   "rendimento": 70.0,
+   "custo_unitario": 3.347,
+   "composto": false
+  },
+  {
+   "key": 52,
+   "nome": "MASSA CONGELADA P/ PÃO BRANCO",
+   "codigo": "1000911",
+   "categoria": "pao",
+   "unidade": "un",
+   "preco_caixa": 201.03,
+   "rendimento": 70.0,
+   "custo_unitario": 2.871857143,
+   "composto": false
+  },
+  {
+   "key": 53,
+   "nome": "pão de 15cm Branco",
+   "codigo": null,
+   "categoria": "pao",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 1.435928571,
+   "composto": true
+  },
+  {
+   "key": 54,
+   "nome": "Pão de 15cm Preto",
+   "codigo": null,
+   "categoria": "pao",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 1.6735,
+   "composto": true
+  },
+  {
+   "key": 58,
+   "nome": "AZEITONA PT FAT CX 8 X 1,600KG",
+   "codigo": "1000999",
+   "categoria": "vegetal",
+   "unidade": "kg",
+   "preco_caixa": 354.47,
+   "rendimento": 12.8,
+   "custo_unitario": 27.69296875,
+   "composto": false
+  },
+  {
+   "key": 59,
+   "nome": "PEPINO FATIADO CONS 6X1,715KG",
+   "codigo": "1000033",
+   "categoria": "vegetal",
+   "unidade": "kg",
+   "preco_caixa": 199.28,
+   "rendimento": 10.29,
+   "custo_unitario": 19.36637512,
+   "composto": false
+  },
+  {
+   "key": 60,
+   "nome": "Alface americana (por pé)",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": 2.99,
+   "rendimento": null,
+   "custo_unitario": 2.99,
+   "composto": true
+  },
+  {
+   "key": 61,
+   "nome": "Tomate",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": 3.83,
+   "rendimento": null,
+   "custo_unitario": 3.83,
+   "composto": true
+  },
+  {
+   "key": 62,
+   "nome": "Cebola Roxa",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": 10.09,
+   "rendimento": null,
+   "custo_unitario": 10.09,
+   "composto": true
+  },
+  {
+   "key": 63,
+   "nome": "Pepino",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": 2.5,
+   "rendimento": null,
+   "custo_unitario": 2.5,
+   "composto": true
+  },
+  {
+   "key": 64,
+   "nome": "Pimentão",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": 4.6,
+   "rendimento": null,
+   "custo_unitario": 4.6,
+   "composto": true
+  },
+  {
+   "key": 65,
+   "nome": "Cebola",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": 10.09,
+   "rendimento": null,
+   "custo_unitario": 10.09,
+   "composto": true
+  },
+  {
+   "key": 66,
+   "nome": "Vegetais completos sanduíche 15 cm",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 0.5288701257,
+   "composto": true
+  },
+  {
+   "key": 67,
+   "nome": "Vegetais completos sanduíche 30 cm",
+   "codigo": null,
+   "categoria": "vegetal",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 1.057740251,
+   "composto": true
+  },
+  {
+   "key": 70,
+   "nome": "Coca-Cola Sem Açúcar Bag In Box 5000 ml - 1 unidade",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 95.2,
+   "rendimento": null,
+   "custo_unitario": 95.2,
+   "composto": true
+  },
+  {
+   "key": 71,
+   "nome": "Coca-Cola Bag In Box 18000 ml - 1 unidades",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 365.19,
+   "rendimento": null,
+   "custo_unitario": 365.19,
+   "composto": true
+  },
+  {
+   "key": 72,
+   "nome": "Fanta Guaraná Bag In Box 10000 ml",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 202.89,
+   "rendimento": null,
+   "custo_unitario": 202.89,
+   "composto": true
+  },
+  {
+   "key": 73,
+   "nome": "Fanta Laranja Bag in Box 10000ml",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 202.89,
+   "rendimento": null,
+   "custo_unitario": 202.89,
+   "composto": true
+  },
+  {
+   "key": 74,
+   "nome": "Sprite Sem Açúcar Bag In Box 10000 ml",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 87.34,
+   "rendimento": null,
+   "custo_unitario": 17.468,
+   "composto": true
+  },
+  {
+   "key": 75,
+   "nome": "Coca-Cola Lata 350 ml - 12un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 27.12,
+   "rendimento": 12.0,
+   "custo_unitario": 2.26,
+   "composto": false
+  },
+  {
+   "key": 76,
+   "nome": "Coca-Cola Sem Açúcar Lata 350 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 13.56,
+   "rendimento": 6.0,
+   "custo_unitario": 2.26,
+   "composto": false
+  },
+  {
+   "key": 77,
+   "nome": "Fanta Uva Lata 350 ml - 06 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 13.56,
+   "rendimento": 6.0,
+   "custo_unitario": 2.26,
+   "composto": false
+  },
+  {
+   "key": 78,
+   "nome": "Fanta Laranja Lata 350 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 13.56,
+   "rendimento": 6.0,
+   "custo_unitario": 2.26,
+   "composto": false
+  },
+  {
+   "key": 79,
+   "nome": "Guarana Jesus Lata 350 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 13.56,
+   "rendimento": 6.0,
+   "custo_unitario": 2.26,
+   "composto": false
+  },
+  {
+   "key": 80,
+   "nome": "Schweppes Citrus Lata 350 ml - 6un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 14.64,
+   "rendimento": 6.0,
+   "custo_unitario": 2.44,
+   "composto": false
+  },
+  {
+   "key": 81,
+   "nome": "Del Valle Néctar Uva Lata 290 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 22.92,
+   "rendimento": 6.0,
+   "custo_unitario": 3.82,
+   "composto": false
+  },
+  {
+   "key": 82,
+   "nome": "Del Valle Néctar Maracujá Lata 290 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 22.92,
+   "rendimento": 6.0,
+   "custo_unitario": 3.82,
+   "composto": false
+  },
+  {
+   "key": 83,
+   "nome": "Del Valle Néctar Pêssego Lata 290 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 22.92,
+   "rendimento": 6.0,
+   "custo_unitario": 3.82,
+   "composto": false
+  },
+  {
+   "key": 84,
+   "nome": "Monster Energy Lata 473 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 47.7,
+   "rendimento": 6.0,
+   "custo_unitario": 7.95,
+   "composto": false
+  },
+  {
+   "key": 85,
+   "nome": "Monster Mango Loco Lata 473 ml - 6 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 47.7,
+   "rendimento": 6.0,
+   "custo_unitario": 7.95,
+   "composto": false
+  },
+  {
+   "key": 86,
+   "nome": "Coca-Cola Garrafa Plástica 600 ml - 12un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 51.36,
+   "rendimento": 12.0,
+   "custo_unitario": 4.28,
+   "composto": false
+  },
+  {
+   "key": 87,
+   "nome": "Coca-Cola Zero Pet 600 ml - 12 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 50.16,
+   "rendimento": 12.0,
+   "custo_unitario": 4.18,
+   "composto": false
+  },
+  {
+   "key": 88,
+   "nome": "Del Valle Uva Pet 450 ml - 6 unidades",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 17.64,
+   "rendimento": 6.0,
+   "custo_unitario": 2.94,
+   "composto": false
+  },
+  {
+   "key": 89,
+   "nome": "Del Valle Frut Laranja Garrafa Plástica 450 ml - 6un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 17.64,
+   "rendimento": 6.0,
+   "custo_unitario": 2.94,
+   "composto": false
+  },
+  {
+   "key": 90,
+   "nome": "Leão Ice tea Limão Pet 300 ml - 12 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 39.36,
+   "rendimento": 12.0,
+   "custo_unitario": 3.28,
+   "composto": false
+  },
+  {
+   "key": 91,
+   "nome": "Leão Ice tea Pêssego Pet 300 ml - 12 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 39.36,
+   "rendimento": 12.0,
+   "custo_unitario": 3.28,
+   "composto": false
+  },
+  {
+   "key": 92,
+   "nome": "Sprite Lemon Fresh Pet 510 ml - 12 un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 27.84,
+   "rendimento": 12.0,
+   "custo_unitario": 2.32,
+   "composto": false
+  },
+  {
+   "key": 93,
+   "nome": "Água Mineral Sem Gás Crystal 500 ml - 15un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 24.75,
+   "rendimento": 15.0,
+   "custo_unitario": 1.65,
+   "composto": false
+  },
+  {
+   "key": 94,
+   "nome": "Agua Crystal Com gás Garrafa Plástica 500 ml - 12un",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": 19.8,
+   "rendimento": 12.0,
+   "custo_unitario": 1.65,
+   "composto": false
+  },
+  {
+   "key": 95,
+   "nome": "CO² 6,5 kg (Duvida)",
+   "codigo": null,
+   "categoria": "bebida",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": 6.5,
+   "custo_unitario": 0,
+   "composto": false
+  },
+  {
+   "key": 98,
+   "nome": "POTE P/ MOLHO 30ML CX700CJ",
+   "codigo": "1300252",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 140.24,
+   "rendimento": 700.0,
+   "custo_unitario": 0.2003428571,
+   "composto": false
+  },
+  {
+   "key": 99,
+   "nome": "FOLHA SETUP 25X32 FD 1000UN",
+   "codigo": "1300539",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 69.19,
+   "rendimento": 1000.0,
+   "custo_unitario": 0.06919,
+   "composto": false
+  },
+  {
+   "key": 100,
+   "nome": "GUARDANAPO EMBALADO CX1000UN",
+   "codigo": "1300330",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 76.96,
+   "rendimento": 1000.0,
+   "custo_unitario": 0.07696,
+   "composto": false
+  },
+  {
+   "key": 101,
+   "nome": "SACO SOS M 73X40 500UN SUBWAY",
+   "codigo": "1300553",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 262.73,
+   "rendimento": 500.0,
+   "custo_unitario": 0.52546,
+   "composto": false
+  },
+  {
+   "key": 102,
+   "nome": "SACO SOS SUB 30CM 90X48 200UN",
+   "codigo": "1300436",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 135.92,
+   "rendimento": 200.0,
+   "custo_unitario": 0.6796,
+   "composto": false
+  },
+  {
+   "key": 103,
+   "nome": "SACO SOS LATA 40X32 FD 500UN",
+   "codigo": "1300460",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 75.01,
+   "rendimento": 500.0,
+   "custo_unitario": 0.15002,
+   "composto": false
+  },
+  {
+   "key": 104,
+   "nome": "POTE SALADA 1,5LT CX200UND",
+   "codigo": "1300566",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 158.01,
+   "rendimento": 200.0,
+   "custo_unitario": 0.79005,
+   "composto": false
+  },
+  {
+   "key": 105,
+   "nome": "TAMPA POTE 1500ML BIO CX500UND",
+   "codigo": "1300565",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 499.84,
+   "rendimento": 500.0,
+   "custo_unitario": 0.99968,
+   "composto": false
+  },
+  {
+   "key": 106,
+   "nome": "TALHER(GARFO/FACA) PRT CX100UN",
+   "codigo": "1300255",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 87.85,
+   "rendimento": 100.0,
+   "custo_unitario": 0.8785,
+   "composto": false
+  },
+  {
+   "key": 107,
+   "nome": "ETIQUETA REDONDA LOGO 1RL/1000",
+   "codigo": "1300495",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 25.89,
+   "rendimento": 1000.0,
+   "custo_unitario": 0.02589,
+   "composto": false
+  },
+  {
+   "key": 108,
+   "nome": "FOLHA SUBWRAP 25X40 FD 1000UN",
+   "codigo": "1300211",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 88.99,
+   "rendimento": 1000.0,
+   "custo_unitario": 0.08899,
+   "composto": false
+  },
+  {
+   "key": 109,
+   "nome": "FOLHA SUBWRAP 38X51 FD350UN",
+   "codigo": "1300537",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 63.7,
+   "rendimento": 350.0,
+   "custo_unitario": 0.182,
+   "composto": false
+  },
+  {
+   "key": 110,
+   "nome": "CARTUCHO SANDUICHE 15CM 250UN",
+   "codigo": "1300552",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 181.09,
+   "rendimento": 250.0,
+   "custo_unitario": 0.72436,
+   "composto": false
+  },
+  {
+   "key": 111,
+   "nome": "CARTUCHO SANDUICHE 30CM 150UN",
+   "codigo": "1300551",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 117.95,
+   "rendimento": 150.0,
+   "custo_unitario": 0.7863333333,
+   "composto": false
+  },
+  {
+   "key": 112,
+   "nome": "CANUDO PAP BCO 3000UN",
+   "codigo": "1300583",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 212.25,
+   "rendimento": 3000.0,
+   "custo_unitario": 0.07075,
+   "composto": false
+  },
+  {
+   "key": 113,
+   "nome": "SACO COOKIE 24X18 FD 500 UN",
+   "codigo": "1300496",
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 29.48,
+   "rendimento": 500.0,
+   "custo_unitario": 0.05896,
+   "composto": false
+  },
+  {
+   "key": 114,
+   "nome": "Embalagem pão 15 cm Completa",
+   "codigo": null,
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 0.78649,
+   "composto": true
+  },
+  {
+   "key": 115,
+   "nome": "Embalagem pão 30 cm Completa",
+   "codigo": null,
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 0.95646,
+   "composto": true
+  },
+  {
+   "key": 116,
+   "nome": "Embalagem Salada Completa",
+   "codigo": null,
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 2.74519,
+   "composto": true
+  },
+  {
+   "key": 117,
+   "nome": "Delivery 15cm",
+   "codigo": null,
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 0.78649,
+   "composto": true
+  },
+  {
+   "key": 118,
+   "nome": "Delivery30cm",
+   "codigo": null,
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": 0.95646,
+   "composto": true
+  },
+  {
+   "key": 122,
+   "nome": "SACOLA PLAST I GREEN 35 X 45",
+   "codigo": null,
+   "categoria": "embalagem",
+   "unidade": "un",
+   "preco_caixa": 135.92,
+   "rendimento": 1000.0,
+   "custo_unitario": 0.13592,
+   "composto": false
+  },
+  {
+   "key": 125,
+   "nome": "BATATA RUSTICA ERVAS CX7X2KG",
+   "codigo": "1001092",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 277.59,
+   "rendimento": 14.0,
+   "custo_unitario": 19.82785714,
+   "composto": false
+  },
+  {
+   "key": 126,
+   "nome": "COOKIE CRU CHOC. DOUBLE CX120U",
+   "codigo": "1000907",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 238.14,
+   "rendimento": 120.0,
+   "custo_unitario": 1.9845,
+   "composto": false
+  },
+  {
+   "key": 127,
+   "nome": "COOKIE CRU GOTAS CX 120UN",
+   "codigo": "1000908",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 213.72,
+   "rendimento": 120.0,
+   "custo_unitario": 1.781,
+   "composto": false
+  },
+  {
+   "key": 128,
+   "nome": "COOKIE CRU MACADAMIA CX 60UN",
+   "codigo": "1001057",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 107.83,
+   "rendimento": 60.0,
+   "custo_unitario": 1.797166667,
+   "composto": false
+  },
+  {
+   "key": 129,
+   "nome": "COOKIE BRIGADEIRO 60UN",
+   "codigo": "1001164",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 195.45,
+   "rendimento": 60.0,
+   "custo_unitario": 3.2575,
+   "composto": false
+  },
+  {
+   "key": 130,
+   "nome": "DORITOS QUEIJO NACHO 58UNX32G",
+   "codigo": "1001161",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 241.35,
+   "rendimento": 58.0,
+   "custo_unitario": 4.161206897,
+   "composto": false
+  },
+  {
+   "key": 131,
+   "nome": "BATATA RUFFLES ORIG 33GX50UN",
+   "codigo": "1001167",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 185.79,
+   "rendimento": 50.0,
+   "custo_unitario": 3.7158,
+   "composto": false
+  },
+  {
+   "key": 132,
+   "nome": "RUFLES SAL 56X40GR CX LACRADA",
+   "codigo": "1001089",
+   "categoria": "doce",
+   "unidade": "un",
+   "preco_caixa": 185.79,
+   "rendimento": 50.0,
+   "custo_unitario": 3.7158,
+   "composto": false
+  },
+  {
+   "key": 135,
+   "nome": "Vegetais completos Pop",
+   "codigo": null,
+   "categoria": "outro",
+   "unidade": "un",
+   "preco_caixa": null,
+   "rendimento": null,
+   "custo_unitario": null,
+   "composto": true
+  }
+ ],
+ "produtos": [
+  {
+   "nome_planilha": "Frango Empanado",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 23.0,
+   "custo_planilha": 6.276946,
+   "custo_canonico": 6.276946,
+   "origem_mapeamento": "rotulo:rotulo-parcial",
+   "recheio_rotulo": "Dobro recheio Empanado",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 11,
+     "insumo_nome": "FRANGO EMPANADO CX4X1KG",
+     "insumo_codigo": "1001043",
+     "categoria": "proteina",
+     "quantidade": 0.076,
+     "unidade": "kg",
+     "custo_unitario": 30.355,
+     "custo_aplicado": 2.30698
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Steak",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 23.0,
+   "custo_planilha": 6.969006,
+   "custo_canonico": 6.969006,
+   "origem_mapeamento": "rotulo:excecao-documentada",
+   "recheio_rotulo": "Dobro recheio Frango",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 14,
+     "insumo_nome": "FRANGO ROTISSERIE CX8X1KG",
+     "insumo_codigo": "1001129",
+     "categoria": "proteina",
+     "quantidade": 0.064,
+     "unidade": "kg",
+     "custo_unitario": 46.86,
+     "custo_aplicado": 2.99904
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Presunto",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 22.0,
+   "custo_planilha": 6.022743,
+   "custo_canonico": 6.022744,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Presunto",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 15,
+     "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+     "insumo_codigo": "1000976",
+     "categoria": "proteina",
+     "quantidade": 0.04,
+     "unidade": "kg",
+     "custo_unitario": 51.31944444,
+     "custo_aplicado": 2.052778
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Churrasco",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 24.0,
+   "custo_planilha": 6.072395,
+   "custo_canonico": 6.072395,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Churrasco",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 16,
+     "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+     "insumo_codigo": "1000839",
+     "categoria": "proteina",
+     "quantidade": 0.058,
+     "unidade": "kg",
+     "custo_unitario": 36.24877451,
+     "custo_aplicado": 2.102429
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "BMT",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 26.0,
+   "custo_planilha": 7.716459,
+   "custo_canonico": 7.402865,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio BMT",
+   "n_comp": 8,
+   "componentes": [
+    {
+     "insumo_key": 15,
+     "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+     "insumo_codigo": "1000976",
+     "categoria": "proteina",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 51.31944444,
+     "custo_aplicado": 1.026389
+    },
+    {
+     "insumo_key": 18,
+     "insumo_nome": "PEPPERONI FATIADO CX4X500GR",
+     "insumo_codigo": "1000891",
+     "categoria": "proteina",
+     "quantidade": 0.018,
+     "unidade": "kg",
+     "custo_unitario": 66.13,
+     "custo_aplicado": 1.19034
+    },
+    {
+     "insumo_key": 20,
+     "insumo_nome": "SALAME ITALIANO FAT CX4X500GR",
+     "insumo_codigo": "1000892",
+     "categoria": "proteina",
+     "quantidade": 0.018,
+     "unidade": "kg",
+     "custo_unitario": 67.565,
+     "custo_aplicado": 1.21617
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Defumado",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 25.0,
+   "custo_planilha": 7.402864,
+   "custo_canonico": 6.487041,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Frango Defumado",
+   "n_comp": 7,
+   "componentes": [
+    {
+     "insumo_key": 12,
+     "insumo_nome": "FRANGO CUBOSCX 2X2KG",
+     "insumo_codigo": "1000762",
+     "categoria": "proteina",
+     "quantidade": 0.03,
+     "unidade": "kg",
+     "custo_unitario": 36.0025,
+     "custo_aplicado": 1.080075
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.045,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 1.437
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Teriack",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 26.0,
+   "custo_planilha": 7.688263,
+   "custo_canonico": 8.105271,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de teriack",
+   "n_comp": 7,
+   "componentes": [
+    {
+     "insumo_key": 13,
+     "insumo_nome": "FRANGO EM TIRAS CX4X2KG",
+     "insumo_codigo": "1000885",
+     "categoria": "proteina",
+     "quantidade": 0.079,
+     "unidade": "kg",
+     "custo_unitario": 49.29,
+     "custo_aplicado": 3.89391
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 40,
+     "insumo_nome": "MOLHO TERIYAKI 5X1,1KG",
+     "insumo_codigo": "1001166",
+     "categoria": "molho",
+     "quantidade": 0.0158,
+     "unidade": "kg",
+     "custo_unitario": 15.27818182,
+     "custo_aplicado": 0.241395
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Vegetariano",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 18.0,
+   "custo_planilha": 6.487041,
+   "custo_canonico": 3.969966,
+   "origem_mapeamento": "rotulo:sem-recheio",
+   "recheio_rotulo": "(sem recheio)",
+   "n_comp": 5,
+   "componentes": [
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Carne Seca",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 26.0,
+   "custo_planilha": 8.105271,
+   "custo_canonico": 7.716459,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de Recheio Carne Seca",
+   "n_comp": 7,
+   "componentes": [
+    {
+     "insumo_key": 17,
+     "insumo_nome": "CARNE SECA CX 12X0,25KG",
+     "insumo_codigo": "1001074",
+     "categoria": "proteina",
+     "quantidade": 0.028,
+     "unidade": "kg",
+     "custo_unitario": 85.90333333,
+     "custo_aplicado": 2.405293
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.042,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 1.3412
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Almôndegas",
+   "aba": "Sanduíches 15 cm",
+   "tamanho": "15cm",
+   "categoria": "sanduiche",
+   "preco_venda": 26.0,
+   "custo_planilha": 4.57112,
+   "custo_canonico": 6.839536,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de Almôndegas",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 19,
+     "insumo_nome": "ALMONDEGA CARNE BOV MOLH CX4KG",
+     "insumo_codigo": "1001163",
+     "categoria": "proteina",
+     "quantidade": 0.076,
+     "unidade": "kg",
+     "custo_unitario": 37.7575,
+     "custo_aplicado": 2.86957
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Empanado",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 43.0,
+   "custo_planilha": 12.553891,
+   "custo_canonico": 12.553891,
+   "origem_mapeamento": "rotulo:rotulo-parcial",
+   "recheio_rotulo": "Dobro recheio Empanado",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 11,
+     "insumo_nome": "FRANGO EMPANADO CX4X1KG",
+     "insumo_codigo": "1001043",
+     "categoria": "proteina",
+     "quantidade": 0.152,
+     "unidade": "kg",
+     "custo_unitario": 30.355,
+     "custo_aplicado": 4.61396
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Steack",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 43.0,
+   "custo_planilha": 13.938011,
+   "custo_canonico": 13.938011,
+   "origem_mapeamento": "rotulo:excecao-documentada",
+   "recheio_rotulo": "Dobro recheio Frango",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 14,
+     "insumo_nome": "FRANGO ROTISSERIE CX8X1KG",
+     "insumo_codigo": "1001129",
+     "categoria": "proteina",
+     "quantidade": 0.128,
+     "unidade": "kg",
+     "custo_unitario": 46.86,
+     "custo_aplicado": 5.99808
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Presunto",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 42.0,
+   "custo_planilha": 12.045487,
+   "custo_canonico": 12.045487,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Presunto",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 15,
+     "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+     "insumo_codigo": "1000976",
+     "categoria": "proteina",
+     "quantidade": 0.08,
+     "unidade": "kg",
+     "custo_unitario": 51.31944444,
+     "custo_aplicado": 4.105556
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Churrasco",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 44.0,
+   "custo_planilha": 12.144789,
+   "custo_canonico": 12.144789,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Churrasco",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 16,
+     "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+     "insumo_codigo": "1000839",
+     "categoria": "proteina",
+     "quantidade": 0.116,
+     "unidade": "kg",
+     "custo_unitario": 36.24877451,
+     "custo_aplicado": 4.204858
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "BMT",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 46.0,
+   "custo_planilha": 15.432918,
+   "custo_canonico": 14.805729,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio BMT",
+   "n_comp": 8,
+   "componentes": [
+    {
+     "insumo_key": 15,
+     "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+     "insumo_codigo": "1000976",
+     "categoria": "proteina",
+     "quantidade": 0.04,
+     "unidade": "kg",
+     "custo_unitario": 51.31944444,
+     "custo_aplicado": 2.052778
+    },
+    {
+     "insumo_key": 18,
+     "insumo_nome": "PEPPERONI FATIADO CX4X500GR",
+     "insumo_codigo": "1000891",
+     "categoria": "proteina",
+     "quantidade": 0.036,
+     "unidade": "kg",
+     "custo_unitario": 66.13,
+     "custo_aplicado": 2.38068
+    },
+    {
+     "insumo_key": 20,
+     "insumo_nome": "SALAME ITALIANO FAT CX4X500GR",
+     "insumo_codigo": "1000892",
+     "categoria": "proteina",
+     "quantidade": 0.036,
+     "unidade": "kg",
+     "custo_unitario": 67.565,
+     "custo_aplicado": 2.43234
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Defumado",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 45.0,
+   "custo_planilha": 14.805729,
+   "custo_canonico": 12.974081,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Frango Defumado",
+   "n_comp": 7,
+   "componentes": [
+    {
+     "insumo_key": 12,
+     "insumo_nome": "FRANGO CUBOSCX 2X2KG",
+     "insumo_codigo": "1000762",
+     "categoria": "proteina",
+     "quantidade": 0.06,
+     "unidade": "kg",
+     "custo_unitario": 36.0025,
+     "custo_aplicado": 2.16015
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.09,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 2.874
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Teriack",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 46.0,
+   "custo_planilha": 15.376526,
+   "custo_canonico": 16.210542,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de teriack",
+   "n_comp": 7,
+   "componentes": [
+    {
+     "insumo_key": 13,
+     "insumo_nome": "FRANGO EM TIRAS CX4X2KG",
+     "insumo_codigo": "1000885",
+     "categoria": "proteina",
+     "quantidade": 0.158,
+     "unidade": "kg",
+     "custo_unitario": 49.29,
+     "custo_aplicado": 7.78782
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 40,
+     "insumo_nome": "MOLHO TERIYAKI 5X1,1KG",
+     "insumo_codigo": "1001166",
+     "categoria": "molho",
+     "quantidade": 0.0316,
+     "unidade": "kg",
+     "custo_unitario": 15.27818182,
+     "custo_aplicado": 0.482791
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Vegetariano",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 28.0,
+   "custo_planilha": 12.974081,
+   "custo_canonico": 7.939931,
+   "origem_mapeamento": "rotulo:sem-recheio",
+   "recheio_rotulo": "(sem recheio)",
+   "n_comp": 5,
+   "componentes": [
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Carne Seca",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 46.0,
+   "custo_planilha": 16.210542,
+   "custo_canonico": 15.432918,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de Recheio Carne Seca",
+   "n_comp": 7,
+   "componentes": [
+    {
+     "insumo_key": 17,
+     "insumo_nome": "CARNE SECA CX 12X0,25KG",
+     "insumo_codigo": "1001074",
+     "categoria": "proteina",
+     "quantidade": 0.056,
+     "unidade": "kg",
+     "custo_unitario": 85.90333333,
+     "custo_aplicado": 4.810587
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.084,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 2.6824
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Almôndegas",
+   "aba": "Sanduíches 30 cm",
+   "tamanho": "30cm",
+   "categoria": "sanduiche",
+   "preco_venda": 46.0,
+   "custo_planilha": 9.14224,
+   "custo_canonico": 13.679071,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de Almôndegas",
+   "n_comp": 6,
+   "componentes": [
+    {
+     "insumo_key": 19,
+     "insumo_nome": "ALMONDEGA CARNE BOV MOLH CX4KG",
+     "insumo_codigo": "1001163",
+     "categoria": "proteina",
+     "quantidade": 0.152,
+     "unidade": "kg",
+     "custo_unitario": 37.7575,
+     "custo_aplicado": 5.73914
+    },
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Empanado",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 30.5,
+   "custo_planilha": 4.79596,
+   "custo_canonico": 4.79596,
+   "origem_mapeamento": "rotulo:rotulo-parcial",
+   "recheio_rotulo": "Dobro recheio Empanado",
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 11,
+     "insumo_nome": "FRANGO EMPANADO CX4X1KG",
+     "insumo_codigo": "1001043",
+     "categoria": "proteina",
+     "quantidade": 0.152,
+     "unidade": "kg",
+     "custo_unitario": 30.355,
+     "custo_aplicado": 4.61396
+    },
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Steack",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 33.0,
+   "custo_planilha": 6.18008,
+   "custo_canonico": 6.18008,
+   "origem_mapeamento": "rotulo:excecao-documentada",
+   "recheio_rotulo": "Dobro recheio Frango",
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 14,
+     "insumo_nome": "FRANGO ROTISSERIE CX8X1KG",
+     "insumo_codigo": "1001129",
+     "categoria": "proteina",
+     "quantidade": 0.128,
+     "unidade": "kg",
+     "custo_unitario": 46.86,
+     "custo_aplicado": 5.99808
+    },
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Churrasco",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 34.0,
+   "custo_planilha": 4.386858,
+   "custo_canonico": 4.386858,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Churrasco",
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 16,
+     "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+     "insumo_codigo": "1000839",
+     "categoria": "proteina",
+     "quantidade": 0.116,
+     "unidade": "kg",
+     "custo_unitario": 36.24877451,
+     "custo_aplicado": 4.204858
+    },
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Frango Defumado",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 35.0,
+   "custo_planilha": 5.21615,
+   "custo_canonico": 5.21615,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro recheio Frango Defumado",
+   "n_comp": 3,
+   "componentes": [
+    {
+     "insumo_key": 12,
+     "insumo_nome": "FRANGO CUBOSCX 2X2KG",
+     "insumo_codigo": "1000762",
+     "categoria": "proteina",
+     "quantidade": 0.06,
+     "unidade": "kg",
+     "custo_unitario": 36.0025,
+     "custo_aplicado": 2.16015
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.09,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 2.874
+    },
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Teriack",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 36.0,
+   "custo_planilha": 8.452611,
+   "custo_canonico": 8.452611,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de teriack",
+   "n_comp": 3,
+   "componentes": [
+    {
+     "insumo_key": 13,
+     "insumo_nome": "FRANGO EM TIRAS CX4X2KG",
+     "insumo_codigo": "1000885",
+     "categoria": "proteina",
+     "quantidade": 0.158,
+     "unidade": "kg",
+     "custo_unitario": 49.29,
+     "custo_aplicado": 7.78782
+    },
+    {
+     "insumo_key": 40,
+     "insumo_nome": "MOLHO TERIYAKI 5X1,1KG",
+     "insumo_codigo": "1001166",
+     "categoria": "molho",
+     "quantidade": 0.0316,
+     "unidade": "kg",
+     "custo_unitario": 15.27818182,
+     "custo_aplicado": 0.482791
+    },
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Vegetariano",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 28.0,
+   "custo_planilha": 0.182,
+   "custo_canonico": 0.182,
+   "origem_mapeamento": "rotulo:sem-recheio",
+   "recheio_rotulo": "(sem recheio)",
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Carne Seca",
+   "aba": "Saladas",
+   "tamanho": "salada",
+   "categoria": "salada",
+   "preco_venda": 36.0,
+   "custo_planilha": 7.674987,
+   "custo_canonico": 7.674987,
+   "origem_mapeamento": "rotulo:rotulo-exato",
+   "recheio_rotulo": "Dobro de Recheio Carne Seca",
+   "n_comp": 3,
+   "componentes": [
+    {
+     "insumo_key": 17,
+     "insumo_nome": "CARNE SECA CX 12X0,25KG",
+     "insumo_codigo": "1001074",
+     "categoria": "proteina",
+     "quantidade": 0.056,
+     "unidade": "kg",
+     "custo_unitario": 85.90333333,
+     "custo_aplicado": 4.810587
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.084,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 2.6824
+    },
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Coca-Cola Lata Original",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.26,
+   "custo_canonico": 2.26,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 75,
+     "insumo_nome": "Coca-Cola Lata 350 ml - 12un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.26,
+     "custo_aplicado": 2.26
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Coca-Cola Lata Sem Açúcar",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.26,
+   "custo_canonico": 2.26,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 76,
+     "insumo_nome": "Coca-Cola Sem Açúcar Lata 350 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.26,
+     "custo_aplicado": 2.26
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Fanta Uva Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.26,
+   "custo_canonico": 2.26,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 77,
+     "insumo_nome": "Fanta Uva Lata 350 ml - 06 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.26,
+     "custo_aplicado": 2.26
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Fanta Laranja Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.26,
+   "custo_canonico": 2.26,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 78,
+     "insumo_nome": "Fanta Laranja Lata 350 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.26,
+     "custo_aplicado": 2.26
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Guarana Jesus Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.26,
+   "custo_canonico": 2.26,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 79,
+     "insumo_nome": "Guarana Jesus Lata 350 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.26,
+     "custo_aplicado": 2.26
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Schweppes Citrus Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.44,
+   "custo_canonico": 2.44,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 80,
+     "insumo_nome": "Schweppes Citrus Lata 350 ml - 6un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.44,
+     "custo_aplicado": 2.44
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Del Valle Néctar Uva Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 3.82,
+   "custo_canonico": 3.82,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 81,
+     "insumo_nome": "Del Valle Néctar Uva Lata 290 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 3.82,
+     "custo_aplicado": 3.82
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Del Valle Néctar Maracujá Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 3.82,
+   "custo_canonico": 3.82,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 82,
+     "insumo_nome": "Del Valle Néctar Maracujá Lata 290 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 3.82,
+     "custo_aplicado": 3.82
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Del Valle Néctar Pêssego Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 3.82,
+   "custo_canonico": 3.82,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 83,
+     "insumo_nome": "Del Valle Néctar Pêssego Lata 290 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 3.82,
+     "custo_aplicado": 3.82
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Monster Energy Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 14.0,
+   "custo_planilha": 7.95,
+   "custo_canonico": 7.95,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 84,
+     "insumo_nome": "Monster Energy Lata 473 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 7.95,
+     "custo_aplicado": 7.95
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Monster Mango Loco Lata",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 14.0,
+   "custo_planilha": 7.95,
+   "custo_canonico": 7.95,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 85,
+     "insumo_nome": "Monster Mango Loco Lata 473 ml - 6 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 7.95,
+     "custo_aplicado": 7.95
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Coca-Cola Garrafa 600mL",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 13.5,
+   "custo_planilha": 4.28,
+   "custo_canonico": 4.28,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 86,
+     "insumo_nome": "Coca-Cola Garrafa Plástica 600 ml - 12un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 4.28,
+     "custo_aplicado": 4.28
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Coca-Cola Zero Garrafa 600 ml",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 13.5,
+   "custo_planilha": 4.18,
+   "custo_canonico": 4.18,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 87,
+     "insumo_nome": "Coca-Cola Zero Pet 600 ml - 12 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 4.18,
+     "custo_aplicado": 4.18
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Del Valle Uva Pet",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.94,
+   "custo_canonico": 2.94,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 88,
+     "insumo_nome": "Del Valle Uva Pet 450 ml - 6 unidades",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.94,
+     "custo_aplicado": 2.94
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Del Valle Frut Laranja Pet",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 2.94,
+   "custo_canonico": 2.94,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 89,
+     "insumo_nome": "Del Valle Frut Laranja Garrafa Plástica 450 ml - 6un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.94,
+     "custo_aplicado": 2.94
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Leão Ice tea Limão",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 3.28,
+   "custo_canonico": 3.28,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 90,
+     "insumo_nome": "Leão Ice tea Limão Pet 300 ml - 12 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 3.28,
+     "custo_aplicado": 3.28
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Leão Ice tea Pêssego",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 10.5,
+   "custo_planilha": 3.28,
+   "custo_canonico": 3.28,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 91,
+     "insumo_nome": "Leão Ice tea Pêssego Pet 300 ml - 12 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 3.28,
+     "custo_aplicado": 3.28
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Sprite Lemon Fresh",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 9.0,
+   "custo_planilha": 2.32,
+   "custo_canonico": 2.32,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 92,
+     "insumo_nome": "Sprite Lemon Fresh Pet 510 ml - 12 un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.32,
+     "custo_aplicado": 2.32
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Água Mineral Sem Gás",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 7.0,
+   "custo_planilha": 1.65,
+   "custo_canonico": 1.65,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 93,
+     "insumo_nome": "Água Mineral Sem Gás Crystal 500 ml - 15un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.65,
+     "custo_aplicado": 1.65
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Agua Crystal Com gás",
+   "aba": "Bebidas",
+   "tamanho": "unico",
+   "categoria": "bebida",
+   "preco_venda": 7.0,
+   "custo_planilha": 1.65,
+   "custo_canonico": 1.65,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 94,
+     "insumo_nome": "Agua Crystal Com gás Garrafa Plástica 500 ml - 12un",
+     "insumo_codigo": null,
+     "categoria": "bebida",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.65,
+     "custo_aplicado": 1.65
+    }
+   ]
+  },
+  {
+   "nome_planilha": "COOKIE CHOCOLATE DOUBLE 120UN",
+   "aba": "Cookies, Chips e Brownies",
+   "tamanho": "unico",
+   "categoria": "sobremesa",
+   "preco_venda": 7.0,
+   "custo_planilha": 2.04346,
+   "custo_canonico": 2.04346,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 113,
+     "insumo_nome": "SACO COOKIE 24X18 FD 500 UN",
+     "insumo_codigo": "1300496",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.05896,
+     "custo_aplicado": 0.05896
+    },
+    {
+     "insumo_key": 126,
+     "insumo_nome": "COOKIE CRU CHOC. DOUBLE CX120U",
+     "insumo_codigo": "1000907",
+     "categoria": "doce",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.9845,
+     "custo_aplicado": 1.9845
+    }
+   ]
+  },
+  {
+   "nome_planilha": "COOKIE GOTAS 120UN",
+   "aba": "Cookies, Chips e Brownies",
+   "tamanho": "unico",
+   "categoria": "sobremesa",
+   "preco_venda": 7.0,
+   "custo_planilha": 1.83996,
+   "custo_canonico": 1.83996,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 113,
+     "insumo_nome": "SACO COOKIE 24X18 FD 500 UN",
+     "insumo_codigo": "1300496",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.05896,
+     "custo_aplicado": 0.05896
+    },
+    {
+     "insumo_key": 127,
+     "insumo_nome": "COOKIE CRU GOTAS CX 120UN",
+     "insumo_codigo": "1000908",
+     "categoria": "doce",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.781,
+     "custo_aplicado": 1.781
+    }
+   ]
+  },
+  {
+   "nome_planilha": "COOKIE Macadamia",
+   "aba": "Cookies, Chips e Brownies",
+   "tamanho": "unico",
+   "categoria": "sobremesa",
+   "preco_venda": 7.0,
+   "custo_planilha": 1.856127,
+   "custo_canonico": 1.856127,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 113,
+     "insumo_nome": "SACO COOKIE 24X18 FD 500 UN",
+     "insumo_codigo": "1300496",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.05896,
+     "custo_aplicado": 0.05896
+    },
+    {
+     "insumo_key": 128,
+     "insumo_nome": "COOKIE CRU MACADAMIA CX 60UN",
+     "insumo_codigo": "1001057",
+     "categoria": "doce",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.797166667,
+     "custo_aplicado": 1.797167
+    }
+   ]
+  },
+  {
+   "nome_planilha": "COOKIE Brigadeiro",
+   "aba": "Cookies, Chips e Brownies",
+   "tamanho": "unico",
+   "categoria": "sobremesa",
+   "preco_venda": 9.0,
+   "custo_planilha": 4.04399,
+   "custo_canonico": 4.04399,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    },
+    {
+     "insumo_key": 129,
+     "insumo_nome": "COOKIE BRIGADEIRO 60UN",
+     "insumo_codigo": "1001164",
+     "categoria": "doce",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 3.2575,
+     "custo_aplicado": 3.2575
+    }
+   ]
+  },
+  {
+   "nome_planilha": "BATATA Rustica 14K",
+   "aba": "Cookies, Chips e Brownies",
+   "tamanho": "unico",
+   "categoria": "sobremesa",
+   "preco_venda": 10.0,
+   "custo_planilha": 2.933391,
+   "custo_canonico": 2.933392,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 4,
+   "componentes": [
+    {
+     "insumo_key": 46,
+     "insumo_nome": "Molho da batata",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.015,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.294746
+    },
+    {
+     "insumo_key": 98,
+     "insumo_nome": "POTE P/ MOLHO 30ML CX700CJ",
+     "insumo_codigo": "1300252",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.2003428571,
+     "custo_aplicado": 0.200343
+    },
+    {
+     "insumo_key": 113,
+     "insumo_nome": "SACO COOKIE 24X18 FD 500 UN",
+     "insumo_codigo": "1300496",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.05896,
+     "custo_aplicado": 0.05896
+    },
+    {
+     "insumo_key": 125,
+     "insumo_nome": "BATATA RUSTICA ERVAS CX7X2KG",
+     "insumo_codigo": "1001092",
+     "categoria": "doce",
+     "quantidade": 0.12,
+     "unidade": "un",
+     "custo_unitario": 19.82785714,
+     "custo_aplicado": 2.379343
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Batata Rustica",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 14.0,
+   "custo_planilha": 2.933391,
+   "custo_canonico": 2.933392,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 4,
+   "componentes": [
+    {
+     "insumo_key": 46,
+     "insumo_nome": "Molho da batata",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.015,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.294746
+    },
+    {
+     "insumo_key": 98,
+     "insumo_nome": "POTE P/ MOLHO 30ML CX700CJ",
+     "insumo_codigo": "1300252",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.2003428571,
+     "custo_aplicado": 0.200343
+    },
+    {
+     "insumo_key": 113,
+     "insumo_nome": "SACO COOKIE 24X18 FD 500 UN",
+     "insumo_codigo": "1300496",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.05896,
+     "custo_aplicado": 0.05896
+    },
+    {
+     "insumo_key": 125,
+     "insumo_nome": "BATATA RUSTICA ERVAS CX7X2KG",
+     "insumo_codigo": "1001092",
+     "categoria": "doce",
+     "quantidade": 0.12,
+     "unidade": "un",
+     "custo_unitario": 19.82785714,
+     "custo_aplicado": 2.379343
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de queijo",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 0.481813,
+   "custo_canonico": 0.481813,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de Bacon",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 1.822537,
+   "custo_canonico": 1.822537,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 9,
+     "insumo_nome": "BACON TIRAS CX 4 PCT X 1 KG",
+     "insumo_codigo": "1001088",
+     "categoria": "proteina",
+     "quantidade": 0.015,
+     "unidade": "kg",
+     "custo_unitario": 121.5025,
+     "custo_aplicado": 1.822537
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de CC",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 1.277333,
+   "custo_canonico": 1.277333,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.04,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 1.277333
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de cheddar",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 1.615868,
+   "custo_canonico": 1.615868,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 31,
+     "insumo_nome": "MOLHO CHEDDAR CX4X1,5KG",
+     "insumo_codigo": "1000834",
+     "categoria": "molho",
+     "quantidade": 0.043,
+     "unidade": "kg",
+     "custo_unitario": 37.57833333,
+     "custo_aplicado": 1.615868
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Adicional de salame",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 1.21617,
+   "custo_canonico": 1.21617,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 20,
+     "insumo_nome": "SALAME ITALIANO FAT CX4X500GR",
+     "insumo_codigo": "1000892",
+     "categoria": "proteina",
+     "quantidade": 0.018,
+     "unidade": "kg",
+     "custo_unitario": 67.565,
+     "custo_aplicado": 1.21617
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Adicional de peperone",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 1.19034,
+   "custo_canonico": 1.19034,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 18,
+     "insumo_nome": "PEPPERONI FATIADO CX4X500GR",
+     "insumo_codigo": "1000891",
+     "categoria": "proteina",
+     "quantidade": 0.018,
+     "unidade": "kg",
+     "custo_unitario": 66.13,
+     "custo_aplicado": 1.19034
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio Empanado",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 2.30698,
+   "custo_canonico": 2.30698,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 11,
+     "insumo_nome": "FRANGO EMPANADO CX4X1KG",
+     "insumo_codigo": "1001043",
+     "categoria": "proteina",
+     "quantidade": 0.076,
+     "unidade": "kg",
+     "custo_unitario": 30.355,
+     "custo_aplicado": 2.30698
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio Frango",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 2.99904,
+   "custo_canonico": 2.99904,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 14,
+     "insumo_nome": "FRANGO ROTISSERIE CX8X1KG",
+     "insumo_codigo": "1001129",
+     "categoria": "proteina",
+     "quantidade": 0.064,
+     "unidade": "kg",
+     "custo_unitario": 46.86,
+     "custo_aplicado": 2.99904
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio Presunto",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 2.052778,
+   "custo_canonico": 2.052778,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 15,
+     "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+     "insumo_codigo": "1000976",
+     "categoria": "proteina",
+     "quantidade": 0.04,
+     "unidade": "kg",
+     "custo_unitario": 51.31944444,
+     "custo_aplicado": 2.052778
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio Churrasco",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 2.102429,
+   "custo_canonico": 2.102429,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 16,
+     "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+     "insumo_codigo": "1000839",
+     "categoria": "proteina",
+     "quantidade": 0.058,
+     "unidade": "kg",
+     "custo_unitario": 36.24877451,
+     "custo_aplicado": 2.102429
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de Recheio Carne Seca",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 3.746493,
+   "custo_canonico": 3.746493,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 17,
+     "insumo_nome": "CARNE SECA CX 12X0,25KG",
+     "insumo_codigo": "1001074",
+     "categoria": "proteina",
+     "quantidade": 0.028,
+     "unidade": "kg",
+     "custo_unitario": 85.90333333,
+     "custo_aplicado": 2.405293
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.042,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 1.3412
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio BMT",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 3.432899,
+   "custo_canonico": 3.432899,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 3,
+   "componentes": [
+    {
+     "insumo_key": 15,
+     "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+     "insumo_codigo": "1000976",
+     "categoria": "proteina",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 51.31944444,
+     "custo_aplicado": 1.026389
+    },
+    {
+     "insumo_key": 18,
+     "insumo_nome": "PEPPERONI FATIADO CX4X500GR",
+     "insumo_codigo": "1000891",
+     "categoria": "proteina",
+     "quantidade": 0.018,
+     "unidade": "kg",
+     "custo_unitario": 66.13,
+     "custo_aplicado": 1.19034
+    },
+    {
+     "insumo_key": 20,
+     "insumo_nome": "SALAME ITALIANO FAT CX4X500GR",
+     "insumo_codigo": "1000892",
+     "categoria": "proteina",
+     "quantidade": 0.018,
+     "unidade": "kg",
+     "custo_unitario": 67.565,
+     "custo_aplicado": 1.21617
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio Steack Cheddar",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 3.718297,
+   "custo_canonico": 3.718297,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 16,
+     "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+     "insumo_codigo": "1000839",
+     "categoria": "proteina",
+     "quantidade": 0.058,
+     "unidade": "kg",
+     "custo_unitario": 36.24877451,
+     "custo_aplicado": 2.102429
+    },
+    {
+     "insumo_key": 31,
+     "insumo_nome": "MOLHO CHEDDAR CX4X1,5KG",
+     "insumo_codigo": "1000834",
+     "categoria": "molho",
+     "quantidade": 0.043,
+     "unidade": "kg",
+     "custo_unitario": 37.57833333,
+     "custo_aplicado": 1.615868
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro recheio Frango Defumado",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 2.517075,
+   "custo_canonico": 2.517075,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 12,
+     "insumo_nome": "FRANGO CUBOSCX 2X2KG",
+     "insumo_codigo": "1000762",
+     "categoria": "proteina",
+     "quantidade": 0.03,
+     "unidade": "kg",
+     "custo_unitario": 36.0025,
+     "custo_aplicado": 1.080075
+    },
+    {
+     "insumo_key": 23,
+     "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+     "insumo_codigo": "1000764",
+     "categoria": "queijo",
+     "quantidade": 0.045,
+     "unidade": "kg",
+     "custo_unitario": 31.93333333,
+     "custo_aplicado": 1.437
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de teriack",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 9.0,
+   "custo_planilha": 4.135305,
+   "custo_canonico": 4.135305,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 2,
+   "componentes": [
+    {
+     "insumo_key": 13,
+     "insumo_nome": "FRANGO EM TIRAS CX4X2KG",
+     "insumo_codigo": "1000885",
+     "categoria": "proteina",
+     "quantidade": 0.079,
+     "unidade": "kg",
+     "custo_unitario": 49.29,
+     "custo_aplicado": 3.89391
+    },
+    {
+     "insumo_key": 40,
+     "insumo_nome": "MOLHO TERIYAKI 5X1,1KG",
+     "insumo_codigo": "1001166",
+     "categoria": "molho",
+     "quantidade": 0.0158,
+     "unidade": "kg",
+     "custo_unitario": 15.27818182,
+     "custo_aplicado": 0.241395
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de Musarela",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 0.601154,
+   "custo_canonico": 0.601154,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 26,
+     "insumo_nome": "QUEIJO MUSSARELA RALAD CX6X1KG",
+     "insumo_codigo": "1001122",
+     "categoria": "queijo",
+     "quantidade": 0.012,
+     "unidade": "kg",
+     "custo_unitario": 50.09618574,
+     "custo_aplicado": 0.601154
+    }
+   ]
+  },
+  {
+   "nome_planilha": "Dobro de Almôndegas",
+   "aba": "Recheios e Adicionais",
+   "tamanho": "unico",
+   "categoria": "adicional",
+   "preco_venda": 6.0,
+   "custo_planilha": 2.86957,
+   "custo_canonico": 2.86957,
+   "origem_mapeamento": "formula-integra",
+   "recheio_rotulo": null,
+   "n_comp": 1,
+   "componentes": [
+    {
+     "insumo_key": 19,
+     "insumo_nome": "ALMONDEGA CARNE BOV MOLH CX4KG",
+     "insumo_codigo": "1001163",
+     "categoria": "proteina",
+     "quantidade": 0.076,
+     "unidade": "kg",
+     "custo_unitario": 37.7575,
+     "custo_aplicado": 2.86957
+    }
+   ]
+  }
+ ],
+ "blocos": {
+  "recheios": {
+   "BATATA RUSTICA": {
+    "rotulo": "Batata Rustica",
+    "linha": 10,
+    "componentes": [
+     {
+      "insumo_key": 46,
+      "insumo_nome": "Molho da batata",
+      "insumo_codigo": null,
+      "categoria": "molho",
+      "quantidade": 0.015,
+      "unidade": "un",
+      "custo_unitario": 19.6497096,
+      "custo_aplicado": 0.294746
+     },
+     {
+      "insumo_key": 98,
+      "insumo_nome": "POTE P/ MOLHO 30ML CX700CJ",
+      "insumo_codigo": "1300252",
+      "categoria": "embalagem",
+      "quantidade": 1.0,
+      "unidade": "un",
+      "custo_unitario": 0.2003428571,
+      "custo_aplicado": 0.200343
+     },
+     {
+      "insumo_key": 113,
+      "insumo_nome": "SACO COOKIE 24X18 FD 500 UN",
+      "insumo_codigo": "1300496",
+      "categoria": "embalagem",
+      "quantidade": 1.0,
+      "unidade": "un",
+      "custo_unitario": 0.05896,
+      "custo_aplicado": 0.05896
+     },
+     {
+      "insumo_key": 125,
+      "insumo_nome": "BATATA RUSTICA ERVAS CX7X2KG",
+      "insumo_codigo": "1001092",
+      "categoria": "doce",
+      "quantidade": 0.12,
+      "unidade": "un",
+      "custo_unitario": 19.82785714,
+      "custo_aplicado": 2.379343
+     }
+    ]
+   },
+   "QUEIJO": {
+    "rotulo": "Dobro de queijo",
+    "linha": 11,
+    "componentes": [
+     {
+      "insumo_key": 24,
+      "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+      "insumo_codigo": "1000799",
+      "categoria": "queijo",
+      "quantidade": 0.01,
+      "unidade": "kg",
+      "custo_unitario": 48.18127962,
+      "custo_aplicado": 0.481813
+     }
+    ]
+   },
+   "BACON": {
+    "rotulo": "Dobro de Bacon",
+    "linha": 12,
+    "componentes": [
+     {
+      "insumo_key": 9,
+      "insumo_nome": "BACON TIRAS CX 4 PCT X 1 KG",
+      "insumo_codigo": "1001088",
+      "categoria": "proteina",
+      "quantidade": 0.015,
+      "unidade": "kg",
+      "custo_unitario": 121.5025,
+      "custo_aplicado": 1.822537
+     }
+    ]
+   },
+   "CC": {
+    "rotulo": "Dobro de CC",
+    "linha": 13,
+    "componentes": [
+     {
+      "insumo_key": 23,
+      "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+      "insumo_codigo": "1000764",
+      "categoria": "queijo",
+      "quantidade": 0.04,
+      "unidade": "kg",
+      "custo_unitario": 31.93333333,
+      "custo_aplicado": 1.277333
+     }
+    ]
+   },
+   "CHEDDAR": {
+    "rotulo": "Dobro de cheddar",
+    "linha": 14,
+    "componentes": [
+     {
+      "insumo_key": 31,
+      "insumo_nome": "MOLHO CHEDDAR CX4X1,5KG",
+      "insumo_codigo": "1000834",
+      "categoria": "molho",
+      "quantidade": 0.043,
+      "unidade": "kg",
+      "custo_unitario": 37.57833333,
+      "custo_aplicado": 1.615868
+     }
+    ]
+   },
+   "SALAME": {
+    "rotulo": "Adicional de salame",
+    "linha": 15,
+    "componentes": [
+     {
+      "insumo_key": 20,
+      "insumo_nome": "SALAME ITALIANO FAT CX4X500GR",
+      "insumo_codigo": "1000892",
+      "categoria": "proteina",
+      "quantidade": 0.018,
+      "unidade": "kg",
+      "custo_unitario": 67.565,
+      "custo_aplicado": 1.21617
+     }
+    ]
+   },
+   "PEPERONE": {
+    "rotulo": "Adicional de peperone",
+    "linha": 16,
+    "componentes": [
+     {
+      "insumo_key": 18,
+      "insumo_nome": "PEPPERONI FATIADO CX4X500GR",
+      "insumo_codigo": "1000891",
+      "categoria": "proteina",
+      "quantidade": 0.018,
+      "unidade": "kg",
+      "custo_unitario": 66.13,
+      "custo_aplicado": 1.19034
+     }
+    ]
+   },
+   "EMPANADO": {
+    "rotulo": "Dobro recheio Empanado",
+    "linha": 17,
+    "componentes": [
+     {
+      "insumo_key": 11,
+      "insumo_nome": "FRANGO EMPANADO CX4X1KG",
+      "insumo_codigo": "1001043",
+      "categoria": "proteina",
+      "quantidade": 0.076,
+      "unidade": "kg",
+      "custo_unitario": 30.355,
+      "custo_aplicado": 2.30698
+     }
+    ]
+   },
+   "FRANGO": {
+    "rotulo": "Dobro recheio Frango",
+    "linha": 18,
+    "componentes": [
+     {
+      "insumo_key": 14,
+      "insumo_nome": "FRANGO ROTISSERIE CX8X1KG",
+      "insumo_codigo": "1001129",
+      "categoria": "proteina",
+      "quantidade": 0.064,
+      "unidade": "kg",
+      "custo_unitario": 46.86,
+      "custo_aplicado": 2.99904
+     }
+    ]
+   },
+   "PRESUNTO": {
+    "rotulo": "Dobro recheio Presunto",
+    "linha": 19,
+    "componentes": [
+     {
+      "insumo_key": 15,
+      "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+      "insumo_codigo": "1000976",
+      "categoria": "proteina",
+      "quantidade": 0.04,
+      "unidade": "kg",
+      "custo_unitario": 51.31944444,
+      "custo_aplicado": 2.052778
+     }
+    ]
+   },
+   "CHURRASCO": {
+    "rotulo": "Dobro recheio Churrasco",
+    "linha": 20,
+    "componentes": [
+     {
+      "insumo_key": 16,
+      "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+      "insumo_codigo": "1000839",
+      "categoria": "proteina",
+      "quantidade": 0.058,
+      "unidade": "kg",
+      "custo_unitario": 36.24877451,
+      "custo_aplicado": 2.102429
+     }
+    ]
+   },
+   "CARNE SECA": {
+    "rotulo": "Dobro de Recheio Carne Seca",
+    "linha": 21,
+    "componentes": [
+     {
+      "insumo_key": 17,
+      "insumo_nome": "CARNE SECA CX 12X0,25KG",
+      "insumo_codigo": "1001074",
+      "categoria": "proteina",
+      "quantidade": 0.028,
+      "unidade": "kg",
+      "custo_unitario": 85.90333333,
+      "custo_aplicado": 2.405293
+     },
+     {
+      "insumo_key": 23,
+      "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+      "insumo_codigo": "1000764",
+      "categoria": "queijo",
+      "quantidade": 0.042,
+      "unidade": "kg",
+      "custo_unitario": 31.93333333,
+      "custo_aplicado": 1.3412
+     }
+    ]
+   },
+   "BMT": {
+    "rotulo": "Dobro recheio BMT",
+    "linha": 22,
+    "componentes": [
+     {
+      "insumo_key": 15,
+      "insumo_nome": "PRESUNTO COZIDO FAT CX9X0,4KG",
+      "insumo_codigo": "1000976",
+      "categoria": "proteina",
+      "quantidade": 0.02,
+      "unidade": "kg",
+      "custo_unitario": 51.31944444,
+      "custo_aplicado": 1.026389
+     },
+     {
+      "insumo_key": 18,
+      "insumo_nome": "PEPPERONI FATIADO CX4X500GR",
+      "insumo_codigo": "1000891",
+      "categoria": "proteina",
+      "quantidade": 0.018,
+      "unidade": "kg",
+      "custo_unitario": 66.13,
+      "custo_aplicado": 1.19034
+     },
+     {
+      "insumo_key": 20,
+      "insumo_nome": "SALAME ITALIANO FAT CX4X500GR",
+      "insumo_codigo": "1000892",
+      "categoria": "proteina",
+      "quantidade": 0.018,
+      "unidade": "kg",
+      "custo_unitario": 67.565,
+      "custo_aplicado": 1.21617
+     }
+    ]
+   },
+   "STEACK CHEDDAR": {
+    "rotulo": "Dobro recheio Steack Cheddar",
+    "linha": 23,
+    "componentes": [
+     {
+      "insumo_key": 16,
+      "insumo_nome": "STEAK DE CHURRASCO CX4X2,04KG",
+      "insumo_codigo": "1000839",
+      "categoria": "proteina",
+      "quantidade": 0.058,
+      "unidade": "kg",
+      "custo_unitario": 36.24877451,
+      "custo_aplicado": 2.102429
+     },
+     {
+      "insumo_key": 31,
+      "insumo_nome": "MOLHO CHEDDAR CX4X1,5KG",
+      "insumo_codigo": "1000834",
+      "categoria": "molho",
+      "quantidade": 0.043,
+      "unidade": "kg",
+      "custo_unitario": 37.57833333,
+      "custo_aplicado": 1.615868
+     }
+    ]
+   },
+   "FRANGO DEFUMADO": {
+    "rotulo": "Dobro recheio Frango Defumado",
+    "linha": 24,
+    "componentes": [
+     {
+      "insumo_key": 12,
+      "insumo_nome": "FRANGO CUBOSCX 2X2KG",
+      "insumo_codigo": "1000762",
+      "categoria": "proteina",
+      "quantidade": 0.03,
+      "unidade": "kg",
+      "custo_unitario": 36.0025,
+      "custo_aplicado": 1.080075
+     },
+     {
+      "insumo_key": 23,
+      "insumo_nome": "CREAM CHEESE CX4X1,5KG",
+      "insumo_codigo": "1000764",
+      "categoria": "queijo",
+      "quantidade": 0.045,
+      "unidade": "kg",
+      "custo_unitario": 31.93333333,
+      "custo_aplicado": 1.437
+     }
+    ]
+   },
+   "TERIACK": {
+    "rotulo": "Dobro de teriack",
+    "linha": 25,
+    "componentes": [
+     {
+      "insumo_key": 13,
+      "insumo_nome": "FRANGO EM TIRAS CX4X2KG",
+      "insumo_codigo": "1000885",
+      "categoria": "proteina",
+      "quantidade": 0.079,
+      "unidade": "kg",
+      "custo_unitario": 49.29,
+      "custo_aplicado": 3.89391
+     },
+     {
+      "insumo_key": 40,
+      "insumo_nome": "MOLHO TERIYAKI 5X1,1KG",
+      "insumo_codigo": "1001166",
+      "categoria": "molho",
+      "quantidade": 0.0158,
+      "unidade": "kg",
+      "custo_unitario": 15.27818182,
+      "custo_aplicado": 0.241395
+     }
+    ]
+   },
+   "MUSARELA": {
+    "rotulo": "Dobro de Musarela",
+    "linha": 26,
+    "componentes": [
+     {
+      "insumo_key": 26,
+      "insumo_nome": "QUEIJO MUSSARELA RALAD CX6X1KG",
+      "insumo_codigo": "1001122",
+      "categoria": "queijo",
+      "quantidade": 0.012,
+      "unidade": "kg",
+      "custo_unitario": 50.09618574,
+      "custo_aplicado": 0.601154
+     }
+    ]
+   },
+   "ALMONDEGAS": {
+    "rotulo": "Dobro de Almôndegas",
+    "linha": 27,
+    "componentes": [
+     {
+      "insumo_key": 19,
+      "insumo_nome": "ALMONDEGA CARNE BOV MOLH CX4KG",
+      "insumo_codigo": "1001163",
+      "categoria": "proteina",
+      "quantidade": 0.076,
+      "unidade": "kg",
+      "custo_unitario": 37.7575,
+      "custo_aplicado": 2.86957
+     }
+    ]
+   }
+  },
+  "bases": {
+   "15cm": [
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.01,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.481813
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.0375,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 0.736864
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 1.435929
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 0.52887
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 0.78649
+    }
+   ],
+   "30cm": [
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 53,
+     "insumo_nome": "pão de 15cm Branco",
+     "insumo_codigo": null,
+     "categoria": "pao",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 1.435928571,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 66,
+     "insumo_nome": "Vegetais completos sanduíche 15 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.5288701257,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 114,
+     "insumo_nome": "Embalagem pão 15 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 2.0,
+     "unidade": "un",
+     "custo_unitario": 0.78649,
+     "custo_aplicado": 1.57298
+    }
+   ],
+   "30cm_propria": [
+    {
+     "insumo_key": 24,
+     "insumo_nome": "QUEIJO PROC. CHEDDAR CX4X192FT",
+     "insumo_codigo": "1000799",
+     "categoria": "queijo",
+     "quantidade": 0.02,
+     "unidade": "kg",
+     "custo_unitario": 48.18127962,
+     "custo_aplicado": 0.963626
+    },
+    {
+     "insumo_key": 47,
+     "insumo_nome": "Molho de um sanduiche 4 molhos",
+     "insumo_codigo": null,
+     "categoria": "molho",
+     "quantidade": 0.075,
+     "unidade": "un",
+     "custo_unitario": 19.6497096,
+     "custo_aplicado": 1.473728
+    },
+    {
+     "insumo_key": 52,
+     "insumo_nome": "MASSA CONGELADA P/ PÃO BRANCO",
+     "insumo_codigo": "1000911",
+     "categoria": "pao",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 2.871857143,
+     "custo_aplicado": 2.871857
+    },
+    {
+     "insumo_key": 67,
+     "insumo_nome": "Vegetais completos sanduíche 30 cm",
+     "insumo_codigo": null,
+     "categoria": "vegetal",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 1.057740251,
+     "custo_aplicado": 1.05774
+    },
+    {
+     "insumo_key": 115,
+     "insumo_nome": "Embalagem pão 30 cm Completa",
+     "insumo_codigo": null,
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.95646,
+     "custo_aplicado": 0.95646
+    }
+   ],
+   "salada": [
+    {
+     "insumo_key": 109,
+     "insumo_nome": "FOLHA SUBWRAP 38X51 FD350UN",
+     "insumo_codigo": "1300537",
+     "categoria": "embalagem",
+     "quantidade": 1.0,
+     "unidade": "un",
+     "custo_unitario": 0.182,
+     "custo_aplicado": 0.182
+    }
+   ]
+  },
+  "regras": {
+   "sanduiche_15": "1x recheio + base 15cm",
+   "sanduiche_30": "2x recheio + base 30cm (=2x15cm)",
+   "salada": "2x recheio + base salada"
+  }
+ },
+ "meta": {
+  "base15_custo": 3.969966,
+  "base30_literal": 7.939931,
+  "base30_propria": 7.323411,
+  "recheios": {
+   "BATATA RUSTICA": "Batata Rustica",
+   "QUEIJO": "Dobro de queijo",
+   "BACON": "Dobro de Bacon",
+   "CC": "Dobro de CC",
+   "CHEDDAR": "Dobro de cheddar",
+   "SALAME": "Adicional de salame",
+   "PEPERONE": "Adicional de peperone",
+   "EMPANADO": "Dobro recheio Empanado",
+   "FRANGO": "Dobro recheio Frango",
+   "PRESUNTO": "Dobro recheio Presunto",
+   "CHURRASCO": "Dobro recheio Churrasco",
+   "CARNE SECA": "Dobro de Recheio Carne Seca",
+   "BMT": "Dobro recheio BMT",
+   "STEACK CHEDDAR": "Dobro recheio Steack Cheddar",
+   "FRANGO DEFUMADO": "Dobro recheio Frango Defumado",
+   "TERIACK": "Dobro de teriack",
+   "MUSARELA": "Dobro de Musarela",
+   "ALMONDEGAS": "Dobro de Almôndegas"
+  }
+ }
+}

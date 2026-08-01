@@ -42,6 +42,14 @@ export const atualizar = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
+export const remover = asyncHandler(async (req, res) => {
+  const data = await service.excluirInsumo({
+    organizacaoId: req.tenant.organizacaoId,
+    id: req.params.id,
+  });
+  res.json({ data });
+});
+
 export const definirAtivo = asyncHandler(async (req, res) => {
   const data = await service.definirAtivo({
     organizacaoId: req.tenant.organizacaoId,
