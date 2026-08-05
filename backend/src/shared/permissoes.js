@@ -32,12 +32,22 @@ export const PERMISSOES = {
   CONFIG_VER: "configuracoes.ver",
   CONFIG_GERENCIAR: "configuracoes.gerenciar",
   FINANCEIRO_VER: "financeiro.ver",
+  // Dashboard Executivo (lançamento financeiro diário por unidade).
+  DASHBOARD_EXECUTIVO_VER: "dashboard_executivo.ver",
+  // Criar lançamento novo + editar livremente enquanto status = 'rascunho'.
+  DASHBOARD_EXECUTIVO_LANCAR: "dashboard_executivo.lancar",
+  // Editar um lançamento JÁ FINALIZADO (sempre com motivo + auditoria) e
+  // lançar valor negativo em "outras deduções" (ajuste a favor da unidade).
+  DASHBOARD_EXECUTIVO_CORRIGIR: "dashboard_executivo.corrigir",
 };
 
 const P = PERMISSOES;
 
 /** Só leitura — a base de todos os papéis. */
-const LEITURA = [P.DASHBOARD_VER, P.PRODUTOS_VER, P.INSUMOS_VER, P.CMV_VER, P.VENDAS_VER, P.INTEGRACOES_VER];
+const LEITURA = [
+  P.DASHBOARD_VER, P.PRODUTOS_VER, P.INSUMOS_VER, P.CMV_VER, P.VENDAS_VER,
+  P.INTEGRACOES_VER, P.DASHBOARD_EXECUTIVO_VER,
+];
 
 /** @type {Record<string, string[]>} */
 const POR_PAPEL = {
@@ -47,11 +57,12 @@ const POR_PAPEL = {
     ...LEITURA,
     P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.VENDAS_EDITAR,
     P.INTEGRACOES_GERENCIAR, P.USUARIOS_VER, P.CONFIG_VER,
+    P.DASHBOARD_EXECUTIVO_LANCAR,
   ],
 
-  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER],
+  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR],
 
-  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR],
+  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR],
 
   viewer: [...LEITURA],
 };

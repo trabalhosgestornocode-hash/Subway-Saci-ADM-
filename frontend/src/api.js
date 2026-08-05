@@ -188,6 +188,20 @@ export async function vendasResolverDivergencia(id, resolvida = true) {
   return tratar(r);
 }
 
+// ---------- Dashboard Executivo (lançamento financeiro diário) ----------
+const DEX = "/api/v1/dashboard-executivo";
+export const dashExecUnidades = () => getJson(`${DEX}/unidades`);
+export const dashExecMes = (f) => getJson(`${DEX}/mes${qs(f)}`);
+export const dashExecLancamento = (data, f) => getJson(`${DEX}/lancamentos/${encodeURIComponent(data)}${qs(f)}`);
+export const dashExecHistorico = (f) => getJson(`${DEX}/historico${qs(f)}`);
+export const dashExecCriarLancamento = (dados) => postJson(`${DEX}/lancamentos`, dados);
+export async function dashExecAtualizarLancamento(id, dados) {
+  const r = await fetch(`${API_BASE}${DEX}/lancamentos/${id}`, {
+    method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+
 // ---------- Martin Brower (integração com o portal da distribuidora) ----------
 // Nenhuma credencial trafega aqui na fase atual: a sincronização automatizada
 // depende de MB_PLAYWRIGHT_ENABLED no backend, e enquanto estiver desligada o

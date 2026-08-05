@@ -7,7 +7,10 @@ export function getSupabase() {
       .then((r) => r.json())
       .then((cfg) =>
         window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+          // persistSession: false -> login sempre exigido ao reabrir o site (nada
+          // fica salvo entre sessões do navegador). autoRefreshToken continua
+          // ligado só para não derrubar quem está com a aba aberta e em uso.
+          auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
         })
       );
   }

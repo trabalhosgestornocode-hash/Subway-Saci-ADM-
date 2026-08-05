@@ -114,7 +114,14 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
       .from("vendas").insert({ unidade_id: uni.id, valor_total: 10 }).select("id").single();
     assert.ifError(eVenda);
 
-    return { ...u, orgId: org.id, uniId: uni.id, prodId: prod.id, vendaId: venda.id };
+    // Dashboard Executivo: mesmo padrão de escopo por UNIDADE que `vendas`.
+    const { data: lanc, error: eLanc } = await admin
+      .from("lancamentos_financeiros_diarios")
+      .insert({ organizacao_id: org.id, unidade_id: uni.id, data_lancamento: "2026-01-15", status: "rascunho" })
+      .select("id").single();
+    assert.ifError(eLanc);
+
+    return { ...u, orgId: org.id, uniId: uni.id, prodId: prod.id, vendaId: venda.id, lancId: lanc.id };
   }
 
   before(async () => {
@@ -125,6 +132,7 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
     await verificarTabelas(admin, [                          // migration/tabela ausente
       "organizacoes", "unidades", "perfis", "produtos", "vendas",
       "usuarios_organizacoes", "usuarios_unidades", "plataforma_admins",
+      "lancamentos_financeiros_diarios",
     ]);
     await verificarRlsAtivo(createClient(URL, ANON, opts), "produtos"); // policy RLS ausente
 
@@ -217,6 +225,20 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
     assert.ifError(error);
     assert.ok(data.every((r) => r.unidade_id === ctx.A.uniId), vazamento("A viu venda de outra unidade"));
     assert.ok(!data.some((r) => r.id === ctx.B.vendaId), vazamento("A enxergou a venda de B"));
+  });
+
+  // ------- Dashboard Executivo: isolamento no escopo de UNIDADE -------
+  it("A NÃO enxerga lançamentos financeiros da unidade de B", async () => {
+    const { data, error } = await ctx.A.cli.from("lancamentos_financeiros_diarios").select("id, unidade_id, organizacao_id");
+    assert.ifError(error);
+    assert.ok(data.every((r) => r.unidade_id === ctx.A.uniId), vazamento("A viu lançamento financeiro de outra unidade"));
+    assert.ok(data.some((r) => r.id === ctx.A.lancId), "A não enxergou o próprio lançamento financeiro");
+    assert.ok(!data.some((r) => r.id === ctx.B.lancId), vazamento("A enxergou o lançamento financeiro de B"));
+
+    const { data: porId, error: eId } = await ctx.A.cli
+      .from("lancamentos_financeiros_diarios").select("id").eq("id", ctx.B.lancId);
+    assert.ifError(eId);
+    assert.equal(porId.length, 0, vazamento("A acessou por ID um lançamento financeiro de B"));
   });
 
   // ------- 7: sentido inverso (B nunca vê/altera A) -------

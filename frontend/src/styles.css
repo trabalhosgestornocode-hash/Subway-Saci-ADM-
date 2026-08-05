@@ -1827,3 +1827,139 @@ tr.linha-inativa { opacity: .55; }
   border-color: rgba(214, 69, 69, .45);
   background: rgba(214, 69, 69, .08);
 }
+
+/* ============================================================
+   DASHBOARD EXECUTIVO (lançamento financeiro diário por unidade)
+   Reutiliza os componentes existentes (.card, .pill, .modal-overlay,
+   .cfg-form-grid/.cfg-campo, .ed-acoes, .grid/.tabela-wrap) e só
+   acrescenta o que é específico deste módulo (prefixo dex-).
+   ============================================================ */
+.dex-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; animation: fadeInUp .35s ease both; }
+.dex-head-txt h2 { font-size: 22px; letter-spacing: -.4px; margin-bottom: 4px; }
+.dex-head-txt p { color: var(--cinza); font-size: 14px; max-width: 640px; }
+
+.dex-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+.dex-filtros .cfg-campo { min-width: 160px; }
+
+.dex-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1.5px solid var(--linha); padding-bottom: 0; }
+.dex-tab {
+  border: none; background: transparent; padding: 10px 16px; font-size: 13.5px; font-weight: 650; color: var(--cinza);
+  cursor: pointer; border-radius: 10px 10px 0 0; display: flex; align-items: center; gap: 6px; transition: background var(--t), color var(--t);
+  border-bottom: 2.5px solid transparent; margin-bottom: -1.5px;
+}
+.dex-tab:hover { background: var(--superficie-2); color: var(--texto); }
+.dex-tab.ativo { color: var(--verde-vivo); border-bottom-color: var(--verde-vivo); background: var(--superficie-2); }
+
+.dex-conteudo { animation: fadeInUp .3s ease both; }
+
+.dex-alerta {
+  background: var(--warn-bg); border: 1px solid rgba(196,138,18,.25); border-radius: var(--raio);
+  padding: 14px 16px; margin-bottom: 16px; color: #7a5a08;
+}
+.dex-alerta b { display: block; margin-bottom: 4px; }
+.dex-alerta p { font-size: 13.5px; margin-top: 2px; }
+
+.dex-aviso {
+  background: var(--info-bg); border: 1px solid rgba(47,119,196,.2); border-radius: var(--raio);
+  padding: 12px 16px; margin-bottom: 16px; color: #204a75; font-size: 13.5px; font-weight: 600;
+}
+
+.dex-resumo { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 16px; box-shadow: var(--sombra-sm); }
+.dex-resumo h3 { font-size: 16px; margin-bottom: 6px; }
+.dex-resumo p { font-size: 13.5px; color: var(--cinza); }
+.dex-resumo-sub { margin-top: 6px; }
+.dex-resumo #dex-preencher-primeiro, .dex-resumo .btn { margin-top: 12px; }
+.dex-progress { height: 10px; background: var(--superficie-2); border-radius: 9px; overflow: hidden; margin: 10px 0; }
+.dex-progress > div { height: 100%; border-radius: 9px; background: var(--grad-verde); transition: width .4s ease; }
+
+.dex-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.dex-card-topo { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--cinza); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 8px; }
+.dex-card-val { font-size: 22px; font-weight: 800; display: block; }
+.card.destaque .dex-card-val { color: #fff; }
+.dex-card-sub { font-size: 12.5px; color: var(--cinza); display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.card.destaque .dex-card-sub { color: rgba(255,255,255,.85); }
+
+.dex-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.dex-painel { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 16px 18px; box-shadow: var(--sombra-sm); }
+.dex-painel h3 { font-size: 15px; margin-bottom: 12px; }
+.dex-chart-wrap { position: relative; height: 260px; }
+
+.dex-projecao { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--sombra-sm); }
+.dex-projecao h3 { font-size: 15px; margin-bottom: 12px; }
+.dex-projecao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.dex-projecao-grid > div { display: flex; flex-direction: column; gap: 4px; }
+.dex-projecao-grid span { font-size: 11.5px; color: var(--cinza); text-transform: uppercase; font-weight: 700; letter-spacing: .3px; }
+.dex-projecao-grid b { font-size: 18px; }
+.dex-projecao-destaque b { color: var(--verde-vivo); }
+.dex-confiabilidade { margin-top: 12px; font-size: 13px; }
+.dex-conf-alta { color: var(--ok); }
+.dex-conf-media { color: var(--warn); }
+.dex-conf-baixa, .dex-conf-indisponivel { color: var(--bad); }
+.dex-projecao-parcial { margin-top: 8px; font-size: 13px; font-weight: 650; color: var(--warn); }
+
+.dex-diag-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 18px; }
+@media (max-width: 900px) { .dex-diag-grid { grid-template-columns: 1fr; } }
+.dex-diag, .dex-recom { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 16px 18px; box-shadow: var(--sombra-sm); }
+.dex-diag h3, .dex-recom h3 { font-size: 15px; margin-bottom: 10px; }
+.dex-diag-bloco { margin-bottom: 10px; }
+.dex-diag-bloco h4 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 6px; }
+.dex-diag-bloco ul, .dex-recom-lista { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.dex-diag-bloco li, .dex-recom-lista li { font-size: 13.5px; padding-left: 18px; position: relative; }
+.dex-diag-bloco li::before, .dex-recom-lista li::before { content: "•"; position: absolute; left: 4px; font-weight: 900; }
+.dex-diag-bloco.forte h4 { color: var(--ok); }
+.dex-diag-bloco.forte li::before { color: var(--ok); }
+.dex-diag-bloco.atencao h4 { color: var(--warn); }
+.dex-diag-bloco.atencao li::before { color: var(--warn); }
+.dex-diag-bloco.alerta h4 { color: var(--bad); }
+.dex-diag-bloco.alerta li::before { color: var(--bad); }
+.dex-diag-vazio { color: var(--cinza); font-size: 13.5px; }
+.dex-recom-lista li::before { color: var(--verde-vivo); }
+
+/* calendário */
+.dex-cal-wrap { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--sombra-sm); }
+.dex-cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.dex-cal-dia {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 10px 4px; border-radius: 10px; font-size: 11px; text-align: center; cursor: default;
+}
+.dex-cal-dia[data-clicavel] { cursor: pointer; transition: transform var(--t), box-shadow var(--t); }
+.dex-cal-dia[data-clicavel]:hover { transform: translateY(-2px); box-shadow: var(--sombra); }
+.dex-cal-num { font-size: 15px; font-weight: 800; }
+.dex-cal-status { font-size: 9.5px; text-transform: uppercase; letter-spacing: .2px; font-weight: 700; }
+.dex-legenda { display: flex; gap: 10px; flex-wrap: wrap; }
+.dex-leg-item { display: inline-flex; }
+
+/* formulário de lançamento (modal em 5 etapas) */
+.dex-modal { max-width: 640px; }
+.dex-stepper { display: flex; align-items: center; gap: 6px; margin-bottom: 16px; }
+.dex-step {
+  width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; background: var(--superficie-2); color: var(--cinza); flex: 0 0 auto;
+}
+.dex-step.ativo { background: var(--grad-verde); color: #fff; }
+.dex-step.feito { background: var(--ok-bg); color: var(--ok); }
+.dex-form-corpo { min-height: 160px; }
+.dex-form-pergunta { font-size: 14.5px; font-weight: 650; margin-bottom: 12px; }
+.dex-form-info { color: var(--cinza); font-size: 13.5px; }
+.dex-radios { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.dex-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.dex-calc-preview {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+  background: var(--superficie-2); border-radius: 12px; padding: 14px; margin-top: 14px;
+}
+.dex-calc-preview > div { display: flex; flex-direction: column; gap: 2px; }
+.dex-calc-preview span { font-size: 11px; color: var(--cinza); text-transform: uppercase; font-weight: 700; }
+.dex-calc-preview b { font-size: 16px; }
+.dex-calc-preview .destaque b { color: var(--verde-vivo); }
+.dex-conf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin-bottom: 14px; }
+.dex-conf-item { display: flex; justify-content: space-between; font-size: 13.5px; border-bottom: 1px dashed var(--linha); padding-bottom: 6px; }
+.dex-avisos { background: var(--warn-bg); border: 1px solid rgba(196,138,18,.25); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.dex-avisos ul { margin: 8px 0; padding-left: 18px; font-size: 13px; }
+.dex-motivo-correcao { margin-top: 4px; }
+.dex-form-acoes { flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .dex-cards { grid-template-columns: 1fr; }
+  .dex-cal { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); }
+  .dex-conf-grid { grid-template-columns: 1fr; }
+}
