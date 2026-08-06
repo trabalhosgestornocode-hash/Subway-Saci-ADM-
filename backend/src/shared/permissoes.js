@@ -39,6 +39,9 @@ export const PERMISSOES = {
   // Editar um lançamento JÁ FINALIZADO (sempre com motivo + auditoria) e
   // lançar valor negativo em "outras deduções" (ajuste a favor da unidade).
   DASHBOARD_EXECUTIVO_CORRIGIR: "dashboard_executivo.corrigir",
+  // Trocar o modelo logístico do iFood da unidade (Marketplace/Full Service).
+  // unit_manager NÃO tem — só vê o modelo (via DASHBOARD_EXECUTIVO_VER).
+  DASHBOARD_EXECUTIVO_CONFIGURAR: "dashboard_executivo.configurar",
 };
 
 const P = PERMISSOES;
@@ -60,9 +63,9 @@ const POR_PAPEL = {
     P.DASHBOARD_EXECUTIVO_LANCAR,
   ],
 
-  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR],
+  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR],
 
-  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR],
+  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR],
 
   viewer: [...LEITURA],
 };

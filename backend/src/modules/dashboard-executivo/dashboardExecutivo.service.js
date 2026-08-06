@@ -2,13 +2,13 @@ import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
 import { PERMISSOES, temPermissao } from "../../shared/permissoes.js";
-import { resolverMetas } from "./dashboardExecutivo.metas.service.js";
+import { resolverMetas, obterModeloLogistico, definirModeloLogistico, historicoModeloLogistico } from "./dashboardExecutivo.metas.service.js";
 import {
   hojeIsoBrasil, diasDoMes, mesAnterior, statusMes, resumoPreenchimento,
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
   totalDeducoes, receitaAposDeducoes, saldoPercentual, mediaDiaria, projecaoMensal,
   confiabilidadeProjecao, diagnostico, recomendacoes, validarOutrasDeducoes,
-  inconsistencias, STATUS_DIA,
+  inconsistencias, STATUS_DIA, indicadorAplicavel,
 } from "./dashboardExecutivo.calc.js";
 
 const TABELA = "lancamentos_financeiros_diarios";
@@ -106,6 +106,29 @@ export async function listarUnidades({ organizacaoId, unidadeIdSessao }) {
 }
 
 // ---------------------------------------------------------------------------
+// MODELO LOGÍSTICO DO IFOOD DE UMA UNIDADE (Marketplace x Full Service)
+// Sempre exige uma unidade específica — "todas as unidades" não é um
+// conceito válido pra este recurso (cada unidade tem o seu próprio modelo).
+// ---------------------------------------------------------------------------
+export async function obterModeloLogisticoUnidade({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado }) {
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
+  return obterModeloLogistico({ unidadeId });
+}
+
+export async function atualizarModeloLogisticoUnidade({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, dados: body }) {
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
+  const b = v.corpo(body);
+  return definirModeloLogistico({
+    unidadeId, organizacaoId, modeloNovo: b.modeloLogistico, usuario, motivo: b.motivo, observacao: b.observacao,
+  });
+}
+
+export async function historicoModeloLogisticoUnidade({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado }) {
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
+  return historicoModeloLogistico({ unidadeId });
+}
+
+// ---------------------------------------------------------------------------
 // CALENDÁRIO DE UM MÊS (para uma unidade específica)
 // ---------------------------------------------------------------------------
 async function carregarCalendarioMes({ unidadeId, ano, mes, hojeIso }) {
@@ -142,13 +165,24 @@ export async function obterMes({ organizacaoId, unidadeIdSessao, unidadeIdSolici
   const ano = v.numero(anoRaw, "Ano", { min: 2000, max: 2100 });
   const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: false });
   const hojeIso = hojeIsoBrasil();
-  const metas = await resolverMetas({ organizacaoId, unidadeId: unidadeId ?? unidadeIdSessao ?? null });
 
-  if (unidadeId) return obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIso, metas });
-  return obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas });
+  if (unidadeId) {
+    // O modelo logístico é DA UNIDADE — resolve antes das metas, porque cada
+    // modelo tem um conjunto de metas diferente (ver dashboardExecutivo.calc.js).
+    const modelo = await obterModeloLogistico({ unidadeId });
+    const metas = await resolverMetas({ organizacaoId, unidadeId, modeloLogistico: modelo.modeloLogistico });
+    return obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIso, metas, modelo });
+  }
+
+  // Visão agregada ("todas as unidades"): unidades diferentes podem estar em
+  // modelos logísticos diferentes, então não existe UMA meta correta pra
+  // mostrar aqui — mostrar a meta de um modelo só pra unidades no outro seria
+  // um dado errado. Cards e valores continuam somados normalmente; só o
+  // comparativo com meta fica indisponível nesta visão (honesto > inventado).
+  return obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas: {} });
 }
 
-async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIso, metas }) {
+async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIso, metas, modelo }) {
   const { diasComStatus, linhas } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
   const resumo = resumoPreenchimento(diasComStatus);
 
@@ -207,6 +241,7 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   const diagn = diagnostico({
     indicadores: linhasComDados.length ? indicadoresRentabilidade : null,
     metas, diasPendentesNoMes: resumo.diasPendentes, comparativoMesAnteriorPct,
+    modelo: modelo.modeloLogistico,
   });
   const recom = recomendacoes({
     indicadoresForaDaMeta: diagn.indicadoresForaDaMeta, diasPendentesNoMes: resumo.diasPendentes,
@@ -218,18 +253,26 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   return {
     agregado: false,
     unidadeId,
+    modeloLogistico: modelo.modeloLogistico,
+    modeloLogisticoRotulo: modelo.modeloLogisticoRotulo,
     periodo: { mes, ano },
     resumoPreenchimento: resumo,
     calendario: diasComStatus,
     pendenciasMesesAnteriores,
     cards,
     indicadoresRentabilidade: Object.fromEntries(
-      Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, { atual, metaIdeal: metas[k]?.metaIdeal ?? null, limite: metas[k]?.limite ?? null }]),
+      Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, {
+        atual: indicadorAplicavel(modelo.modeloLogistico, k) ? atual : null,
+        metaIdeal: metas[k]?.metaIdeal ?? null, limite: metas[k]?.limite ?? null,
+        naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, k),
+      }]),
     ),
     graficos: {
-      comparativoPercentuais: Object.entries(indicadoresRentabilidade).map(([indicador, atual]) => ({
-        indicador, atual, metaIdeal: metas[indicador]?.metaIdeal ?? null, limite: metas[indicador]?.limite ?? null,
-      })),
+      comparativoPercentuais: Object.entries(indicadoresRentabilidade)
+        .filter(([indicador]) => indicadorAplicavel(modelo.modeloLogistico, indicador))
+        .map(([indicador, atual]) => ({
+          indicador, atual, metaIdeal: metas[indicador]?.metaIdeal ?? null, limite: metas[indicador]?.limite ?? null,
+        })),
       composicaoDeducoes: [
         { indicador: "taxas_comissoes", valor: cardValores.taxasComissoes },
         { indicador: "servicos_promocoes", valor: cardValores.servicosPromocoes },
@@ -305,8 +348,9 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   return {
     agregado: true,
     unidadeId: null,
+    modeloLogistico: null,
     periodo: { mes, ano },
-    aviso: "Visão consolidada de todas as unidades — somente leitura. Selecione uma unidade específica para lançar ou corrigir dados.",
+    aviso: "Visão consolidada de todas as unidades — somente leitura. Selecione uma unidade específica para lançar ou corrigir dados. Como cada unidade pode estar em um modelo logístico diferente (Marketplace/Full Service), as metas não são exibidas nesta visão agregada.",
     cards: {
       vendasBrutas: { valor: valores.valorVendasBruto, percentualSobreVendas: 100 },
       taxasComissoes: { valor: valores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null },

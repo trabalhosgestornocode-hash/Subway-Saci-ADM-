@@ -8,7 +8,9 @@ import { state } from "./state.js";
 import { pode } from "./sessao.js";
 import {
   dashExecUnidades, dashExecMes, dashExecHistorico,
+  dashExecAtualizarModeloLogistico,
 } from "./api.js";
+import { INTEGRACOES } from "./config.js";
 import {
   destruirGraficosDashboardExecutivo, barraComparativaMeta, roscaDeducoes,
   linhaEvolucao, linhaEvolucaoDeducoes, barraComparativoMensal, visaoAnual,
@@ -73,9 +75,10 @@ function montarLayout() {
   view.innerHTML = `
     <div class="dex-head">
       <div class="dex-head-txt">
-        <h2>Dashboard Executivo</h2>
+        <h2>${INTEGRACOES.ifood?.logo ? `<img src="${INTEGRACOES.ifood.logo}" alt="iFood" class="dex-logo">` : ""}Dashboard iFood</h2>
         <p>Lançamento financeiro diário do iFood — preencha os dados brutos; percentuais, deduções e projeções são calculados automaticamente.</p>
       </div>
+      <div id="dex-modelo-box" class="dex-modelo-box"></div>
     </div>
     <div class="dex-filtros">
       ${dex.unidades.length > 1 || dex.agregadoDisponivel ? `
@@ -89,7 +92,7 @@ function montarLayout() {
       <label class="cfg-campo"><span>Ano</span>
         <select id="dex-ano">${anos.map((a) => `<option value="${a}" ${a === dex.ano ? "selected" : ""}>${a}</option>`).join("")}</select></label>
     </div>
-    <nav class="dex-nav" aria-label="Seções do Dashboard Executivo">
+    <nav class="dex-nav" aria-label="Seções do Dashboard iFood">
       ${ABAS.map((a) => `<button class="dex-tab ${a.id === dex.aba ? "ativo" : ""}" data-aba="${a.id}"><span>${a.icon}</span> ${a.label}</button>`).join("")}
     </nav>
     <div id="dex-conteudo" class="dex-conteudo"></div>`;
@@ -119,10 +122,55 @@ async function carregarConteudo() {
   try {
     const { data } = await dashExecMes({ unidadeId: dex.unidadeId || undefined, mes: dex.mes, ano: dex.ano });
     dex.dadosMes = data;
+    renderModeloBox();
     renderAbaAtual();
   } catch (e) {
     box.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry-mes">Tentar novamente</button>`);
     el("#dex-retry-mes")?.addEventListener("click", carregarConteudo);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MODELO LOGÍSTICO DO IFOOD (Marketplace x Full Service) — cabeçalho
+// ---------------------------------------------------------------------------
+const ROTULO_MODELO = { marketplace: "Marketplace", full_service: "Full Service" };
+
+function renderModeloBox() {
+  const caixa = el("#dex-modelo-box");
+  const d = dex.dadosMes;
+  if (!caixa || !d) return;
+
+  if (d.agregado) {
+    caixa.innerHTML = `<span class="dex-modelo-nota">🏷️ Modelo logístico: varia por unidade nesta visão consolidada</span>`;
+    return;
+  }
+
+  if (pode("dashboard_executivo.configurar")) {
+    caixa.innerHTML = `<label class="dex-modelo-campo"><span>Modelo logístico</span>
+      <select id="dex-modelo-select">
+        <option value="marketplace" ${d.modeloLogistico === "marketplace" ? "selected" : ""}>Marketplace</option>
+        <option value="full_service" ${d.modeloLogistico === "full_service" ? "selected" : ""}>Full Service</option>
+      </select></label>`;
+    el("#dex-modelo-select").addEventListener("change", (e) => trocarModeloLogistico(e.target.value));
+  } else {
+    caixa.innerHTML = `<span class="dex-modelo-nota">🏷️ Modelo logístico: <b>${escapeHtml(d.modeloLogisticoRotulo ?? ROTULO_MODELO[d.modeloLogistico] ?? "—")}</b></span>`;
+  }
+}
+
+async function trocarModeloLogistico(modeloNovo) {
+  const rotulo = ROTULO_MODELO[modeloNovo] ?? modeloNovo;
+  if (!confirm(`Trocar o modelo logístico desta unidade para ${rotulo}? Isso atualiza imediatamente as metas, os indicadores e o diagnóstico do mês.`)) {
+    renderModeloBox(); // desfaz a seleção visual do <select>
+    return;
+  }
+  const motivo = prompt("Motivo da troca (opcional):") || undefined;
+  try {
+    await dashExecAtualizarModeloLogistico(dex.unidadeId, { modeloLogistico: modeloNovo, motivo });
+    toast(`Modelo logístico atualizado para ${rotulo}.`);
+    await carregarConteudo();
+  } catch (e) {
+    toast("Erro: " + e.message);
+    renderModeloBox();
   }
 }
 
@@ -244,7 +292,9 @@ const cardDef = (icone, label, valor, sub, tip, cls = "") => `
   </div>`;
 
 function statusMeta(atual, meta) {
-  if (atual == null || !meta) return { label: "Dados insuficientes", classe: "muted" };
+  if (atual == null || meta == null || meta.metaIdeal == null || meta.limite == null) {
+    return { label: "Dados insuficientes", classe: "muted" };
+  }
   if (atual <= meta.metaIdeal) return { label: "Dentro da meta", classe: "ok" };
   if (atual <= meta.limite) return { label: "Atenção", classe: "warn" };
   return { label: "Fora da meta", classe: "bad" };
@@ -307,7 +357,18 @@ function diaHtml(dia) {
 // ---------------------------------------------------------------------------
 function renderIndicadores(box) {
   const d = dex.dadosMes;
+  if (d.agregado) {
+    box.innerHTML = vazio("🏢", "Visão consolidada", "Os indicadores de rentabilidade dependem do modelo logístico (Marketplace/Full Service) de cada unidade e não são exibidos nesta visão. Selecione uma unidade específica no filtro acima.");
+    return;
+  }
   const linhas = Object.entries(d.indicadoresRentabilidade).map(([chave, v]) => {
+    if (v.naoAplicavel) {
+      return `<tr class="dex-linha-na">
+        <td>${rotuloIndicador(chave)}</td>
+        <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+        <td><span class="pill muted">Não se aplica a este modelo</span></td>
+      </tr>`;
+    }
     const s = statusMeta(v.atual, { metaIdeal: v.metaIdeal, limite: v.limite });
     return `<tr>
       <td>${rotuloIndicador(chave)}</td>

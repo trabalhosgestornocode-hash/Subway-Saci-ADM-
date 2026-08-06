@@ -268,6 +268,37 @@ export function inconsistencias({ qtdVendas, valorVendasBruto, valorVendasIfood,
 }
 
 // ---------------------------------------------------------------------------
+// MODELO LOGÍSTICO DO IFOOD (Marketplace x Full Service)
+// ---------------------------------------------------------------------------
+
+export const MODELOS_LOGISTICOS = ["marketplace", "full_service"];
+
+export const ROTULO_MODELO = {
+  marketplace: "Marketplace",
+  full_service: "Full Service",
+};
+
+/**
+ * Quais indicadores de rentabilidade existem em cada modelo. É esta lista —
+ * não a presença ou ausência de uma linha em `metas_indicadores` — que
+ * decide se um indicador é "não aplicável": no Full Service quem entrega é
+ * o parceiro do iFood, então não existe meta de "motoboy próprio"
+ * (taxas_entregadores). Fonte única dessa regra de negócio.
+ * @type {Record<string, string[]>}
+ */
+export const INDICADORES_POR_MODELO = {
+  marketplace: ["taxas_comissoes", "servicos_promocoes", "taxas_entregadores", "total_deducoes"],
+  full_service: ["taxas_comissoes", "servicos_promocoes", "total_deducoes"],
+};
+
+/**
+ * @param {string} modelo @param {string} indicador @returns {boolean}
+ */
+export function indicadorAplicavel(modelo, indicador) {
+  return (INDICADORES_POR_MODELO[modelo] ?? INDICADORES_POR_MODELO.full_service).includes(indicador);
+}
+
+// ---------------------------------------------------------------------------
 // DIAGNÓSTICO E RECOMENDAÇÕES
 // ---------------------------------------------------------------------------
 
@@ -282,9 +313,12 @@ const fmtPct1 = (v) => `${Number(v).toFixed(1)}%`;
 
 /**
  * Diagnóstico executivo — nunca apresenta ponto forte sem dados suficientes.
- * @param {{indicadores: Record<string, number|null>|null, metas: Record<string, {metaIdeal: number, limite: number}>, diasPendentesNoMes: number, comparativoMesAnteriorPct: number|null}} p
+ * Indicador não aplicável ao modelo logístico da unidade (ex.: "taxas de
+ * entregadores" no Full Service) nunca é julgado — nem vira ponto forte,
+ * nem atenção, nem alerta.
+ * @param {{indicadores: Record<string, number|null>|null, metas: Record<string, {metaIdeal: number, limite: number}>, diasPendentesNoMes: number, comparativoMesAnteriorPct: number|null, modelo: string}} p
  */
-export function diagnostico({ indicadores, metas, diasPendentesNoMes, comparativoMesAnteriorPct }) {
+export function diagnostico({ indicadores, metas, diasPendentesNoMes, comparativoMesAnteriorPct, modelo }) {
   const pontosFortes = [];
   const pontosAtencao = [];
   const alertas = [];
@@ -295,6 +329,7 @@ export function diagnostico({ indicadores, metas, diasPendentesNoMes, comparativ
   }
 
   for (const chave of Object.keys(ROTULO_INDICADOR)) {
+    if (!indicadorAplicavel(modelo, chave)) continue;
     const valor = indicadores[chave];
     const meta = metas?.[chave];
     if (valor == null || !meta) continue;

@@ -1834,9 +1834,23 @@ tr.linha-inativa { opacity: .55; }
    .cfg-form-grid/.cfg-campo, .ed-acoes, .grid/.tabela-wrap) e só
    acrescenta o que é específico deste módulo (prefixo dex-).
    ============================================================ */
-.dex-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; animation: fadeInUp .35s ease both; }
-.dex-head-txt h2 { font-size: 22px; letter-spacing: -.4px; margin-bottom: 4px; }
+.dex-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; animation: fadeInUp .35s ease both; flex-wrap: wrap; }
+.dex-head-txt h2 { font-size: 22px; letter-spacing: -.4px; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
 .dex-head-txt p { color: var(--cinza); font-size: 14px; max-width: 640px; }
+.dex-logo { height: 26px; width: auto; border-radius: 6px; box-shadow: var(--sombra-sm); flex: 0 0 auto; }
+
+/* Modelo logístico do iFood (Marketplace x Full Service) — cabeçalho */
+.dex-modelo-box { flex: 0 0 auto; display: flex; align-items: center; }
+.dex-modelo-nota { font-size: 13px; font-weight: 650; color: var(--cinza); background: var(--superficie-2); border: 1px solid var(--linha); border-radius: 20px; padding: 7px 14px; white-space: nowrap; }
+.dex-modelo-nota b { color: var(--texto); }
+.dex-modelo-campo { display: flex; align-items: center; gap: 8px; }
+.dex-modelo-campo > span { font-size: 11.5px; font-weight: 700; color: var(--cinza); text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.dex-modelo-campo select {
+  padding: 7px 12px; border: 1.5px solid var(--verde-vivo); border-radius: 20px; font-size: 13px; font-weight: 650;
+  background: var(--superficie-2); color: var(--texto); cursor: pointer;
+}
+.dex-modelo-campo select:focus { outline: none; box-shadow: 0 0 0 3px rgba(0,194,90,.13); }
+tr.dex-linha-na { opacity: .65; }
 
 .dex-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
 .dex-filtros .cfg-campo { min-width: 160px; }

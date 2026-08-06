@@ -11,6 +11,7 @@ export const dashboardExecutivoRouter = Router();
 
 const ver = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_VER);
 const lancar = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_LANCAR);
+const configurar = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_CONFIGURAR);
 
 dashboardExecutivoRouter.get("/unidades", ver, controller.unidades);
 dashboardExecutivoRouter.get("/mes", ver, controller.mes);
@@ -18,3 +19,9 @@ dashboardExecutivoRouter.get("/historico", ver, controller.historico);
 dashboardExecutivoRouter.get("/lancamentos/:data", ver, controller.lancamentoPorData);
 dashboardExecutivoRouter.post("/lancamentos", lancar, controller.criarLancamento);
 dashboardExecutivoRouter.put("/lancamentos/:id", lancar, controller.atualizarLancamento);
+
+// Modelo logístico do iFood (Marketplace x Full Service) — quem só vê usa VER;
+// trocar exige CONFIGURAR (finance/operations/organization_admin, não unit_manager).
+dashboardExecutivoRouter.get("/unidades/:unidadeId/modelo-logistico", ver, controller.modeloLogistico);
+dashboardExecutivoRouter.put("/unidades/:unidadeId/modelo-logistico", configurar, controller.atualizarModeloLogistico);
+dashboardExecutivoRouter.get("/unidades/:unidadeId/modelo-logistico/historico", ver, controller.historicoModeloLogistico);

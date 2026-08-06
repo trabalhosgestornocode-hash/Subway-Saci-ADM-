@@ -202,6 +202,16 @@ export async function dashExecAtualizarLancamento(id, dados) {
   return tratar(r);
 }
 
+// ---------- Modelo logístico do iFood (Marketplace x Full Service) ----------
+export const dashExecModeloLogistico = (unidadeId) => getJson(`${DEX}/unidades/${unidadeId}/modelo-logistico`);
+export const dashExecHistoricoModelo = (unidadeId) => getJson(`${DEX}/unidades/${unidadeId}/modelo-logistico/historico`);
+export async function dashExecAtualizarModeloLogistico(unidadeId, dados) {
+  const r = await fetch(`${API_BASE}${DEX}/unidades/${unidadeId}/modelo-logistico`, {
+    method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
+  });
+  return tratar(r);
+}
+
 // ---------- Martin Brower (integração com o portal da distribuidora) ----------
 // Nenhuma credencial trafega aqui na fase atual: a sincronização automatizada
 // depende de MB_PLAYWRIGHT_ENABLED no backend, e enquanto estiver desligada o

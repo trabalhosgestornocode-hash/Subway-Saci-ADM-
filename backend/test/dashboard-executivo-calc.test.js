@@ -10,6 +10,7 @@ import {
   resumoPreenchimento, verificarDisponibilidade, agruparPendenciasPorMes,
   validarOutrasDeducoes, inconsistencias, diagnostico, recomendacoes,
   diasDoMes, mesAnterior, STATUS_DIA,
+  MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -331,5 +332,96 @@ describe("recomendações — sempre amarradas a um indicador/pendência real", 
   test("tudo certo => recomendação de manter o desempenho", () => {
     const r = recomendacoes({ indicadoresForaDaMeta: [], diasPendentesNoMes: 0, semDadosSuficientes: false });
     assert.ok(r.some((x) => /manter o desempenho/i.test(x)));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Modelo logístico do iFood (Marketplace x Full Service) — briefing novo:
+// cada modelo tem seu próprio conjunto de metas, e "taxas de entregadores"
+// (motoboy próprio) não existe no Full Service (quem entrega é o parceiro
+// do iFood).
+// ---------------------------------------------------------------------------
+describe("modelo logístico — indicadores aplicáveis por modelo", () => {
+  test("MODELOS_LOGISTICOS tem exatamente marketplace e full_service", () => {
+    assert.deepEqual([...MODELOS_LOGISTICOS].sort(), ["full_service", "marketplace"]);
+  });
+  test("rótulos em pt-BR existem para os dois modelos", () => {
+    assert.equal(ROTULO_MODELO.marketplace, "Marketplace");
+    assert.equal(ROTULO_MODELO.full_service, "Full Service");
+  });
+  test("Marketplace tem os 4 indicadores, incluindo taxas de entregadores", () => {
+    assert.deepEqual([...INDICADORES_POR_MODELO.marketplace].sort(), ["servicos_promocoes", "taxas_comissoes", "taxas_entregadores", "total_deducoes"]);
+    assert.equal(indicadorAplicavel("marketplace", "taxas_entregadores"), true);
+  });
+  test("Full Service NÃO tem taxas de entregadores (quem entrega é o parceiro do iFood)", () => {
+    assert.deepEqual([...INDICADORES_POR_MODELO.full_service].sort(), ["servicos_promocoes", "taxas_comissoes", "total_deducoes"]);
+    assert.equal(indicadorAplicavel("full_service", "taxas_entregadores"), false);
+  });
+  test("os demais 3 indicadores são aplicáveis nos dois modelos", () => {
+    for (const modelo of MODELOS_LOGISTICOS) {
+      for (const chave of ["taxas_comissoes", "servicos_promocoes", "total_deducoes"]) {
+        assert.equal(indicadorAplicavel(modelo, chave), true, `${chave} deveria ser aplicável em ${modelo}`);
+      }
+    }
+  });
+});
+
+describe("diagnóstico respeita o modelo logístico", () => {
+  // Metas do Marketplace (13/13 · 5/7 · 12/15 · 30/32) e do Full Service
+  // (20,5/20,5 · 10/14,5 · 30,5/32 — sem taxas_entregadores).
+  const metasMarketplace = {
+    taxas_comissoes: { metaIdeal: 13, limite: 13 },
+    servicos_promocoes: { metaIdeal: 5, limite: 7 },
+    taxas_entregadores: { metaIdeal: 12, limite: 15 },
+    total_deducoes: { metaIdeal: 30, limite: 32 },
+  };
+  const metasFullService = {
+    taxas_comissoes: { metaIdeal: 20.5, limite: 20.5 },
+    servicos_promocoes: { metaIdeal: 10, limite: 14.5 },
+    total_deducoes: { metaIdeal: 30.5, limite: 32 },
+  };
+
+  test("Full Service: taxas de entregadores nunca é julgada, mesmo fora da meta e com dado presente", () => {
+    const d = diagnostico({
+      indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 90, total_deducoes: 25 },
+      metas: metasFullService, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "full_service",
+    });
+    const textoCompleto = [...d.pontosFortes, ...d.pontosAtencao, ...d.alertas].join(" ");
+    assert.ok(!/entregador/i.test(textoCompleto), "não deveria mencionar entregadores no Full Service");
+    assert.ok(!d.indicadoresForaDaMeta.includes("taxas_entregadores"));
+  });
+
+  test("Marketplace: taxas de entregadores É julgada normalmente", () => {
+    const dentroDaMeta = diagnostico({
+      indicadores: { taxas_comissoes: 13, servicos_promocoes: 5, taxas_entregadores: 10, total_deducoes: 28 },
+      metas: metasMarketplace, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "marketplace",
+    });
+    assert.ok(dentroDaMeta.pontosFortes.some((p) => /Taxas de entregadores/.test(p)));
+
+    const foraDoLimite = diagnostico({
+      indicadores: { taxas_comissoes: 13, servicos_promocoes: 5, taxas_entregadores: 20, total_deducoes: 28 },
+      metas: metasMarketplace, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "marketplace",
+    });
+    assert.ok(foraDoLimite.alertas.some((a) => /Taxas de entregadores/.test(a)));
+    assert.ok(foraDoLimite.indicadoresForaDaMeta.includes("taxas_entregadores"));
+  });
+
+  test("Full Service com taxas de comissões e total de deduções nas metas certas (20,5%/30,5%)", () => {
+    const d = diagnostico({
+      indicadores: { taxas_comissoes: 18.23, servicos_promocoes: 12.11, total_deducoes: 30.34 },
+      metas: metasFullService, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "full_service",
+    });
+    assert.ok(d.pontosFortes.some((p) => /Taxas e comissões/.test(p)));
+    assert.ok(d.pontosFortes.some((p) => /Total de deduções/.test(p)));
+    assert.ok(d.pontosAtencao.some((p) => /Serviços e promoções/.test(p))); // 12,11% > 10% ideal, mas < 14,5% limite
+  });
+
+  test("recomendações nunca sugerem revisar entregadores no Full Service", () => {
+    const d = diagnostico({
+      indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 90, total_deducoes: 25 },
+      metas: metasFullService, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "full_service",
+    });
+    const r = recomendacoes({ indicadoresForaDaMeta: d.indicadoresForaDaMeta, diasPendentesNoMes: 0, semDadosSuficientes: false });
+    assert.ok(!r.some((x) => /entregador/i.test(x)));
   });
 });

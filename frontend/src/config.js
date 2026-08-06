@@ -31,7 +31,7 @@ export const MENU = [
   { id: "insumos",       label: "Insumos",         icon: "🧀", tipo: "insumos",     secao: "OPERAÇÃO" },
   { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO" },
   { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO" },
-  { id: "dashboard-executivo", label: "Dashboard Executivo", icon: "📈", tipo: "dashboard-executivo", secao: "OPERAÇÃO" },
+  { id: "dashboard-executivo", label: "Dashboard iFood", icon: "📈", integ: "ifood", tipo: "dashboard-executivo", secao: "OPERAÇÃO" },
   { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO" },
   { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES" },
   { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES" },
