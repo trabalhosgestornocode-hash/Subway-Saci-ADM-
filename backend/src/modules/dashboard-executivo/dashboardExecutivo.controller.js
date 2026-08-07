@@ -82,6 +82,31 @@ export const historicoModeloLogistico = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
+// Reset de dia — SÓ funciona em unidade de teste (o service revalida sempre).
+// confirmar=false (padrão): devolve só o preview (quais lançamentos seriam
+// removidos). confirmar=true: executa de fato.
+export const resetTeste = asyncHandler(async (req, res) => {
+  const b = req.body ?? {};
+  if (b.confirmar === true) {
+    const data = await service.executarResetTeste({
+      organizacaoId: req.tenant.organizacaoId,
+      unidadeIdSessao: req.tenant.unidadeId,
+      unidadeIdSolicitado: req.params.unidadeId,
+      data: b.data,
+      usuario: req.user,
+    });
+    res.json({ data: { confirmado: true, ...data } });
+  } else {
+    const data = await service.previewResetTeste({
+      organizacaoId: req.tenant.organizacaoId,
+      unidadeIdSessao: req.tenant.unidadeId,
+      unidadeIdSolicitado: req.params.unidadeId,
+      data: b.data,
+    });
+    res.json({ data: { confirmado: false, ...data } });
+  }
+});
+
 export const historico = asyncHandler(async (req, res) => {
   const data = await service.obterHistorico({
     organizacaoId: req.tenant.organizacaoId,

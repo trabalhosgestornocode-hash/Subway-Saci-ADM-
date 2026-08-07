@@ -246,7 +246,7 @@ function renderVisaoGeral(box) {
   barraComparativaMeta("dex-chart-comp", d.graficos.comparativoPercentuais);
   roscaDeducoes("dex-chart-comp2", d.graficos.composicaoDeducoes);
   el("#dex-preencher-primeiro")?.addEventListener("click", () => abrirLancamentoModal({
-    data: r.primeiroDiaPendente, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo,
+    data: r.primeiroDiaPendente, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, ehTeste: d.ehTeste, onSalvo: carregarConteudo,
   }));
 }
 
@@ -338,7 +338,7 @@ function renderLancamentos(box) {
   linhaEvolucaoDeducoes("dex-chart-evoded", d.graficos.evolucaoDeducoes);
 
   box.querySelectorAll(".dex-cal-dia[data-clicavel]").forEach((el) => el.addEventListener("click", () => {
-    abrirLancamentoModal({ data: el.dataset.data, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo });
+    abrirLancamentoModal({ data: el.dataset.data, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, ehTeste: d.ehTeste, onSalvo: carregarConteudo });
   }));
 }
 

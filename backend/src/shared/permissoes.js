@@ -42,6 +42,10 @@ export const PERMISSOES = {
   // Trocar o modelo logístico do iFood da unidade (Marketplace/Full Service).
   // unit_manager NÃO tem — só vê o modelo (via DASHBOARD_EXECUTIVO_VER).
   DASHBOARD_EXECUTIVO_CONFIGURAR: "dashboard_executivo.configurar",
+  // Resetar (excluir de verdade) o lançamento de um dia — SÓ funciona em
+  // unidade marcada como `eh_teste = true` (o service revalida isso sempre,
+  // mesmo com a permissão concedida). Nunca disponível em unidade real.
+  DASHBOARD_EXECUTIVO_RESETAR_TESTE: "dashboard_executivo.resetar_teste",
 };
 
 const P = PERMISSOES;
@@ -63,9 +67,9 @@ const POR_PAPEL = {
     P.DASHBOARD_EXECUTIVO_LANCAR,
   ],
 
-  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR],
+  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE],
 
-  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR],
+  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE],
 
   viewer: [...LEITURA],
 };

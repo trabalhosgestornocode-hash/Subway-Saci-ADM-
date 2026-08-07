@@ -212,6 +212,10 @@ export async function dashExecAtualizarModeloLogistico(unidadeId, dados) {
   return tratar(r);
 }
 
+// ---------- Reset de dia (SÓ em unidade de teste) ----------
+export const dashExecPreviewResetTeste = (unidadeId, data) => postJson(`${DEX}/unidades/${unidadeId}/reset-teste`, { data, confirmar: false });
+export const dashExecConfirmarResetTeste = (unidadeId, data) => postJson(`${DEX}/unidades/${unidadeId}/reset-teste`, { data, confirmar: true });
+
 // ---------- Martin Brower (integração com o portal da distribuidora) ----------
 // Nenhuma credencial trafega aqui na fase atual: a sincronização automatizada
 // depende de MB_PLAYWRIGHT_ENABLED no backend, e enquanto estiver desligada o

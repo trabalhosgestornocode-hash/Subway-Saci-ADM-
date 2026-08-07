@@ -1976,6 +1976,17 @@ tr.dex-linha-na { opacity: .65; }
 .dex-motivo-correcao { margin-top: 4px; }
 .dex-form-acoes { flex-wrap: wrap; }
 
+/* Reset de dia — só existe em unidade de teste; visual deliberadamente "de
+   desenvolvedor", nunca parecido com uma ação operacional normal. */
+.dex-btn-reset-teste { align-self: flex-start; border-style: dashed; color: var(--bad); border-color: rgba(219,59,59,.35); }
+.dex-btn-reset-teste:hover { background: var(--bad-bg); border-color: var(--bad); }
+.dex-avisos-perigo { background: var(--bad-bg); border-color: rgba(219,59,59,.3); }
+.dex-avisos-perigo p { margin-bottom: 8px; }
+.dex-avisos-perigo p:last-child { margin-bottom: 0; }
+.dex-reset-lista { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-weight: 650; font-size: 13.5px; }
+.dex-reset-lista li { padding-left: 18px; position: relative; }
+.dex-reset-lista li::before { content: "🗑️"; position: absolute; left: 0; font-size: 11px; }
+
 @media (max-width: 640px) {
   .dex-cards { grid-template-columns: 1fr; }
   .dex-cal { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); }

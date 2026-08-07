@@ -4,7 +4,10 @@
 // só para exibição; o valor autoritativo é sempre o que o servidor recalcula.
 import { el, escapeHtml, toast, fmtMoeda, fmtPct } from "./utils.js";
 import { pode } from "./sessao.js";
-import { dashExecLancamento, dashExecCriarLancamento, dashExecAtualizarLancamento } from "./api.js";
+import {
+  dashExecLancamento, dashExecCriarLancamento, dashExecAtualizarLancamento,
+  dashExecPreviewResetTeste, dashExecConfirmarResetTeste,
+} from "./api.js";
 
 const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema operacional", "Falta de insumos", "Fechamento temporário", "Outro"];
 
@@ -48,12 +51,12 @@ function mostraEntregadores() {
   return fm.modeloLogistico !== "full_service";
 }
 
-export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, onSalvo }) {
+export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, ehTeste, onSalvo }) {
   // abrirOverlay() fecha qualquer modal anterior (fecharOverlay zera `fm`) —
   // por isso o estado só é atribuído DEPOIS de abrir o overlay novo, nunca antes.
   const m = abrirOverlay(`<div class="estado"><div class="spinner"></div>Carregando…</div>`);
   fm = {
-    data, unidadeId, modeloLogistico, onSalvo, passo: 1,
+    data, unidadeId, modeloLogistico, ehTeste: !!ehTeste, onSalvo, passo: 1,
     modoCorrecao: false, lancamentoId: null, statusOriginal: null,
     motivoCorrecao: "", campos: camposPadrao(), avisos: [], confirmarAvisos: false, salvando: false,
   };
@@ -80,6 +83,66 @@ function renderIndisponivel(m, motivo) {
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
 }
 
+// ---------------------------------------------------------------------------
+// RESET DE DIA (SÓ EM UNIDADE DE TESTE) — troca o corpo do modal pra uma tela
+// de confirmação separada do fluxo normal de edição/correção. O botão que
+// leva aqui (renderPasso) só aparece quando fm.ehTeste — mas quem garante de
+// verdade é o backend (revalida eh_teste a cada chamada).
+// ---------------------------------------------------------------------------
+async function renderResetPreview(m) {
+  m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
+    <div class="modal-head"><h2>🧪 Resetar dia para teste</h2></div>
+    <div class="estado"><div class="spinner"></div>Verificando lançamentos…</div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  try {
+    const { data } = await dashExecPreviewResetTeste(fm.unidadeId, fm.data);
+    renderResetConfirmacao(m, data);
+  } catch (e) {
+    m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
+      <div class="estado erro"><span class="emoji">⚠️</span><h3>Não foi possível resetar</h3><p>${escapeHtml(e.message)}</p></div>`;
+    m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  }
+}
+
+function renderResetConfirmacao(m, preview) {
+  const datas = preview.lancamentos.map((l) => l.data);
+  const multiplos = datas.length > 1;
+  const corpo = multiplos
+    ? `<p><b>RESETAR LANÇAMENTOS DE TESTE</b></p>
+       <p>Ao resetar ${fmtDataBr(preview.dataAlvo)}, os seguintes lançamentos posteriores também precisarão ser removidos — isso é necessário para preservar a ordem sequencial:</p>
+       <ul class="dex-reset-lista">${datas.map((d) => `<li>${fmtDataBr(d)}</li>`).join("")}</ul>`
+    : `<p><b>RESETAR DIA PARA TESTE</b></p>
+       <p>Você está prestes a remover o lançamento de ${fmtDataBr(preview.dataAlvo)}. Após o reset, essa data volta a aparecer como pendente.</p>`;
+
+  m.innerHTML = `
+    <button class="modal-close" aria-label="Fechar">×</button>
+    <div class="modal-head"><h2>🧪 Resetar dia para teste</h2></div>
+    <div class="dex-avisos dex-avisos-perigo">${corpo}</div>
+    <div class="ed-acoes">
+      <button class="btn btn-ghost" id="dex-reset-cancelar">Cancelar</button>
+      <button class="btn btn-perigo" id="dex-reset-confirmar">${multiplos ? "Resetar a partir desta data" : "Resetar dia"}</button>
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#dex-reset-cancelar").addEventListener("click", fecharOverlay);
+  m.querySelector("#dex-reset-confirmar").addEventListener("click", () => confirmarReset(m, preview.dataAlvo));
+}
+
+async function confirmarReset(m, dataAlvo) {
+  const btn = m.querySelector("#dex-reset-confirmar");
+  const unidadeId = fm.unidadeId; // captura antes: fecharOverlay() zera `fm`
+  const onSalvo = fm.onSalvo;
+  btn.disabled = true; btn.textContent = "Resetando…";
+  try {
+    await dashExecConfirmarResetTeste(unidadeId, dataAlvo);
+    toast("Lançamento(s) resetado(s) para teste.");
+    fecharOverlay();
+    onSalvo?.();
+  } catch (e) {
+    toast("Erro: " + e.message);
+    btn.disabled = false; btn.textContent = "Resetar dia";
+  }
+}
+
 const TITULOS_PASSO = ["", "Situação da operação", "Desempenho", "Financeiro", "Conferência", "Finalização"];
 
 function renderPasso(m) {
@@ -95,6 +158,7 @@ function renderPasso(m) {
         <span class="chip">Etapa ${fm.passo}/4 · ${TITULOS_PASSO[fm.passo]}</span>
         ${fm.modoCorrecao ? `<span class="chip chip-unidade">Correção de lançamento finalizado</span>` : ""}
       </div>
+      ${fm.ehTeste && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-reset-teste" id="dex-abrir-reset-teste" type="button">🧪 Resetar dia para teste</button>` : ""}
     </div>
     <div class="dex-stepper">${[1, 2, 3, 4].map((p) => `<span class="dex-step ${p === fm.passo ? "ativo" : p < fm.passo ? "feito" : ""}">${p}</span>`).join("")}</div>
     <div class="dex-form-corpo">${corpo()}</div>
@@ -107,6 +171,7 @@ function renderPasso(m) {
   m.querySelector("#dex-f-cancelar")?.addEventListener("click", fecharOverlay);
   m.querySelector("#dex-f-voltar")?.addEventListener("click", () => { fm.passo--; renderPasso(m); });
   m.querySelector("#dex-f-avancar")?.addEventListener("click", () => { if (validarPassoAtual(m)) { fm.passo++; renderPasso(m); } });
+  m.querySelector("#dex-abrir-reset-teste")?.addEventListener("click", () => renderResetPreview(m));
   wirePasso(m);
   if (fm.passo === 4) wireFinalizacao(m);
 }

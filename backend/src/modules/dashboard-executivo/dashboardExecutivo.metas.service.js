@@ -58,11 +58,11 @@ export async function resolverMetas({ organizacaoId, unidadeId, modeloLogistico 
 
 /**
  * @param {{unidadeId: string}} p
- * @returns {Promise<{unidadeId: string, organizacaoId: string, nome: string, modeloLogistico: string, modeloLogisticoRotulo: string}>}
+ * @returns {Promise<{unidadeId: string, organizacaoId: string, nome: string, modeloLogistico: string, modeloLogisticoRotulo: string, ehTeste: boolean}>}
  */
 export async function obterModeloLogistico({ unidadeId }) {
   const { data, error } = await supabase
-    .from("unidades").select("id, organizacao_id, nome, modelo_logistico_ifood").eq("id", unidadeId).maybeSingle();
+    .from("unidades").select("id, organizacao_id, nome, modelo_logistico_ifood, eh_teste").eq("id", unidadeId).maybeSingle();
   if (error) throw ApiError.internal(error.message);
   if (!data) throw ApiError.notFound("Unidade não encontrada.");
   return {
@@ -71,6 +71,7 @@ export async function obterModeloLogistico({ unidadeId }) {
     nome: data.nome,
     modeloLogistico: data.modelo_logistico_ifood,
     modeloLogisticoRotulo: ROTULO_MODELO[data.modelo_logistico_ifood] ?? data.modelo_logistico_ifood,
+    ehTeste: data.eh_teste === true,
   };
 }
 

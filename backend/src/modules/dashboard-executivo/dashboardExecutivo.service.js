@@ -94,15 +94,15 @@ function paraApi(row) {
 // ---------------------------------------------------------------------------
 export async function listarUnidades({ organizacaoId, unidadeIdSessao }) {
   if (unidadeIdSessao) {
-    const { data, error } = await supabase.from("unidades").select("id, nome").eq("id", unidadeIdSessao).maybeSingle();
+    const { data, error } = await supabase.from("unidades").select("id, nome, eh_teste").eq("id", unidadeIdSessao).maybeSingle();
     if (error) throw ApiError.internal(error.message);
     if (!data) throw ApiError.notFound("Unidade não encontrada.");
-    return { unidades: [{ id: data.id, nome: data.nome }], agregadoDisponivel: false };
+    return { unidades: [{ id: data.id, nome: data.nome, ehTeste: data.eh_teste }], agregadoDisponivel: false };
   }
   const { data, error } = await supabase
-    .from("unidades").select("id, nome").eq("organizacao_id", organizacaoId).eq("ativo", true).order("nome");
+    .from("unidades").select("id, nome, eh_teste").eq("organizacao_id", organizacaoId).eq("ativo", true).order("nome");
   if (error) throw ApiError.internal(error.message);
-  return { unidades: data ?? [], agregadoDisponivel: true };
+  return { unidades: (data ?? []).map((u) => ({ id: u.id, nome: u.nome, ehTeste: u.eh_teste })), agregadoDisponivel: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +253,7 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   return {
     agregado: false,
     unidadeId,
+    ehTeste: modelo.ehTeste,
     modeloLogistico: modelo.modeloLogistico,
     modeloLogisticoRotulo: modelo.modeloLogisticoRotulo,
     periodo: { mes, ano },
@@ -677,4 +678,69 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
   }
 
   return { ano, unidadeId, meses };
+}
+
+// ---------------------------------------------------------------------------
+// RESET DE DIA — SÓ EM UNIDADE DE TESTE (eh_teste = true).
+//
+// Exclusão física de verdade, algo que NUNCA existe pra unidade real (ver
+// criarLancamento/atualizarLancamento acima — nenhum DELETE ali, de propósito).
+// A checagem de eh_teste é SEMPRE buscada fresca no banco aqui, nunca confiada
+// a partir do cliente — mesmo que alguém chame a rota direto na unha para a
+// Subway Saci, isto recusa.
+// ---------------------------------------------------------------------------
+async function garantirUnidadeDeTeste({ unidadeId, organizacaoId }) {
+  const { data, error } = await supabase
+    .from("unidades").select("id, organizacao_id, eh_teste").eq("id", unidadeId).maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  if (!data || data.organizacao_id !== organizacaoId) throw ApiError.notFound("Unidade não encontrada.");
+  if (!data.eh_teste) {
+    throw ApiError.forbidden("O reset de lançamentos só está disponível em unidades de teste.");
+  }
+}
+
+async function lancamentosAPartirDe({ unidadeId, dataAlvo }) {
+  const { data, error } = await supabase
+    .from(TABELA).select("id, data_lancamento").eq("unidade_id", unidadeId)
+    .gte("data_lancamento", dataAlvo).order("data_lancamento");
+  if (error) throw ApiError.internal(error.message);
+  return (data ?? []).map((l) => ({ id: l.id, data: l.data_lancamento }));
+}
+
+/** Preview (dry-run): quais lançamentos seriam removidos, sem apagar nada. */
+export async function previewResetTeste({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, data: dataRaw }) {
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
+  await garantirUnidadeDeTeste({ unidadeId, organizacaoId });
+  const dataAlvo = v.dataOpcional(dataRaw, "Data") ?? (() => { throw ApiError.badRequest("Data é obrigatória."); })();
+
+  const lancamentos = await lancamentosAPartirDe({ unidadeId, dataAlvo });
+  if (!lancamentos.length) throw ApiError.notFound("Não existe lançamento nesta data (ou posterior) para resetar.");
+
+  return { unidadeId, dataAlvo, lancamentos };
+}
+
+/** Executa de fato: apaga a partir da data (inclusive) e registra o log de teste. */
+export async function executarResetTeste({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, data: dataRaw, usuario }) {
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
+  await garantirUnidadeDeTeste({ unidadeId, organizacaoId });
+  const dataAlvo = v.dataOpcional(dataRaw, "Data") ?? (() => { throw ApiError.badRequest("Data é obrigatória."); })();
+
+  const lancamentos = await lancamentosAPartirDe({ unidadeId, dataAlvo });
+  if (!lancamentos.length) throw ApiError.notFound("Não existe lançamento nesta data (ou posterior) para resetar.");
+
+  // Log ANTES de apagar: se o delete falhar no meio, ao menos fica o registro
+  // da tentativa (não é a auditoria financeira real — essa nunca é tocada aqui).
+  const { error: eLog } = await supabase.from("dashboard_teste_reset_log").insert({
+    organizacao_id: organizacaoId, unidade_id: unidadeId,
+    usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+    data_inicial_reset: dataAlvo,
+    lancamentos_removidos: lancamentos,
+  });
+  if (eLog) console.error("[dashboard-executivo] falha ao registrar log de reset de teste:", eLog.message);
+
+  const { error: eDel } = await supabase
+    .from(TABELA).delete().eq("unidade_id", unidadeId).gte("data_lancamento", dataAlvo);
+  if (eDel) throw ApiError.badRequest(eDel.message);
+
+  return { unidadeId, dataAlvo, removidos: lancamentos.map((l) => l.data) };
 }
