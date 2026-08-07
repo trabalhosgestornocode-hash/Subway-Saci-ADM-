@@ -40,12 +40,20 @@ function camposDoLancamento(l) {
   };
 }
 
-export async function abrirLancamentoModal({ data, unidadeId, onSalvo }) {
+// Full Service: a entrega é sempre feita pelo parceiro do iFood — não existe
+// "taxas de entregadores da loja" nesse modelo (mesma regra de negócio de
+// dashboardExecutivo.calc.js#INDICADORES_POR_MODELO, espelhada aqui só para
+// exibição/validação do formulário).
+function mostraEntregadores() {
+  return fm.modeloLogistico !== "full_service";
+}
+
+export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, onSalvo }) {
   // abrirOverlay() fecha qualquer modal anterior (fecharOverlay zera `fm`) —
   // por isso o estado só é atribuído DEPOIS de abrir o overlay novo, nunca antes.
   const m = abrirOverlay(`<div class="estado"><div class="spinner"></div>Carregando…</div>`);
   fm = {
-    data, unidadeId, onSalvo, passo: 1,
+    data, unidadeId, modeloLogistico, onSalvo, passo: 1,
     modoCorrecao: false, lancamentoId: null, statusOriginal: null,
     motivoCorrecao: "", campos: camposPadrao(), avisos: [], confirmarAvisos: false, salvando: false,
   };
@@ -161,23 +169,26 @@ function passoFinanceiro() {
   if (c.situacao !== "normal") return `<p class="dex-form-info">Sem valores financeiros para esta situação.</p>`;
   const podeNegativo = pode("dashboard_executivo.corrigir");
   const calc = calculoPreview(c);
+  const mostrarEntreg = mostraEntregadores();
   return `
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="number" min="0" step="0.01" id="dex-vifood" value="${c.valorVendasIfood}"></label>
       <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="number" min="0" step="0.01" id="dex-taxas" value="${c.taxasComissoes}"></label>
       <label class="cfg-campo"><span>Serviços e promoções (R$) *</span><input type="number" min="0" step="0.01" id="dex-servicos" value="${c.servicosPromocoes}"></label>
-      <label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="number" min="0" step="0.01" id="dex-entregadores" value="${c.taxasEntregadores}"></label>
+      ${mostrarEntreg
+        ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="number" min="0" step="0.01" id="dex-entregadores" value="${c.taxasEntregadores}"></label>`
+        : `<p class="dex-form-info dex-form-na">🛵 Este modelo (Full Service) não usa entregador próprio — a entrega é feita pelo parceiro do iFood, então não há "taxas de entregadores da loja" a lançar.</p>`}
       <label class="cfg-campo"><span>Outras deduções/ajustes (R$)${podeNegativo ? " — negativo = ajuste a favor" : ""}</span>
         <input type="number" step="0.01" id="dex-outras" value="${c.outrasDeducoes}" ${podeNegativo ? "" : "min=\"0\""}></label>
       ${podeNegativo ? `<label class="cfg-campo ed-campo-full"><span>Justificativa do ajuste (obrigatória se negativo)</span><input type="text" id="dex-justificativa" value="${escapeHtml(c.justificativaAjuste)}"></label>` : ""}
     </div>
     <div class="dex-calc-preview">
-      <div><span>% Taxas e comissões</span><b>${fmtPct(calc.pctTaxas)}</b></div>
-      <div><span>% Serviços e promoções</span><b>${fmtPct(calc.pctServicos)}</b></div>
-      <div><span>% Taxas de entregadores</span><b>${fmtPct(calc.pctEntregadores)}</b></div>
-      <div><span>Total de deduções</span><b>${fmtMoeda(calc.totalDed)}</b></div>
-      <div><span>% Total de deduções</span><b>${fmtPct(calc.pctTotal)}</b></div>
-      <div class="destaque"><span>Receita após deduções</span><b>${fmtMoeda(calc.receita)}</b></div>
+      <div><span>% Taxas e comissões</span><b data-prev="taxas">${fmtPct(calc.pctTaxas)}</b></div>
+      <div><span>% Serviços e promoções</span><b data-prev="servicos">${fmtPct(calc.pctServicos)}</b></div>
+      ${mostrarEntreg ? `<div><span>% Taxas de entregadores</span><b data-prev="entregadores">${fmtPct(calc.pctEntregadores)}</b></div>` : ""}
+      <div><span>Total de deduções</span><b data-prev="total">${fmtMoeda(calc.totalDed)}</b></div>
+      <div><span>% Total de deduções</span><b data-prev="pctTotal">${fmtPct(calc.pctTotal)}</b></div>
+      <div class="destaque"><span>Receita após deduções</span><b data-prev="receita">${fmtMoeda(calc.receita)}</b></div>
     </div>`;
 }
 
@@ -222,7 +233,7 @@ function passoConferencia() {
       ${linha("Valor das vendas (iFood)", fmtMoeda(c.valorVendasIfood))}
       ${linha("Taxas e comissões", `${fmtMoeda(c.taxasComissoes)} (${fmtPct(calc.pctTaxas)})`)}
       ${linha("Serviços e promoções", `${fmtMoeda(c.servicosPromocoes)} (${fmtPct(calc.pctServicos)})`)}
-      ${linha("Taxas de entregadores", `${fmtMoeda(c.taxasEntregadores)} (${fmtPct(calc.pctEntregadores)})`)}
+      ${mostraEntregadores() ? linha("Taxas de entregadores", `${fmtMoeda(c.taxasEntregadores)} (${fmtPct(calc.pctEntregadores)})`) : ""}
       ${linha("Outras deduções", fmtMoeda(c.outrasDeducoes))}
       ${linha("Total de deduções", `${fmtMoeda(calc.totalDed)} (${fmtPct(calc.pctTotal)})`)}
       ${linha("Receita após deduções", fmtMoeda(calc.receita))}
@@ -293,13 +304,13 @@ function atualizarPreviewFinanceiro(m) {
   const calc = calculoPreview(fm.campos);
   const box = m.querySelector(".dex-calc-preview");
   if (!box) return;
-  const valores = box.querySelectorAll("b");
-  valores[0].textContent = fmtPct(calc.pctTaxas);
-  valores[1].textContent = fmtPct(calc.pctServicos);
-  valores[2].textContent = fmtPct(calc.pctEntregadores);
-  valores[3].textContent = fmtMoeda(calc.totalDed);
-  valores[4].textContent = fmtPct(calc.pctTotal);
-  valores[5].textContent = fmtMoeda(calc.receita);
+  const set = (chave, texto) => { const el = box.querySelector(`[data-prev="${chave}"]`); if (el) el.textContent = texto; };
+  set("taxas", fmtPct(calc.pctTaxas));
+  set("servicos", fmtPct(calc.pctServicos));
+  set("entregadores", fmtPct(calc.pctEntregadores));
+  set("total", fmtMoeda(calc.totalDed));
+  set("pctTotal", fmtPct(calc.pctTotal));
+  set("receita", fmtMoeda(calc.receita));
 }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +331,10 @@ function validarPassoAtual(m) {
     return true;
   }
   if (fm.passo === 3 && c.situacao === "normal") {
-    if ([c.valorVendasIfood, c.taxasComissoes, c.servicosPromocoes, c.taxasEntregadores].some((v) => v === "")) {
+    const obrigatorios = [c.valorVendasIfood, c.taxasComissoes, c.servicosPromocoes];
+    if (mostraEntregadores()) obrigatorios.push(c.taxasEntregadores);
+    else c.taxasEntregadores = c.taxasEntregadores || 0; // Full Service: campo nem aparece, garante 0 no cálculo/envio
+    if (obrigatorios.some((v) => v === "")) {
       toast("Preencha todos os campos financeiros obrigatórios."); return false;
     }
     if (Number(c.outrasDeducoes) < 0 && !pode("dashboard_executivo.corrigir")) {
