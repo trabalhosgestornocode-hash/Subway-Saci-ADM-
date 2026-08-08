@@ -960,7 +960,10 @@ body {
 }
 
 /* ===================== ABA MARTIN BROWER (mb-) ===================== */
-.mb-page { display: flex; flex-direction: column; gap: 14px; height: calc(100dvh - 122px); min-height: 520px; animation: fadeIn .25s ease; }
+/* min-height (não height fixa): a página acompanha o viewport quando cabe,
+   mas cresce e permite scroll normal da tela quando o conteúdo (painel de
+   integração + portal) precisar de mais espaço do que uma tela só. */
+.mb-page { display: flex; flex-direction: column; gap: 14px; min-height: calc(100dvh - 122px); animation: fadeIn .25s ease; }
 .mb-head { margin-bottom: 0; flex-wrap: wrap; }
 .mb-head-id { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .mb-head-logo { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; border: 1px solid var(--linha); box-shadow: var(--sombra-sm); flex-shrink: 0; }
@@ -974,8 +977,10 @@ body {
   background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
   box-shadow: var(--sombra-md); animation: fadeInUp .3s ease;
 }
-.mb-corpo { position: relative; flex: 1; min-height: 0; }
-.mb-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .35s ease; background: #fff; }
+/* piso próprio e generoso: o portal não fica refém da altura que sobrar do
+   painel de integração acima — sempre tem espaço robusto para navegar. */
+.mb-corpo { position: relative; flex: 1; min-height: 78vh; }
+.mb-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .35s ease; background: #fff; overflow: auto; }
 .mb-frame.visivel { opacity: 1; }
 
 /* estado carregando: spinner + skeleton por cima do iframe */
