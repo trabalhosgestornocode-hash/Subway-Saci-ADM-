@@ -8,9 +8,10 @@ import {
   ticketMedio, percentual, totalDeducoes, receitaAposDeducoes, saldoPercentual,
   mediaDiaria, projecaoMensal, confiabilidadeProjecao, statusDiaBase, statusMes,
   resumoPreenchimento, verificarDisponibilidade, agruparPendenciasPorMes,
-  validarOutrasDeducoes, inconsistencias, diagnostico, recomendacoes,
+  validarOutrasDeducoes, inconsistencias,
   diasDoMes, mesAnterior, STATUS_DIA,
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
+  statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -257,83 +258,9 @@ describe("inconsistências (avisos, não bloqueiam sozinhas)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-describe("diagnóstico executivo", () => {
-  const metas = {
-    taxas_comissoes: { metaIdeal: 20.5, limite: 20.5 },
-    servicos_promocoes: { metaIdeal: 10, limite: 14.5 },
-    taxas_entregadores: { metaIdeal: 15, limite: 15 },
-    total_deducoes: { metaIdeal: 30.5, limite: 32 },
-  };
-
-  test("sem dados suficientes não gera nenhum ponto forte", () => {
-    const d = diagnostico({ indicadores: null, metas, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null });
-    assert.equal(d.semDadosSuficientes, true);
-    assert.deepEqual(d.pontosFortes, []);
-  });
-
-  test("indicador dentro da meta ideal vira ponto forte", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18.23, servicos_promocoes: 12.11, taxas_entregadores: 10, total_deducoes: 30.34 },
-      metas, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null,
-    });
-    assert.ok(d.pontosFortes.some((p) => /Taxas e comissões/.test(p)));
-    assert.ok(d.pontosFortes.some((p) => /Total de deduções/.test(p)));
-  });
-
-  test("indicador acima da meta mas dentro do limite vira ponto de atenção", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18, servicos_promocoes: 12.11, taxas_entregadores: 10, total_deducoes: 25 },
-      metas, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null,
-    });
-    assert.ok(d.pontosAtencao.some((p) => /Serviços e promoções/.test(p)));
-    assert.ok(d.indicadoresForaDaMeta.includes("servicos_promocoes"));
-  });
-
-  test("indicador acima do limite vira alerta (crítico para total de deduções)", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 10, total_deducoes: 35 },
-      metas, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null,
-    });
-    assert.ok(d.alertas.some((a) => /Total de deduções/.test(a) && /Crítico/.test(a)));
-  });
-
-  test("dias pendentes geram alerta de dados incompletos", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 10, total_deducoes: 25 },
-      metas, diasPendentesNoMes: 3, comparativoMesAnteriorPct: null,
-    });
-    assert.ok(d.alertas.some((a) => /3 dia/.test(a)));
-  });
-
-  test("crescimento vs mês anterior vira ponto forte; queda relevante vira ponto de atenção", () => {
-    const base = { indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 10, total_deducoes: 25 }, metas, diasPendentesNoMes: 0 };
-    const crescimento = diagnostico({ ...base, comparativoMesAnteriorPct: 12 });
-    assert.ok(crescimento.pontosFortes.some((p) => /cresceu/i.test(p)));
-    const queda = diagnostico({ ...base, comparativoMesAnteriorPct: -15 });
-    assert.ok(queda.pontosAtencao.some((p) => /caiu/i.test(p)));
-  });
-});
-
-describe("recomendações — sempre amarradas a um indicador/pendência real", () => {
-  test("sem dados suficientes recomenda esperar mais lançamentos", () => {
-    const r = recomendacoes({ indicadoresForaDaMeta: [], diasPendentesNoMes: 0, semDadosSuficientes: true });
-    assert.equal(r.length, 1);
-    assert.match(r[0], /lançamentos suficientes/i);
-  });
-  test("indicador fora da meta gera recomendação específica", () => {
-    const r = recomendacoes({ indicadoresForaDaMeta: ["servicos_promocoes"], diasPendentesNoMes: 0, semDadosSuficientes: false });
-    assert.ok(r.some((x) => /campanhas e promoções/i.test(x)));
-  });
-  test("dias pendentes geram recomendação de regularização", () => {
-    const r = recomendacoes({ indicadoresForaDaMeta: [], diasPendentesNoMes: 2, semDadosSuficientes: false });
-    assert.ok(r.some((x) => /regulariz/i.test(x)));
-  });
-  test("tudo certo => recomendação de manter o desempenho", () => {
-    const r = recomendacoes({ indicadoresForaDaMeta: [], diasPendentesNoMes: 0, semDadosSuficientes: false });
-    assert.ok(r.some((x) => /manter o desempenho/i.test(x)));
-  });
-});
+// Diagnóstico executivo e recomendações viraram o motor novo em
+// dashboardExecutivo.diagnostico.js (rodada 2 do Dashboard iFood) — testes
+// em backend/test/dashboard-executivo-diagnostico.test.js.
 
 // ---------------------------------------------------------------------------
 // Modelo logístico do iFood (Marketplace x Full Service) — briefing novo:
@@ -366,62 +293,123 @@ describe("modelo logístico — indicadores aplicáveis por modelo", () => {
   });
 });
 
-describe("diagnóstico respeita o modelo logístico", () => {
-  // Metas do Marketplace (13/13 · 5/7 · 12/15 · 30/32) e do Full Service
-  // (20,5/20,5 · 10/14,5 · 30,5/32 — sem taxas_entregadores).
-  const metasMarketplace = {
-    taxas_comissoes: { metaIdeal: 13, limite: 13 },
-    servicos_promocoes: { metaIdeal: 5, limite: 7 },
-    taxas_entregadores: { metaIdeal: 12, limite: 15 },
-    total_deducoes: { metaIdeal: 30, limite: 32 },
-  };
-  const metasFullService = {
-    taxas_comissoes: { metaIdeal: 20.5, limite: 20.5 },
-    servicos_promocoes: { metaIdeal: 10, limite: 14.5 },
-    total_deducoes: { metaIdeal: 30.5, limite: 32 },
-  };
+// (o respeito ao modelo logístico no diagnóstico agora é testado no motor
+// novo — dashboard-executivo-diagnostico.test.js)
 
-  test("Full Service: taxas de entregadores nunca é julgada, mesmo fora da meta e com dado presente", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 90, total_deducoes: 25 },
-      metas: metasFullService, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "full_service",
-    });
-    const textoCompleto = [...d.pontosFortes, ...d.pontosAtencao, ...d.alertas].join(" ");
-    assert.ok(!/entregador/i.test(textoCompleto), "não deveria mencionar entregadores no Full Service");
-    assert.ok(!d.indicadoresForaDaMeta.includes("taxas_entregadores"));
+// ---------------------------------------------------------------------------
+// Desempenho opcional / "não informado" ≠ "zero" (rodada 2 do Dashboard iFood)
+// ---------------------------------------------------------------------------
+describe("ticket médio — nenhum dos dois lados vira 0 por conta própria", () => {
+  test("valor bruto ausente, quantidade presente -> null (não R$ 0,00)", () => {
+    assert.equal(ticketMedio(null, 50), null);
+    assert.equal(ticketMedio(undefined, 50), null);
   });
-
-  test("Marketplace: taxas de entregadores É julgada normalmente", () => {
-    const dentroDaMeta = diagnostico({
-      indicadores: { taxas_comissoes: 13, servicos_promocoes: 5, taxas_entregadores: 10, total_deducoes: 28 },
-      metas: metasMarketplace, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "marketplace",
-    });
-    assert.ok(dentroDaMeta.pontosFortes.some((p) => /Taxas de entregadores/.test(p)));
-
-    const foraDoLimite = diagnostico({
-      indicadores: { taxas_comissoes: 13, servicos_promocoes: 5, taxas_entregadores: 20, total_deducoes: 28 },
-      metas: metasMarketplace, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "marketplace",
-    });
-    assert.ok(foraDoLimite.alertas.some((a) => /Taxas de entregadores/.test(a)));
-    assert.ok(foraDoLimite.indicadoresForaDaMeta.includes("taxas_entregadores"));
+  test("os dois presentes calcula normalmente", () => {
+    assert.ok(perto(ticketMedio(1000, 10), 100));
   });
+});
 
-  test("Full Service com taxas de comissões e total de deduções nas metas certas (20,5%/30,5%)", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18.23, servicos_promocoes: 12.11, total_deducoes: 30.34 },
-      metas: metasFullService, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "full_service",
-    });
-    assert.ok(d.pontosFortes.some((p) => /Taxas e comissões/.test(p)));
-    assert.ok(d.pontosFortes.some((p) => /Total de deduções/.test(p)));
-    assert.ok(d.pontosAtencao.some((p) => /Serviços e promoções/.test(p))); // 12,11% > 10% ideal, mas < 14,5% limite
+describe("totalDeducoes / percentual — null quando não há dado, nunca inventa 0", () => {
+  test("as 4 deduções ausentes -> total null (não 0)", () => {
+    assert.equal(totalDeducoes({ taxasComissoes: null, servicosPromocoes: null, taxasEntregadores: null, outrasDeducoes: null }), null);
   });
+  test("algumas presentes -> soma só as conhecidas (melhor esforço)", () => {
+    assert.equal(totalDeducoes({ taxasComissoes: 100, servicosPromocoes: null, taxasEntregadores: null, outrasDeducoes: null }), 100);
+  });
+  test("percentual(null, base) -> null, nunca 0%", () => {
+    assert.equal(percentual(null, 1000), null);
+  });
+  test("receitaAposDeducoes com total null -> null (não finge deduções = 0)", () => {
+    assert.equal(receitaAposDeducoes(1000, null), null);
+  });
+});
 
-  test("recomendações nunca sugerem revisar entregadores no Full Service", () => {
-    const d = diagnostico({
-      indicadores: { taxas_comissoes: 18, servicos_promocoes: 8, taxas_entregadores: 90, total_deducoes: 25 },
-      metas: metasFullService, diasPendentesNoMes: 0, comparativoMesAnteriorPct: null, modelo: "full_service",
-    });
-    const r = recomendacoes({ indicadoresForaDaMeta: d.indicadoresForaDaMeta, diasPendentesNoMes: 0, semDadosSuficientes: false });
-    assert.ok(!r.some((x) => /entregador/i.test(x)));
+describe("statusIndicador — fonte única de status (Caso G, H, I do pedido)", () => {
+  const meta = { metaIdeal: 20, limite: 20.5 };
+  test("Caso G: 18% com meta 20%/limite 20,5% -> dentro da meta", () => {
+    assert.equal(statusIndicador(18, meta).chave, "dentro_da_meta");
+  });
+  test("Caso H: acima do limite -> fora da meta (card deve indicar o excesso)", () => {
+    assert.equal(statusIndicador(25, meta).chave, "fora_da_meta");
+  });
+  test("entre meta ideal e limite -> atenção", () => {
+    assert.equal(statusIndicador(20.2, meta).chave, "atencao");
+  });
+  test("Caso I: taxas não informadas (atual null) -> dados insuficientes, NUNCA 'dentro da meta'", () => {
+    const s = statusIndicador(null, meta);
+    assert.equal(s.chave, "sem_dados");
+    assert.notEqual(s.label, "Dentro da meta");
+  });
+  test("sem meta configurada -> dados insuficientes", () => {
+    assert.equal(statusIndicador(18, null).chave, "sem_dados");
+  });
+});
+
+describe("saldoMeta — quanto ainda resta, em p.p. e em R$", () => {
+  test("18,1% usado / limite 20% -> restam 1,9 p.p.", () => {
+    const s = saldoMeta({ valorUtilizado: 6132.86, percentualUtilizado: 18.1, limitePct: 20, faturamentoBase: 33883.75 });
+    assert.ok(perto(s.disponivelPp, 1.9, 0.01));
+    assert.equal(s.status, "disponivel");
+  });
+  test("limite em reais e saldo em reais são calculados a partir do faturamento base", () => {
+    const s = saldoMeta({ valorUtilizado: 5950, percentualUtilizado: 11.9, limitePct: 15, faturamentoBase: 50000 });
+    assert.ok(perto(s.limiteReais, 7500));
+    assert.ok(perto(s.disponivelReais, 1550));
+  });
+  test("valor utilizado igual ao limite -> limite atingido, saldo 0", () => {
+    const s = saldoMeta({ valorUtilizado: 100, percentualUtilizado: 20, limitePct: 20, faturamentoBase: 500 });
+    assert.equal(s.status, "limite_atingido");
+    assert.equal(s.disponivelPp, 0);
+  });
+  test("acima do limite -> status acima_do_limite com saldo negativo", () => {
+    const s = saldoMeta({ valorUtilizado: 130, percentualUtilizado: 26, limitePct: 20, faturamentoBase: 500 });
+    assert.equal(s.status, "acima_do_limite");
+    assert.ok(s.disponivelPp < 0);
+  });
+  test("sem percentual apurado -> sem_dados, nunca finge 'dentro da meta'", () => {
+    const s = saldoMeta({ valorUtilizado: null, percentualUtilizado: null, limitePct: 20, faturamentoBase: 500 });
+    assert.equal(s.status, "sem_dados");
+    assert.equal(s.disponivelPp, null);
+  });
+});
+
+describe("distribuirValorMensal — a soma NUNCA diverge de um centavo (Caso C do pedido)", () => {
+  test("R$ 31.000,00 / 31 dias = R$ 1.000,00 por dia, exatos", () => {
+    const fatias = distribuirValorMensal(31000, 31);
+    assert.equal(fatias.length, 31);
+    assert.ok(fatias.every((f) => f === 1000));
+  });
+  test("R$ 10.000,00 / 31 dias — soma exata, resto nos primeiros dias", () => {
+    const fatias = distribuirValorMensal(10000, 31);
+    assert.equal(fatias.length, 31);
+    const soma = fatias.reduce((s, f) => s + f, 0);
+    assert.ok(perto(soma, 10000, 1e-9), `soma foi ${soma}`);
+    // 10000 / 31 = 322,58064... -> resto de 2 centavos vai pros 2 primeiros dias
+    assert.ok(perto(fatias[0], 322.59));
+    assert.ok(perto(fatias[1], 322.59));
+    assert.ok(perto(fatias[2], 322.58));
+  });
+  test("valor que não divide exatamente em nenhum caso (R$ 100,01 / 3 dias)", () => {
+    const fatias = distribuirValorMensal(100.01, 3);
+    const soma = fatias.reduce((s, f) => s + f, 0);
+    assert.ok(perto(soma, 100.01, 1e-9));
+  });
+  test("dias <= 0 devolve lista vazia (sem dividir por zero)", () => {
+    assert.deepEqual(distribuirValorMensal(1000, 0), []);
+  });
+});
+
+describe("distribuirQuantidadeMensal — mesma exatidão, para contagens inteiras", () => {
+  test("100 pedidos / 31 dias — soma exata, resto nos primeiros dias", () => {
+    const fatias = distribuirQuantidadeMensal(100, 31);
+    assert.equal(fatias.length, 31);
+    assert.equal(fatias.reduce((s, f) => s + f, 0), 100);
+    assert.ok(fatias.every((f) => Number.isInteger(f)));
+    // 100 / 31 = 3 resto 7 -> 7 primeiros dias com 4, os outros 24 com 3
+    assert.equal(fatias.slice(0, 7).every((f) => f === 4), true);
+    assert.equal(fatias.slice(7).every((f) => f === 3), true);
+  });
+  test("dias <= 0 devolve lista vazia", () => {
+    assert.deepEqual(distribuirQuantidadeMensal(50, 0), []);
   });
 });

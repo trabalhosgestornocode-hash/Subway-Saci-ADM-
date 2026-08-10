@@ -6,7 +6,7 @@ import { el, escapeHtml, toast, fmtMoeda, fmtPct } from "./utils.js";
 import { pode } from "./sessao.js";
 import {
   dashExecLancamento, dashExecCriarLancamento, dashExecAtualizarLancamento,
-  dashExecPreviewResetTeste, dashExecConfirmarResetTeste,
+  dashExecPreviewResetTeste, dashExecConfirmarResetTeste, dashExecExcluirLancamento,
 } from "./api.js";
 
 const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema operacional", "Falta de insumos", "Fechamento temporário", "Outro"];
@@ -37,7 +37,9 @@ function camposPadrao() {
 function camposDoLancamento(l) {
   return {
     situacao: l.situacao, motivoSemOperacao: l.motivoSemOperacao ?? "", observacao: l.observacao ?? "",
-    qtdVendas: l.qtdVendas, valorVendasBruto: l.valorVendasBruto, novosClientes: l.novosClientes,
+    // Desempenho é opcional: um valor null (não informado) vira campo VAZIO
+    // no input, nunca "null" literal nem 0 — ver dashboardExecutivo.calc.js.
+    qtdVendas: l.qtdVendas ?? "", valorVendasBruto: l.valorVendasBruto ?? "", novosClientes: l.novosClientes ?? "",
     valorVendasIfood: l.valorVendasIfood, taxasComissoes: l.taxasComissoes, servicosPromocoes: l.servicosPromocoes,
     taxasEntregadores: l.taxasEntregadores, outrasDeducoes: l.outrasDeducoes, justificativaAjuste: l.justificativaAjuste ?? "",
   };
@@ -143,7 +145,7 @@ async function confirmarReset(m, dataAlvo) {
   }
 }
 
-const TITULOS_PASSO = ["", "Situação da operação", "Desempenho", "Financeiro", "Conferência", "Finalização"];
+const TITULOS_PASSO = ["", "Situação da operação", "Desempenho (opcional)", "Financeiro", "Conferência", "Finalização"];
 
 function renderPasso(m) {
   const corpo = {
@@ -159,6 +161,7 @@ function renderPasso(m) {
         ${fm.modoCorrecao ? `<span class="chip chip-unidade">Correção de lançamento finalizado</span>` : ""}
       </div>
       ${fm.ehTeste && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-reset-teste" id="dex-abrir-reset-teste" type="button">🧪 Resetar dia para teste</button>` : ""}
+      ${podeExcluir() && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-excluir" id="dex-abrir-exclusao" type="button">🗑️ Excluir lançamento</button>` : ""}
     </div>
     <div class="dex-stepper">${[1, 2, 3, 4].map((p) => `<span class="dex-step ${p === fm.passo ? "ativo" : p < fm.passo ? "feito" : ""}">${p}</span>`).join("")}</div>
     <div class="dex-form-corpo">${corpo()}</div>
@@ -172,8 +175,61 @@ function renderPasso(m) {
   m.querySelector("#dex-f-voltar")?.addEventListener("click", () => { fm.passo--; renderPasso(m); });
   m.querySelector("#dex-f-avancar")?.addEventListener("click", () => { if (validarPassoAtual(m)) { fm.passo++; renderPasso(m); } });
   m.querySelector("#dex-abrir-reset-teste")?.addEventListener("click", () => renderResetPreview(m));
+  m.querySelector("#dex-abrir-exclusao")?.addEventListener("click", () => renderExclusaoConfirmacao(m));
   wirePasso(m);
   if (fm.passo === 4) wireFinalizacao(m);
+}
+
+const podeExcluir = () => pode("dashboard_executivo.excluir");
+
+// ---------------------------------------------------------------------------
+// EXCLUSÃO UNIVERSAL (real ou teste) — só administrador. Sempre pede motivo,
+// sempre confirma antes de apagar de verdade.
+// ---------------------------------------------------------------------------
+function renderExclusaoConfirmacao(m) {
+  const c = fm.campos;
+  const resumo = c.situacao === "normal"
+    ? `Valor das vendas (iFood): ${fmtMoeda(c.valorVendasIfood)}`
+    : c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas";
+  m.innerHTML = `
+    <button class="modal-close" aria-label="Fechar">×</button>
+    <div class="modal-head"><h2>🗑️ Excluir lançamento — ${fmtDataBr(fm.data)}</h2></div>
+    <div class="dex-avisos dex-avisos-perigo">
+      <p><b>Esta ação apaga o lançamento deste dia definitivamente.</b></p>
+      <div class="dex-conf-grid">
+        <div class="dex-conf-item"><span>Data</span><b>${fmtDataBr(fm.data)}</b></div>
+        <div class="dex-conf-item"><span>Situação</span><b>${escapeHtml(resumo)}</b></div>
+      </div>
+      <p>O registro completo fica guardado no log de exclusões (com seu usuário e o motivo abaixo) — mas o lançamento em si sai da grade e dos totais do mês.</p>
+    </div>
+    <label class="cfg-campo ed-campo-full"><span>Motivo da exclusão (obrigatório) *</span>
+      <input type="text" id="dex-excl-motivo" placeholder="Explique por que este lançamento está sendo apagado"></label>
+    <div class="ed-acoes dex-form-acoes">
+      <button class="btn btn-ghost" id="dex-excl-cancelar">Cancelar</button>
+      <button class="btn btn-perigo" id="dex-excl-confirmar">Excluir definitivamente</button>
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#dex-excl-cancelar").addEventListener("click", () => renderPasso(m));
+  m.querySelector("#dex-excl-confirmar").addEventListener("click", () => confirmarExclusao(m));
+}
+
+async function confirmarExclusao(m) {
+  const motivo = m.querySelector("#dex-excl-motivo")?.value.trim() || "";
+  if (motivo.length < 3) { toast("Informe o motivo da exclusão (mínimo 3 caracteres)."); return; }
+  const btn = m.querySelector("#dex-excl-confirmar");
+  const lancamentoId = fm.lancamentoId;
+  const unidadeId = fm.unidadeId; // captura antes: fecharOverlay() zera `fm`
+  const onSalvo = fm.onSalvo;
+  btn.disabled = true; btn.textContent = "Excluindo…";
+  try {
+    await dashExecExcluirLancamento(lancamentoId, { unidadeId: unidadeId || undefined, motivo });
+    toast("Lançamento excluído.");
+    fecharOverlay();
+    onSalvo?.();
+  } catch (e) {
+    toast("Erro: " + e.message);
+    btn.disabled = false; btn.textContent = "Excluir definitivamente";
+  }
 }
 
 function botoesFinalizacao() {
@@ -212,17 +268,21 @@ function passoDesempenho() {
   }
   const ticket = ticketMedioPreview(c);
   return `
+    <p class="dex-form-info">📎 Dados complementares — preencha caso tenha acesso às informações. Nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
     <div class="cfg-form-grid">
-      <label class="cfg-campo"><span>Quantidade total de vendas *</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}"></label>
-      <label class="cfg-campo"><span>Valor bruto total das vendas (R$) *</span><input type="number" min="0" step="0.01" id="dex-valorbruto" value="${c.valorVendasBruto}"></label>
-      <label class="cfg-campo"><span>Novos clientes</span><input type="number" min="0" step="1" id="dex-novos" value="${c.novosClientes}"></label>
+      <label class="cfg-campo"><span>Quantidade total de vendas</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}" placeholder="Não informado"></label>
+      <label class="cfg-campo"><span>Valor bruto total das vendas (R$)</span><input type="number" min="0" step="0.01" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="Não informado"></label>
+      <label class="cfg-campo"><span>Novos clientes</span><input type="number" min="0" step="1" id="dex-novos" value="${c.novosClientes}" placeholder="Não informado"></label>
       <label class="cfg-campo"><span>Ticket médio (calculado)</span><input type="text" value="${ticket == null ? "—" : fmtMoeda(ticket)}" disabled></label>
     </div>`;
 }
 
+/** Ticket médio só existe quando os DOIS lados são conhecidos — nunca finge
+ * "R$ 0,00" quando falta um dos dois (ver dashboardExecutivo.calc.js#ticketMedio). */
 function ticketMedioPreview(c) {
-  const q = Number(c.qtdVendas) || 0;
-  const v = Number(c.valorVendasBruto) || 0;
+  if (c.qtdVendas === "" || c.valorVendasBruto === "") return null;
+  const q = Number(c.qtdVendas);
+  const v = Number(c.valorVendasBruto);
   return q > 0 ? v / q : null;
 }
 
@@ -291,8 +351,8 @@ function passoConferencia() {
   const calc = calculoPreview(c);
   return `
     <div class="dex-conf-grid">
-      ${linha("Quantidade de vendas", c.qtdVendas)}
-      ${linha("Novos clientes", c.novosClientes || 0)}
+      ${linha("Quantidade de vendas", c.qtdVendas === "" ? "—" : c.qtdVendas)}
+      ${linha("Novos clientes", c.novosClientes === "" ? "—" : c.novosClientes)}
       ${linha("Vendas brutas", fmtMoeda(c.valorVendasBruto))}
       ${linha("Ticket médio", fmtMoeda(ticketMedioPreview(c)))}
       ${linha("Valor das vendas (iFood)", fmtMoeda(c.valorVendasIfood))}
@@ -391,8 +451,10 @@ function validarPassoAtual(m) {
     return true;
   }
   if (fm.passo === 2 && c.situacao === "normal") {
-    if (c.qtdVendas === "" || c.valorVendasBruto === "") { toast("Preencha a quantidade e o valor bruto das vendas."); return false; }
-    if (Number(c.qtdVendas) < 0 || Number(c.valorVendasBruto) < 0) { toast("Valores não podem ser negativos."); return false; }
+    // Desempenho é opcional — nada aqui bloqueia o avanço. Só valida o que
+    // foi de fato preenchido (não pode ser negativo).
+    if (c.qtdVendas !== "" && Number(c.qtdVendas) < 0) { toast("A quantidade de vendas não pode ser negativa."); return false; }
+    if (c.valorVendasBruto !== "" && Number(c.valorVendasBruto) < 0) { toast("O valor bruto não pode ser negativo."); return false; }
     return true;
   }
   if (fm.passo === 3 && c.situacao === "normal") {
@@ -421,6 +483,10 @@ function wireFinalizacao(m) {
   m.querySelector("#dex-f-finalizar")?.addEventListener("click", () => salvar(m, "finalizado"));
 }
 
+/** "" (campo vazio) vira `undefined` (omitido do corpo) — nunca 0. O backend
+ * trata ausência como "não informado" (null), nunca como zero digitado. */
+const numOuIndefinido = (s) => (s === "" || s == null ? undefined : Number(s));
+
 function payloadBase(status) {
   const c = fm.campos;
   const base = {
@@ -428,10 +494,12 @@ function payloadBase(status) {
     observacao: c.observacao || undefined, status,
   };
   if (c.situacao === "sem_operacao") return { ...base, motivoSemOperacao: c.motivoSemOperacao };
-  if (c.situacao === "zero_vendas") return { ...base, novosClientes: Number(c.novosClientes) || 0 };
+  if (c.situacao === "zero_vendas") return { ...base, novosClientes: numOuIndefinido(c.novosClientes) };
   return {
     ...base,
-    qtdVendas: Number(c.qtdVendas) || 0, valorVendasBruto: Number(c.valorVendasBruto) || 0, novosClientes: Number(c.novosClientes) || 0,
+    // Desempenho: opcional, nunca vira 0 por conta própria.
+    qtdVendas: numOuIndefinido(c.qtdVendas), valorVendasBruto: numOuIndefinido(c.valorVendasBruto), novosClientes: numOuIndefinido(c.novosClientes),
+    // Financeiro: sempre preenchido a esta altura (etapa continua obrigatória).
     valorVendasIfood: Number(c.valorVendasIfood) || 0, taxasComissoes: Number(c.taxasComissoes) || 0,
     servicosPromocoes: Number(c.servicosPromocoes) || 0, taxasEntregadores: Number(c.taxasEntregadores) || 0,
     outrasDeducoes: Number(c.outrasDeducoes) || 0, justificativaAjuste: c.justificativaAjuste || undefined,

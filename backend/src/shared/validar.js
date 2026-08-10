@@ -120,6 +120,20 @@ export function numeroOpcional(v, campo, { min, max, padrao = 0 } = {}) {
 }
 
 /**
+ * Como `numeroOpcional`, mas o "ausente" vira `null`, não um valor padrão.
+ * Use quando "não informado" e "0" são coisas diferentes para o domínio
+ * (ex.: dados de desempenho que o franqueado pode não ter) — nunca inventa
+ * um zero que o cliente não mandou.
+ * @param {unknown} v
+ * @param {string} campo
+ * @param {{min?: number, max?: number}} [opts]
+ * @returns {number|null}
+ */
+export function numeroOpcionalNulo(v, campo, { min, max } = {}) {
+  return vazio(v) ? null : numero(v, campo, { min, max });
+}
+
+/**
  * Inteiro com recorte em faixa (não lança: satura). Ideal para `?limite=`,
  * onde um valor absurdo do cliente deve virar o teto, não um erro.
  * @param {unknown} v

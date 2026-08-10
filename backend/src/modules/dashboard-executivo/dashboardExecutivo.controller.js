@@ -1,5 +1,6 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
 import * as service from "./dashboardExecutivo.service.js";
+import { simularPrecoProduto } from "./dashboardExecutivo.simulador.service.js";
 
 export const unidades = asyncHandler(async (req, res) => {
   const data = await service.listarUnidades({
@@ -49,6 +50,21 @@ export const atualizarLancamento = asyncHandler(async (req, res) => {
     usuario: req.user,
     id: req.params.id,
     dados: req.body ?? {},
+  });
+  res.json({ data });
+});
+
+// Exclusão universal (real ou teste) — só quem tem DASHBOARD_EXECUTIVO_EXCLUIR
+// (organization_admin). Sempre exige motivo.
+export const excluirLancamento = asyncHandler(async (req, res) => {
+  const b = req.body ?? {};
+  const data = await service.excluirLancamento({
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeIdSessao: req.tenant.unidadeId,
+    unidadeIdSolicitado: b.unidadeId,
+    usuario: req.user,
+    id: req.params.id,
+    motivo: b.motivo,
   });
   res.json({ data });
 });
@@ -105,6 +121,36 @@ export const resetTeste = asyncHandler(async (req, res) => {
     });
     res.json({ data: { confirmado: false, ...data } });
   }
+});
+
+// Lançamento de faturamento mensal (distribuição). Mesmo padrão do reset de
+// teste: confirmar=false (padrão) só devolve a prévia; confirmar=true executa.
+export const lancamentoMensal = asyncHandler(async (req, res) => {
+  const b = req.body ?? {};
+  const data = await service.lancamentoMensal({
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeIdSessao: req.tenant.unidadeId,
+    unidadeIdSolicitado: b.unidadeId,
+    usuario: req.user,
+    dados: b,
+    confirmar: b.confirmar === true,
+  });
+  res.status(b.confirmar === true ? 201 : 200).json({ data: { confirmado: b.confirmar === true, ...data } });
+});
+
+// Simulação de preço Balcão/iFood + tabela (card "Simulação de preço" da Visão Geral).
+export const simuladorPreco = asyncHandler(async (req, res) => {
+  const data = await simularPrecoProduto({
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeIdSessao: req.tenant.unidadeId,
+    unidadeIdSolicitado: req.query.unidadeId,
+    canal: req.query.canal,
+    tabela: req.query.tabela,
+    produto: req.query.produto,
+    mes: req.query.mes,
+    ano: req.query.ano,
+  });
+  res.json({ data });
 });
 
 export const historico = asyncHandler(async (req, res) => {

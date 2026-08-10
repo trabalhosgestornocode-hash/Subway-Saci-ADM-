@@ -192,7 +192,7 @@ export function barraComparativoMensal(id, meses) {
     data: {
       labels: meses.map((m) => NOME_MES_CURTO[m.mes]),
       datasets: [
-        { label: "Faturamento bruto", data: meses.map((m) => m.faturamentoBruto), backgroundColor: C.verde, borderRadius: 4 },
+        { label: "Faturamento", data: meses.map((m) => m.faturamento), backgroundColor: C.verde, borderRadius: 4 },
         { label: "Total de deduções", data: meses.map((m) => m.totalDeducoes), backgroundColor: C.verm, borderRadius: 4 },
         { label: "Receita após deduções", data: meses.map((m) => m.receitaAposDeducoes), backgroundColor: C.azul, borderRadius: 4 },
       ],
@@ -208,6 +208,105 @@ export function barraComparativoMensal(id, meses) {
 
 const NOME_MES_CURTO = { 1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez" };
 
+// ===========================================================================
+// GRÁFICOS DA BONIFICAÇÃO MENSAL — registro próprio (ciclo de vida
+// independente). Paleta usa o vermelho institucional como ACCENT (marcos de
+// meta), nunca como preenchimento dominante — verde/azul carregam os dados
+// reais, o vermelho só marca "aqui está a meta".
+// ===========================================================================
+let instanciasBonif = [];
+export function destruirGraficosBonificacao() { instanciasBonif.forEach((c) => c.destroy()); instanciasBonif = []; }
+
+const CB = { real: "#0f8a4c", realBg: "rgba(15,138,76,.12)", projecao: "#8a93a6", meta: ["#f2b6b6", "#e2807f", "#DB3B3B"], mix: { bebidas: "#3B82C4", adicionais: "#FFC72C", diversos: "#7C5CD0" } };
+
+/**
+ * Evolução do faturamento ACUMULADO no mês — linha real até hoje, linha
+ * pontilhada de projeção dali até o fim do mês, e uma linha horizontal fina
+ * por faixa de meta de faturamento (item 3-4).
+ */
+export function graficoEvolucaoFaturamento(id, { calendario, faixas, mediaDiariaValida }) {
+  const el = document.getElementById(id);
+  if (!el || !window.Chart || !calendario?.length) return;
+  const labels = calendario.map((d) => d.data.slice(8, 10));
+  const idxHoje = calendario.findIndex((d) => d.status === "FUTURO") - 1;
+  const ultimoIdx = idxHoje < 0 ? calendario.length - 1 : idxHoje;
+
+  let acumulado = 0;
+  const real = calendario.map((d, i) => {
+    if (i > ultimoIdx) return null;
+    if (d.lancamento?.faturamentoGeral != null) acumulado += Number(d.lancamento.faturamentoGeral);
+    return acumulado;
+  });
+  const projecao = calendario.map((d, i) => {
+    if (i < ultimoIdx) return null;
+    if (i === ultimoIdx) return real[ultimoIdx];
+    return mediaDiariaValida != null ? (real[ultimoIdx] ?? 0) + mediaDiariaValida * (i - ultimoIdx) : null;
+  });
+
+  const datasetsMeta = (faixas || []).slice(0, 3).map((f, i) => ({
+    label: `Meta ${i + 1} · R$ ${Math.round(f.valorMin ?? f.valorMax).toLocaleString("pt-BR")}`,
+    data: labels.map(() => f.valorMin ?? f.valorMax),
+    borderColor: CB.meta[i] ?? CB.meta[2], borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false, order: 3,
+  }));
+
+  instanciasBonif.push(new Chart(el, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Projeção", data: projecao, borderColor: CB.projecao, borderDash: [6, 4], pointRadius: 0, fill: false, tension: 0.15, order: 2 },
+        { label: "Faturamento acumulado", data: real, borderColor: CB.real, backgroundColor: CB.realBg, fill: true, tension: 0.2, pointRadius: 0, pointHoverRadius: 4, order: 1 },
+        ...datasetsMeta,
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => c.raw == null ? undefined : `${c.dataset.label}: R$ ${Number(c.raw).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` } },
+      },
+      scales: {
+        y: { ticks: { callback: (v) => "R$" + (v / 1000).toFixed(0) + "k" }, grid: { color: "#eef1f0" } },
+        x: { grid: { display: false } },
+      },
+      animation: { duration: 700, easing: "easeOutQuart" },
+    },
+  }));
+}
+
+/** Evolução diária do mix de vendas — bebidas/adicionais/diversos (item 6). */
+export function graficoEvolucaoMix(id, calendario) {
+  const el = document.getElementById(id);
+  if (!el || !window.Chart || !calendario?.length) return;
+  const comDado = calendario.filter((d) => d.lancamento?.mix?.bebidas != null);
+  if (!comDado.length) return;
+  const labels = calendario.map((d) => d.data.slice(8, 10));
+  const serie = (chave) => calendario.map((d) => d.lancamento?.mix?.[chave] ?? null);
+
+  instanciasBonif.push(new Chart(el, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Bebidas", data: serie("bebidas"), borderColor: CB.mix.bebidas, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, spanGaps: true },
+        { label: "Adicionais", data: serie("adicionais"), borderColor: CB.mix.adicionais, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, spanGaps: true },
+        { label: "Diversos", data: serie("diversos"), borderColor: CB.mix.diversos, backgroundColor: "transparent", tension: 0.25, pointRadius: 2, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, padding: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => c.raw == null ? undefined : `${c.dataset.label}: ${Number(c.raw).toFixed(1)}%` } },
+      },
+      scales: { y: { ticks: { callback: (v) => v + "%" }, grid: { color: "#eef1f0" } }, x: { grid: { display: false } } },
+      animation: { duration: 700, easing: "easeOutQuart" },
+    },
+  }));
+}
+
 /** Gráfico 6 — visão anual (12 meses: faturamento, deduções, receita, % deduções). */
 export function visaoAnual(id, meses) {
   const el = document.getElementById(id);
@@ -216,7 +315,7 @@ export function visaoAnual(id, meses) {
     data: {
       labels: meses.map((m) => NOME_MES_CURTO[m.mes]),
       datasets: [
-        { type: "bar", label: "Faturamento bruto", data: meses.map((m) => (m.status === "futuro" ? null : m.faturamentoBruto)), backgroundColor: C.verde, borderRadius: 4, order: 2 },
+        { type: "bar", label: "Faturamento", data: meses.map((m) => (m.status === "futuro" ? null : m.faturamento)), backgroundColor: C.verde, borderRadius: 4, order: 2 },
         { type: "bar", label: "Receita após deduções", data: meses.map((m) => (m.status === "futuro" ? null : m.receitaAposDeducoes)), backgroundColor: C.azul, borderRadius: 4, order: 2 },
         { type: "line", label: "% deduções", data: meses.map((m) => (m.status === "futuro" ? null : m.percentualDeducoes)), borderColor: C.verm, yAxisID: "y1", tension: 0.25, order: 1, spanGaps: false, pointRadius: 3 },
       ],

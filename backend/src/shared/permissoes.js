@@ -46,6 +46,22 @@ export const PERMISSOES = {
   // unidade marcada como `eh_teste = true` (o service revalida isso sempre,
   // mesmo com a permissão concedida). Nunca disponível em unidade real.
   DASHBOARD_EXECUTIVO_RESETAR_TESTE: "dashboard_executivo.resetar_teste",
+  // Excluir um lançamento de verdade, em QUALQUER unidade (real ou teste) —
+  // diferente do reset acima. Deliberadamente NÃO listada em nenhum outro
+  // papel abaixo: só entra em `organization_admin` via `Object.values(P)`.
+  // Sempre exige motivo e grava snapshot completo antes de apagar (ver
+  // lancamentos_financeiros_exclusoes, migration 027).
+  DASHBOARD_EXECUTIVO_EXCLUIR: "dashboard_executivo.excluir",
+
+  // Bonificação Mensal (metas + lançamentos diários + importação Visio).
+  // Módulo próprio, não uma sub-aba do Dashboard iFood (ver frontend/config.js).
+  // Cadastro/edição de metas (faixas de bonificação) ainda não tem tela —
+  // nesta 1ª etapa as metas são seed via migration (028); quando existir
+  // uma tela de edição, entra uma permissão BONIFICACAO_MENSAL_CONFIGURAR
+  // própria, no mesmo espírito de DASHBOARD_EXECUTIVO_CONFIGURAR.
+  BONIFICACAO_MENSAL_VER: "bonificacao_mensal.ver",
+  // Importar os 2 PDFs da Visio e lançar/corrigir manualmente um dia.
+  BONIFICACAO_MENSAL_LANCAR: "bonificacao_mensal.lancar",
 };
 
 const P = PERMISSOES;
@@ -53,7 +69,7 @@ const P = PERMISSOES;
 /** Só leitura — a base de todos os papéis. */
 const LEITURA = [
   P.DASHBOARD_VER, P.PRODUTOS_VER, P.INSUMOS_VER, P.CMV_VER, P.VENDAS_VER,
-  P.INTEGRACOES_VER, P.DASHBOARD_EXECUTIVO_VER,
+  P.INTEGRACOES_VER, P.DASHBOARD_EXECUTIVO_VER, P.BONIFICACAO_MENSAL_VER,
 ];
 
 /** @type {Record<string, string[]>} */
@@ -64,12 +80,12 @@ const POR_PAPEL = {
     ...LEITURA,
     P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.VENDAS_EDITAR,
     P.INTEGRACOES_GERENCIAR, P.USUARIOS_VER, P.CONFIG_VER,
-    P.DASHBOARD_EXECUTIVO_LANCAR,
+    P.DASHBOARD_EXECUTIVO_LANCAR, P.BONIFICACAO_MENSAL_LANCAR,
   ],
 
-  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE],
+  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE, P.BONIFICACAO_MENSAL_LANCAR],
 
-  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE],
+  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE, P.BONIFICACAO_MENSAL_LANCAR],
 
   viewer: [...LEITURA],
 };

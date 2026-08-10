@@ -7,9 +7,11 @@ import {
   hojeIsoBrasil, diasDoMes, mesAnterior, statusMes, resumoPreenchimento,
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
   totalDeducoes, receitaAposDeducoes, saldoPercentual, mediaDiaria, projecaoMensal,
-  confiabilidadeProjecao, diagnostico, recomendacoes, validarOutrasDeducoes,
-  inconsistencias, STATUS_DIA, indicadorAplicavel,
+  confiabilidadeProjecao, validarOutrasDeducoes,
+  inconsistencias, STATUS_DIA, indicadorAplicavel, statusIndicador, saldoMeta,
+  distribuirValorMensal, distribuirQuantidadeMensal,
 } from "./dashboardExecutivo.calc.js";
+import { gerarDiagnostico, LIMIARES_DIAGNOSTICO } from "./dashboardExecutivo.diagnostico.js";
 
 const TABELA = "lancamentos_financeiros_diarios";
 const TABELA_AUDITORIA = "lancamentos_financeiros_auditoria";
@@ -20,7 +22,7 @@ const RESOLVIDOS_COM_DADOS = new Set([STATUS_DIA.PREENCHIDO, STATUS_DIA.ZERO_VEN
 // Nunca confia no que o cliente manda: quando a sessão já está presa a uma
 // unidade, qualquer unidadeId diferente no corpo/query é recusado.
 // ---------------------------------------------------------------------------
-async function resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica = false }) {
+export async function resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica = false }) {
   if (unidadeIdSessao) {
     if (unidadeIdSolicitado && unidadeIdSolicitado !== unidadeIdSessao) {
       throw ApiError.forbidden("Você não tem acesso a esta unidade.");
@@ -63,6 +65,9 @@ function calculadosDoLancamento(row) {
   };
 }
 
+/** Number(x), mas preserva null/undefined em vez de virar 0 — "não informado" ≠ "zero". */
+const numOuNulo = (v) => (v == null ? null : Number(v));
+
 function paraApi(row) {
   return {
     id: row.id,
@@ -71,14 +76,15 @@ function paraApi(row) {
     situacao: row.situacao,
     motivoSemOperacao: row.motivo_sem_operacao ?? null,
     observacao: row.observacao ?? null,
-    qtdVendas: row.qtd_vendas,
-    valorVendasBruto: Number(row.valor_vendas_bruto),
-    novosClientes: row.novos_clientes,
-    valorVendasIfood: Number(row.valor_vendas_ifood),
-    taxasComissoes: Number(row.taxas_comissoes),
-    servicosPromocoes: Number(row.servicos_promocoes),
-    taxasEntregadores: Number(row.taxas_entregadores),
-    outrasDeducoes: Number(row.outras_deducoes),
+    origemLancamento: row.origem_lancamento ?? "diario",
+    qtdVendas: row.qtd_vendas ?? null,
+    valorVendasBruto: numOuNulo(row.valor_vendas_bruto),
+    novosClientes: row.novos_clientes ?? null,
+    valorVendasIfood: numOuNulo(row.valor_vendas_ifood),
+    taxasComissoes: numOuNulo(row.taxas_comissoes),
+    servicosPromocoes: numOuNulo(row.servicos_promocoes),
+    taxasEntregadores: numOuNulo(row.taxas_entregadores),
+    outrasDeducoes: numOuNulo(row.outras_deducoes),
     justificativaAjuste: row.justificativa_ajuste ?? null,
     status: row.status,
     usuarioNome: row.usuario_nome ?? null,
@@ -158,6 +164,89 @@ async function calcularPendenciasMesAnterior({ unidadeId, ano, mes, hojeIso }) {
 }
 
 // ---------------------------------------------------------------------------
+// COMPARATIVO DE FATURAMENTO + PLANO DE RECUPERAÇÃO
+//
+// Mês em andamento: NUNCA compara o total parcial do mês atual com o total
+// fechado do mês anterior (isso super/sub-estima a variação). Compara o
+// MESMO recorte de dias (1..hoje) dos dois meses — "Estratégia A" do pedido.
+// Mês já fechado: compara os dois totais completos, como sempre foi.
+//
+// Quando há queda real E o mês ainda está em andamento, monta o plano de
+// recuperação: quanto falta para alcançar o faturamento do mês anterior
+// (referência), quantos dias operacionais restam, e a média diária
+// necessária — com cenários quando a meta integral for pouco provável.
+// ---------------------------------------------------------------------------
+async function calcularComparativoEPlanoRecuperacao({ unidadeId, ano, mes, hojeIso, diasComStatus, base, media }) {
+  const anterior = mesAnterior(ano, mes);
+  const { diasComStatus: diasAnterior } = await carregarCalendarioMes({ unidadeId, ano: anterior.ano, mes: anterior.mes, hojeIso });
+  const totalAnteriorCompleto = diasAnterior.reduce((s, d) => s + Number(d.lancamento?.valor_vendas_ifood || 0), 0);
+
+  const [anoAtualNum, mesAtualNum] = hojeIso.split("-").map(Number);
+  const mesEmAndamento = ano === anoAtualNum && mes === mesAtualNum;
+
+  const somarAteODia = (dias, ateODia) => {
+    let soma = 0, temDado = false, temEstimativa = false;
+    for (const d of dias) {
+      if (Number(d.data.slice(8, 10)) > ateODia) continue;
+      if (!RESOLVIDOS_COM_DADOS.has(d.status)) continue;
+      temDado = true;
+      soma += Number(d.lancamento?.valor_vendas_ifood || 0);
+      if (d.lancamento?.origem_lancamento === "distribuicao_mensal") temEstimativa = true;
+    }
+    return { soma, temDado, temEstimativa };
+  };
+
+  let comparativo;
+  if (mesEmAndamento) {
+    const diaAtual = Number(hojeIso.slice(8, 10));
+    const atualParcial = somarAteODia(diasComStatus, diaAtual);
+    const anteriorParcial = somarAteODia(diasAnterior, diaAtual);
+    comparativo = (atualParcial.temDado && anteriorParcial.temDado && anteriorParcial.soma > 0)
+      ? {
+          tipo: "mesmo_periodo", diaComparado: diaAtual,
+          atual: atualParcial.soma, anterior: anteriorParcial.soma,
+          diferenca: atualParcial.soma - anteriorParcial.soma,
+          pct: ((atualParcial.soma - anteriorParcial.soma) / anteriorParcial.soma) * 100,
+          temEstimativa: atualParcial.temEstimativa || anteriorParcial.temEstimativa,
+        }
+      : { tipo: "indisponivel", pct: null, atual: atualParcial.soma || null, anterior: null, diferenca: null, diaComparado: diaAtual, temEstimativa: false };
+  } else {
+    comparativo = totalAnteriorCompleto > 0
+      ? {
+          tipo: "mes_fechado", diaComparado: null,
+          atual: base, anterior: totalAnteriorCompleto, diferenca: base - totalAnteriorCompleto,
+          pct: ((base - totalAnteriorCompleto) / totalAnteriorCompleto) * 100,
+          temEstimativa: diasAnterior.some((d) => d.lancamento?.origem_lancamento === "distribuicao_mensal"),
+        }
+      : { tipo: "indisponivel", pct: null, atual: base || null, anterior: null, diferenca: null, diaComparado: null, temEstimativa: false };
+  }
+
+  let recuperacao = null;
+  if (mesEmAndamento && totalAnteriorCompleto > 0 && base < totalAnteriorCompleto) {
+    const faltante = totalAnteriorCompleto - base;
+    const diasRestantes = diasComStatus.filter((d) => d.status === STATUS_DIA.FUTURO).length;
+    if (diasRestantes > 0) {
+      const mediaNecessaria = faltante / diasRestantes;
+      const mediaBase = media ?? 0;
+      const poucoProvavel = media != null && media > 0 && mediaNecessaria > media * LIMIARES_DIAGNOSTICO.recuperacaoMultiplicadorPoucoProvavel;
+      recuperacao = {
+        referencia: totalAnteriorCompleto, atual: base, faltante, diasRestantes,
+        mediaAtual: media, mediaNecessaria, poucoProvavel,
+        cenarios: {
+          conservador: mediaBase,
+          parcial: mediaBase * (1 + LIMIARES_DIAGNOSTICO.cenarioParcialPct / 100),
+          forte: mediaBase * (1 + LIMIARES_DIAGNOSTICO.cenarioForcaPct / 100),
+        },
+      };
+    } else {
+      recuperacao = { referencia: totalAnteriorCompleto, atual: base, faltante, diasRestantes: 0, mediaAtual: media, mediaNecessaria: null, poucoProvavel: true, cenarios: null };
+    }
+  }
+
+  return { comparativo, recuperacao };
+}
+
+// ---------------------------------------------------------------------------
 // GET /dashboard-executivo/mes — payload agregado da página inteira
 // ---------------------------------------------------------------------------
 export async function obterMes({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, mes: mesRaw, ano: anoRaw }) {
@@ -193,15 +282,28 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     return RESOLVIDOS_COM_DADOS.has(status);
   });
 
-  const somaCampo = (campo) => linhasComDados.reduce((s, r) => s + Number(r[campo] || 0), 0);
+  // FONTE DE VERDADE FINANCEIRA = etapa Financeiro. `valor_vendas_ifood` é o
+  // faturamento; taxas/serviços/entregadores/outras são o detalhamento. A
+  // etapa Desempenho (valor_vendas_bruto, qtd_vendas, novos_clientes) é
+  // operacional/complementar e NUNCA alimenta faturamento, projeção,
+  // comparativo ou os cards de meta — só o próprio ticket médio, que é
+  // conceitualmente dela (ver dashboardExecutivo.calc.js).
+  //
+  // As 4 deduções usam soma NULA-CIENTE: se nenhum dia do mês tem aquele
+  // campo informado (ex.: mês só com lançamento mensal, sem detalhamento),
+  // o total fica `null` — nunca `0`, que faria o card parecer "dentro da
+  // meta" por falta de dado (ver totalDeducoes/percentual em calc.js).
+  const somaSimples = (campo) => linhasComDados.reduce((s, r) => s + Number(r[campo] || 0), 0);
+  const somaNulavel = (campo) => {
+    const valores = linhasComDados.map((r) => r[campo]).filter((v) => v != null);
+    return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
+  };
   const cardValores = {
-    valorVendasBruto: somaCampo("valor_vendas_bruto"),
-    qtdVendas: linhasComDados.reduce((s, r) => s + Number(r.qtd_vendas || 0), 0),
-    valorVendasIfood: somaCampo("valor_vendas_ifood"),
-    taxasComissoes: somaCampo("taxas_comissoes"),
-    servicosPromocoes: somaCampo("servicos_promocoes"),
-    taxasEntregadores: somaCampo("taxas_entregadores"),
-    outrasDeducoes: somaCampo("outras_deducoes"),
+    valorVendasIfood: somaSimples("valor_vendas_ifood"),
+    taxasComissoes: somaNulavel("taxas_comissoes"),
+    servicosPromocoes: somaNulavel("servicos_promocoes"),
+    taxasEntregadores: somaNulavel("taxas_entregadores"),
+    outrasDeducoes: somaNulavel("outras_deducoes"),
   };
   const totalDed = totalDeducoes({
     taxasComissoes: cardValores.taxasComissoes, servicosPromocoes: cardValores.servicosPromocoes,
@@ -214,38 +316,65 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     taxas_entregadores: percentual(cardValores.taxasEntregadores, base),
     total_deducoes: percentual(totalDed, base),
   };
+  const saldos = {
+    taxas_comissoes: saldoMeta({ valorUtilizado: cardValores.taxasComissoes, percentualUtilizado: indicadoresRentabilidade.taxas_comissoes, limitePct: metas.taxas_comissoes?.limite ?? null, faturamentoBase: base }),
+    servicos_promocoes: saldoMeta({ valorUtilizado: cardValores.servicosPromocoes, percentualUtilizado: indicadoresRentabilidade.servicos_promocoes, limitePct: metas.servicos_promocoes?.limite ?? null, faturamentoBase: base }),
+    taxas_entregadores: saldoMeta({ valorUtilizado: cardValores.taxasEntregadores, percentualUtilizado: indicadoresRentabilidade.taxas_entregadores, limitePct: metas.taxas_entregadores?.limite ?? null, faturamentoBase: base }),
+    total_deducoes: saldoMeta({ valorUtilizado: totalDed, percentualUtilizado: indicadoresRentabilidade.total_deducoes, limitePct: metas.total_deducoes?.limite ?? null, faturamentoBase: base }),
+  };
 
   const cards = {
-    vendasBrutas: { valor: cardValores.valorVendasBruto, percentualSobreVendas: 100 },
-    taxasComissoes: { valor: cardValores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null },
-    servicosPromocoes: { valor: cardValores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null },
-    totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null },
+    // Antes chamado "vendasBrutas" e alimentado pela etapa Desempenho — era
+    // exatamente o bug relatado: o card financeiro principal usando o dado
+    // errado. Agora é o faturamento real do Financeiro.
+    faturamento: { valor: base, diasComDados: linhasComDados.length },
+    taxasComissoes: { valor: cardValores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null, saldo: saldos.taxas_comissoes, status: statusIndicador(indicadoresRentabilidade.taxas_comissoes, metas.taxas_comissoes) },
+    servicosPromocoes: { valor: cardValores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, saldo: saldos.servicos_promocoes, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
+    totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, saldo: saldos.total_deducoes, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
     receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
   };
 
-  // Projeção: média sobre os dias COM DADOS; multiplicador = todos os dias do
-  // mês (sem calendário operacional configurável ainda — ver migration 023).
-  const media = mediaDiaria(linhasComDados.map((r) => Number(r.valor_vendas_bruto)));
+  // Projeção: média do FATURAMENTO (Financeiro) sobre os dias com dados;
+  // multiplicador = todos os dias do mês (sem calendário operacional
+  // configurável ainda — ver migration 023).
+  const media = mediaDiaria(linhasComDados.map((r) => (r.valor_vendas_ifood == null ? null : Number(r.valor_vendas_ifood))));
   const projecao = projecaoMensal(media, diasComStatus.length);
   const diasVencidos = diasComStatus.filter((d) => d.status !== STATUS_DIA.FUTURO).length;
   const confiabilidade = confiabilidadeProjecao({
     diasVencidos, diasResolvidos: resumo.diasPreenchidos, diasComDados: linhasComDados.length,
   });
 
-  // Comparativo com o mês anterior (faturamento bruto).
-  const anterior = mesAnterior(ano, mes);
-  const { linhas: linhasAnterior } = await carregarCalendarioMes({ unidadeId, ano: anterior.ano, mes: anterior.mes, hojeIso });
-  const totalAnterior = linhasAnterior.reduce((s, r) => s + Number(r.valor_vendas_bruto || 0), 0);
-  const comparativoMesAnteriorPct = totalAnterior > 0 ? ((cardValores.valorVendasBruto - totalAnterior) / totalAnterior) * 100 : null;
-
-  const diagn = diagnostico({
-    indicadores: linhasComDados.length ? indicadoresRentabilidade : null,
-    metas, diasPendentesNoMes: resumo.diasPendentes, comparativoMesAnteriorPct,
-    modelo: modelo.modeloLogistico,
+  // Comparativo com o período de referência — trata mês em andamento com
+  // cuidado (não compara um mês parcial com um mês fechado inteiro) e, se
+  // houver queda real, monta o plano de recuperação. Ver função abaixo.
+  const { comparativo, recuperacao } = await calcularComparativoEPlanoRecuperacao({
+    unidadeId, ano, mes, hojeIso, diasComStatus, base, media,
   });
-  const recom = recomendacoes({
-    indicadoresForaDaMeta: diagn.indicadoresForaDaMeta, diasPendentesNoMes: resumo.diasPendentes,
-    semDadosSuficientes: diagn.semDadosSuficientes,
+
+  const diasEstimados = linhas.filter((r) => r.origem_lancamento === "distribuicao_mensal").length;
+  const diasPendentesDatas = diasComStatus
+    .filter((d) => d.status === STATUS_DIA.PENDENTE || d.status === STATUS_DIA.BLOQUEADO)
+    .map((d) => d.data);
+
+  const indicadoresParaDiagnostico = {
+    taxas_comissoes: { atual: null, valor: cardValores.taxasComissoes, meta: metas.taxas_comissoes ?? null, saldo: saldos.taxas_comissoes, naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, "taxas_comissoes") },
+    servicos_promocoes: { atual: null, valor: cardValores.servicosPromocoes, meta: metas.servicos_promocoes ?? null, saldo: saldos.servicos_promocoes, naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, "servicos_promocoes") },
+    taxas_entregadores: { atual: null, valor: cardValores.taxasEntregadores, meta: metas.taxas_entregadores ?? null, saldo: saldos.taxas_entregadores, naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, "taxas_entregadores") },
+    total_deducoes: { atual: null, valor: totalDed, meta: metas.total_deducoes ?? null, saldo: saldos.total_deducoes, naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, "total_deducoes") },
+  };
+  for (const [k, v] of Object.entries(indicadoresRentabilidade)) {
+    indicadoresParaDiagnostico[k].atual = indicadoresParaDiagnostico[k].naoAplicavel ? null : v;
+  }
+
+  const diagnosticoNovo = gerarDiagnostico({
+    indicadores: indicadoresParaDiagnostico,
+    faturamentoBase: base,
+    diasComDados: linhasComDados.length,
+    diasPendentes: resumo.diasPendentes,
+    diasPendentesDatas,
+    diasEstimados,
+    comparativo,
+    recuperacao,
   });
 
   const pendenciasMesesAnteriores = await calcularPendenciasMesAnterior({ unidadeId, ano, mes, hojeIso });
@@ -262,11 +391,17 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     pendenciasMesesAnteriores,
     cards,
     indicadoresRentabilidade: Object.fromEntries(
-      Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, {
-        atual: indicadorAplicavel(modelo.modeloLogistico, k) ? atual : null,
-        metaIdeal: metas[k]?.metaIdeal ?? null, limite: metas[k]?.limite ?? null,
-        naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, k),
-      }]),
+      Object.entries(indicadoresRentabilidade).map(([k, atualBruto]) => {
+        const aplicavel = indicadorAplicavel(modelo.modeloLogistico, k);
+        const atual = aplicavel ? atualBruto : null;
+        const valorUtilizado = { taxas_comissoes: cardValores.taxasComissoes, servicos_promocoes: cardValores.servicosPromocoes, taxas_entregadores: cardValores.taxasEntregadores, total_deducoes: totalDed }[k] ?? null;
+        return [k, {
+          atual, metaIdeal: metas[k]?.metaIdeal ?? null, limite: metas[k]?.limite ?? null,
+          naoAplicavel: !aplicavel,
+          status: aplicavel ? statusIndicador(atual, metas[k]) : null,
+          saldo: aplicavel ? saldoMeta({ valorUtilizado, percentualUtilizado: atual, limitePct: metas[k]?.limite ?? null, faturamentoBase: base }) : null,
+        }];
+      }),
     ),
     graficos: {
       comparativoPercentuais: Object.entries(indicadoresRentabilidade)
@@ -282,7 +417,8 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
       ],
       evolucaoDiaria: diasComStatus.map((d) => ({
         data: d.data, status: d.status,
-        valor: d.lancamento ? Number(d.lancamento.valor_vendas_bruto) : null,
+        valor: d.lancamento ? Number(d.lancamento.valor_vendas_ifood) : null,
+        origemLancamento: d.lancamento?.origem_lancamento ?? null,
       })),
       evolucaoDeducoes: diasComStatus.map((d) => ({
         data: d.data, status: d.status,
@@ -301,8 +437,7 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
       confiabilidade: confiabilidade.nivel, justificativa: confiabilidade.justificativa,
       parcial: resumo.diasPendentes > 0,
     },
-    diagnostico: diagn,
-    recomendacoes: recom,
+    diagnostico: diagnosticoNovo,
   };
 }
 
@@ -314,14 +449,18 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   if (error) throw ApiError.internal(error.message);
 
   const linhas = (data ?? []).filter((r) => r.status === "finalizado" || r.status === "rascunho"); // inclui rascunho na visão agregada (é leitura)
-  const somaCampo = (campo) => linhas.reduce((s, r) => s + Number(r[campo] || 0), 0);
+  const somaSimples = (campo) => linhas.reduce((s, r) => s + Number(r[campo] || 0), 0);
+  const somaNulavel = (campo) => {
+    const valoresCampo = linhas.map((r) => r[campo]).filter((v) => v != null);
+    return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
+  };
   const valores = {
-    valorVendasBruto: somaCampo("valor_vendas_bruto"),
-    valorVendasIfood: somaCampo("valor_vendas_ifood"),
-    taxasComissoes: somaCampo("taxas_comissoes"),
-    servicosPromocoes: somaCampo("servicos_promocoes"),
-    taxasEntregadores: somaCampo("taxas_entregadores"),
-    outrasDeducoes: somaCampo("outras_deducoes"),
+    // Financeiro é a fonte de verdade — mesma regra da visão por unidade.
+    valorVendasIfood: somaSimples("valor_vendas_ifood"),
+    taxasComissoes: somaNulavel("taxas_comissoes"),
+    servicosPromocoes: somaNulavel("servicos_promocoes"),
+    taxasEntregadores: somaNulavel("taxas_entregadores"),
+    outrasDeducoes: somaNulavel("outras_deducoes"),
   };
   const totalDed = totalDeducoes({
     taxasComissoes: valores.taxasComissoes, servicosPromocoes: valores.servicosPromocoes,
@@ -335,11 +474,11 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
     total_deducoes: percentual(totalDed, base),
   };
 
-  // Evolução diária somada de todas as unidades.
+  // Evolução diária somada de todas as unidades (Financeiro).
   const porData = new Map();
   for (const r of linhas) {
     const acc = porData.get(r.data_lancamento) ?? 0;
-    porData.set(r.data_lancamento, acc + Number(r.valor_vendas_bruto || 0));
+    porData.set(r.data_lancamento, acc + Number(r.valor_vendas_ifood || 0));
   }
   const evolucaoDiaria = dias.map((d) => ({
     data: d, status: d > hojeIso ? STATUS_DIA.FUTURO : (porData.has(d) ? STATUS_DIA.PREENCHIDO : STATUS_DIA.PENDENTE),
@@ -353,14 +492,17 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
     periodo: { mes, ano },
     aviso: "Visão consolidada de todas as unidades — somente leitura. Selecione uma unidade específica para lançar ou corrigir dados. Como cada unidade pode estar em um modelo logístico diferente (Marketplace/Full Service), as metas não são exibidas nesta visão agregada.",
     cards: {
-      vendasBrutas: { valor: valores.valorVendasBruto, percentualSobreVendas: 100 },
-      taxasComissoes: { valor: valores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null },
-      servicosPromocoes: { valor: valores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null },
-      totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null },
+      faturamento: { valor: base, diasComDados: linhas.length },
+      taxasComissoes: { valor: valores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_comissoes, metas.taxas_comissoes) },
+      servicosPromocoes: { valor: valores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
+      totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
       receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
     },
     indicadoresRentabilidade: Object.fromEntries(
-      Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, { atual, metaIdeal: metas[k]?.metaIdeal ?? null, limite: metas[k]?.limite ?? null }]),
+      Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, {
+        atual, metaIdeal: metas[k]?.metaIdeal ?? null, limite: metas[k]?.limite ?? null,
+        status: statusIndicador(atual, metas[k]),
+      }]),
     ),
     graficos: {
       comparativoPercentuais: Object.entries(indicadoresRentabilidade).map(([indicador, atual]) => ({
@@ -404,6 +546,9 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo }) {
   const situacao = v.umDe(b.situacao, "Situação", ["normal", "sem_operacao", "zero_vendas"]);
   const statusAlvo = v.umDeOpcional(b.status, "Status", ["rascunho", "finalizado"], "rascunho");
 
+  // "Sem operação"/"Zero vendas" são ZEROS REAIS e conhecidos (a loja não
+  // funcionou, ou funcionou e não vendeu nada) — bem diferente de "não sei".
+  // Por isso continuam gravando 0, não null.
   if (situacao === "sem_operacao") {
     const motivo = v.texto(b.motivoSemOperacao, "Motivo de não operação", { min: 1, max: 300 });
     return {
@@ -417,16 +562,22 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo }) {
   if (situacao === "zero_vendas") {
     return {
       situacao, statusAlvo, motivoSemOperacao: null, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
-      qtdVendas: 0, valorVendasBruto: 0, novosClientes: v.numeroOpcional(b.novosClientes, "Novos clientes", { min: 0, padrao: 0 }),
+      qtdVendas: 0, valorVendasBruto: 0, novosClientes: v.numeroOpcionalNulo(b.novosClientes, "Novos clientes", { min: 0 }),
       valorVendasIfood: 0, taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, outrasDeducoes: 0, justificativaAjuste: null,
       avisos: [],
     };
   }
 
-  // situacao === "normal"
-  const qtdVendas = Math.trunc(v.numero(b.qtdVendas, "Quantidade de vendas", { min: 0 }));
-  const valorVendasBruto = v.numero(b.valorVendasBruto, "Valor bruto das vendas", { min: 0 });
-  const novosClientes = Math.trunc(v.numeroOpcional(b.novosClientes, "Novos clientes", { min: 0, padrao: 0 }));
+  // situacao === "normal" — ETAPA DESEMPENHO (qtdVendas/valorVendasBruto/
+  // novosClientes) é OPCIONAL: nada aqui bloqueia o lançamento, e o que não
+  // for informado vira null (nunca 0) — "não sei" ≠ "foi zero". A etapa
+  // Financeiro continua obrigatória: é a fonte de verdade financeira e o
+  // franqueado sempre tem esse extrato do iFood em mãos.
+  const qtdVendasRaw = v.numeroOpcionalNulo(b.qtdVendas, "Quantidade de vendas", { min: 0 });
+  const qtdVendas = qtdVendasRaw == null ? null : Math.trunc(qtdVendasRaw);
+  const valorVendasBruto = v.numeroOpcionalNulo(b.valorVendasBruto, "Valor bruto das vendas", { min: 0 });
+  const novosClientesRaw = v.numeroOpcionalNulo(b.novosClientes, "Novos clientes", { min: 0 });
+  const novosClientes = novosClientesRaw == null ? null : Math.trunc(novosClientesRaw);
   const valorVendasIfood = v.numero(b.valorVendasIfood, "Valor das vendas (iFood)", { min: 0 });
   const taxasComissoes = v.numero(b.taxasComissoes, "Taxas e comissões", { min: 0 });
   const servicosPromocoes = v.numero(b.servicosPromocoes, "Serviços e promoções", { min: 0 });
@@ -620,6 +771,43 @@ async function registrarAuditoria({ lancamentoId, organizacaoId, unidadeId, camp
 }
 
 // ---------------------------------------------------------------------------
+// DELETE (de verdade) DE UM LANÇAMENTO — universal (qualquer unidade, real
+// ou de teste), restrito a quem tem DASHBOARD_EXECUTIVO_EXCLUIR (só
+// organization_admin, ver permissoes.js). Diferente do reset de teste: aqui
+// é UM dia só, sem cascata, e sempre com motivo + snapshot completo — nunca
+// se apaga um lançamento financeiro "em silêncio".
+// ---------------------------------------------------------------------------
+export async function excluirLancamento({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, id, motivo: motivoRaw }) {
+  const lancamentoId = v.uuid(id, "Lançamento");
+  const motivo = v.texto(motivoRaw, "Motivo da exclusão", { min: 3, max: 500 });
+
+  const { data: linha, error } = await supabase
+    .from(TABELA).select("*").eq("id", lancamentoId).eq("organizacao_id", organizacaoId).maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  if (!linha) throw ApiError.notFound("Lançamento não encontrado.");
+
+  // Mesma regra de escopo das demais ações: sessão presa a uma unidade não
+  // pode agir sobre lançamento de outra unidade, mesmo com a permissão.
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado: unidadeIdSolicitado ?? linha.unidade_id, exigirEspecifica: true });
+  if (linha.unidade_id !== unidadeId) throw ApiError.forbidden("Você não tem acesso a este lançamento.");
+
+  // Snapshot ANTES de apagar — tabela própria, sem FK para o lançamento (que
+  // está prestes a deixar de existir), então o registro da exclusão nunca
+  // some junto com o que foi apagado.
+  const { error: eLog } = await supabase.from("lancamentos_financeiros_exclusoes").insert({
+    organizacao_id: organizacaoId, unidade_id: linha.unidade_id, data_lancamento: linha.data_lancamento,
+    lancamento_snapshot: linha, motivo,
+    usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+  });
+  if (eLog) console.error("[dashboard-executivo] falha ao registrar log de exclusão:", eLog.message);
+
+  const { error: eDel } = await supabase.from(TABELA).delete().eq("id", lancamentoId);
+  if (eDel) throw ApiError.badRequest(eDel.message);
+
+  return { excluido: true, data: linha.data_lancamento, unidadeId: linha.unidade_id };
+}
+
+// ---------------------------------------------------------------------------
 // GET /dashboard-executivo/historico — rollup de 12 meses
 // ---------------------------------------------------------------------------
 export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, ano: anoRaw }) {
@@ -640,44 +828,199 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     const dias = diasDoMes(ano, mes);
     const linhasMes = (data ?? []).filter((r) => r.data_lancamento >= dias[0] && r.data_lancamento <= dias[dias.length - 1]);
     const linhasComDados = linhasMes.filter((r) => r.status === "finalizado" && r.situacao !== "sem_operacao");
-    const somaCampo = (campo) => linhasMes.filter((r) => r.status === "finalizado").reduce((s, r) => s + Number(r[campo] || 0), 0);
+    const linhasFinalizadas = linhasMes.filter((r) => r.status === "finalizado");
+    // Faturamento = Financeiro (fonte de verdade). Simples porque
+    // valor_vendas_ifood é sempre exigido em qualquer lançamento "normal".
+    const somaSimples = (campo) => linhasFinalizadas.reduce((s, r) => s + Number(r[campo] || 0), 0);
+    // Deduções: null quando NENHUM dia do mês tem aquele detalhamento — um
+    // mês só com lançamento mensal (sem taxas/comissões conhecidas) não
+    // pode aparecer como "0% de dedução".
+    const somaNulavel = (campo) => {
+      const valoresCampo = linhasFinalizadas.map((r) => r[campo]).filter((v) => v != null);
+      return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
+    };
 
-    const valorVendasBruto = somaCampo("valor_vendas_bruto");
-    const qtdVendas = linhasMes.filter((r) => r.status === "finalizado").reduce((s, r) => s + Number(r.qtd_vendas || 0), 0);
-    const valorVendasIfood = somaCampo("valor_vendas_ifood");
+    const faturamento = somaSimples("valor_vendas_ifood");
     const totalDed = totalDeducoes({
-      taxasComissoes: somaCampo("taxas_comissoes"), servicosPromocoes: somaCampo("servicos_promocoes"),
-      taxasEntregadores: somaCampo("taxas_entregadores"), outrasDeducoes: somaCampo("outras_deducoes"),
+      taxasComissoes: somaNulavel("taxas_comissoes"), servicosPromocoes: somaNulavel("servicos_promocoes"),
+      taxasEntregadores: somaNulavel("taxas_entregadores"), outrasDeducoes: somaNulavel("outras_deducoes"),
     });
-    const diasFinalizados = linhasMes.filter((r) => r.status === "finalizado").length;
+    const diasFinalizados = linhasFinalizadas.length;
     const diasRascunho = linhasMes.filter((r) => r.status === "rascunho").length;
     const diasVencidosNoMes = dias.filter((d) => d <= hojeIso).length;
     const diasPendentes = Math.max(diasVencidosNoMes - diasFinalizados - diasRascunho, 0);
 
-    const media = mediaDiaria(linhasComDados.map((r) => Number(r.valor_vendas_bruto)));
+    // Ticket médio: Desempenho, e só combina dias em que AMBOS (qtd e valor
+    // bruto) são conhecidos — nunca mistura a soma de um dia que tem só um
+    // dos dois. Um mês de puro lançamento mensal (sem Desempenho nenhum)
+    // resulta corretamente em `null`, não em "R$ 0,00".
+    const linhasComParDesempenho = linhasComDados.filter((r) => r.qtd_vendas != null && r.valor_vendas_bruto != null);
+    const qtdVendasPareado = linhasComParDesempenho.reduce((s, r) => s + Number(r.qtd_vendas), 0);
+    const valorVendasBrutoPareado = linhasComParDesempenho.reduce((s, r) => s + Number(r.valor_vendas_bruto), 0);
+    const qtdVendas = linhasComParDesempenho.length ? qtdVendasPareado : null;
+
+    const media = mediaDiaria(linhasComDados.map((r) => (r.valor_vendas_ifood == null ? null : Number(r.valor_vendas_ifood))));
     const statusMesRotulo = ano * 100 + mes > Number(hojeIso.slice(0, 7).replace("-", ""))
       ? "futuro"
       : (diasPendentes > 0 ? "incompleto" : (diasFinalizados > 0 ? "completo" : "sem_dados"));
 
     const comparativoMesAnteriorPct = totalMesAnterior != null && totalMesAnterior > 0
-      ? ((valorVendasBruto - totalMesAnterior) / totalMesAnterior) * 100 : null;
+      ? ((faturamento - totalMesAnterior) / totalMesAnterior) * 100 : null;
 
     meses.push({
       mes, ano, status: statusMesRotulo,
       diasPreenchidos: diasFinalizados, diasPendentes, diasRascunho,
-      faturamentoBruto: valorVendasBruto, qtdVendas,
-      ticketMedio: ticketMedio(valorVendasBruto, qtdVendas),
+      faturamento, qtdVendas,
+      ticketMedio: ticketMedio(qtdVendas != null ? valorVendasBrutoPareado : null, qtdVendas),
       totalDeducoes: totalDed,
-      percentualDeducoes: percentual(totalDed, valorVendasIfood),
-      receitaAposDeducoes: receitaAposDeducoes(valorVendasIfood, totalDed),
+      percentualDeducoes: percentual(totalDed, faturamento),
+      receitaAposDeducoes: receitaAposDeducoes(faturamento, totalDed),
       mediaDiaria: media,
       projecaoMensal: projecaoMensal(media, dias.length),
       comparativoMesAnteriorPct,
     });
-    totalMesAnterior = valorVendasBruto > 0 ? valorVendasBruto : totalMesAnterior;
+    totalMesAnterior = faturamento > 0 ? faturamento : totalMesAnterior;
   }
 
   return { ano, unidadeId, meses };
+}
+
+// ---------------------------------------------------------------------------
+// LANÇAMENTO DE FATURAMENTO MENSAL
+//
+// Para meses históricos onde o franqueado só sabe o total do mês, não o
+// detalhe por dia. Distribui o valor pelos dias SEM lançamento (nunca
+// sobrescreve um dia que já tem registro — rascunho ou finalizado, qualquer
+// situação). Cada dia gerado nasce com origem_lancamento='distribuicao_mensal'
+// e SEM Desempenho/detalhamento financeiro (null — não inventa o que não se
+// sabe). Mesmo endpoint faz preview (confirmar=false) e execução
+// (confirmar=true), igual ao padrão já usado no reset de teste.
+// ---------------------------------------------------------------------------
+
+async function localizarDiasParaDistribuicao({ unidadeId, ano, mes, hojeIso }) {
+  const diasDoMesTodos = diasDoMes(ano, mes);
+  const diasElegiveis = diasDoMesTodos.filter((d) => d <= hojeIso); // nunca no futuro
+  if (!diasElegiveis.length) {
+    return { diasDoMesTodos, diasComLancamento: [], diasElegiveisParaDistribuir: [] };
+  }
+  const { data, error } = await supabase
+    .from(TABELA).select("data_lancamento").eq("unidade_id", unidadeId)
+    .gte("data_lancamento", diasElegiveis[0]).lte("data_lancamento", diasElegiveis[diasElegiveis.length - 1]);
+  if (error) throw ApiError.internal(error.message);
+  const comLancamento = new Set((data ?? []).map((r) => r.data_lancamento));
+  return {
+    diasDoMesTodos,
+    diasComLancamento: [...comLancamento],
+    diasElegiveisParaDistribuir: diasElegiveis.filter((d) => !comLancamento.has(d)),
+  };
+}
+
+// Campos extras do lançamento mensal: TODOS opcionais — o franqueado pode
+// saber só o faturamento total, ou também os totais de pedidos/deduções do
+// mês. O que não for informado continua null em cada dia gerado (nunca 0).
+const CAMPOS_EXTRAS_MENSAL = [
+  ["qtdVendasTotal", "Quantidade de pedidos do mês"],
+  ["novosClientesTotal", "Novos clientes do mês"],
+  ["taxasComissoesTotal", "Taxas e comissões do mês"],
+  ["servicosPromocoesTotal", "Serviços e promoções do mês"],
+  ["taxasEntregadoresTotal", "Taxas de entregadores do mês"],
+  ["outrasDeducoesTotal", "Outras deduções do mês"],
+];
+
+function validarEntradaLancamentoMensal({ mesRaw, anoRaw, valorRaw, extrasRaw }) {
+  const mes = v.numero(mesRaw, "Mês", { min: 1, max: 12 });
+  const ano = v.numero(anoRaw, "Ano", { min: 2000, max: 2100 });
+  const valorTotalMensal = v.numero(valorRaw, "Faturamento total do mês", { min: 0.01 });
+  const extras = {};
+  for (const [campo, rotulo] of CAMPOS_EXTRAS_MENSAL) {
+    extras[campo] = v.numeroOpcionalNulo(extrasRaw?.[campo], rotulo, { min: 0 });
+  }
+  return { mes, ano, valorTotalMensal, extras };
+}
+
+export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, dados: body, confirmar }) {
+  const b = v.corpo(body);
+  const { mes, ano, valorTotalMensal, extras } = validarEntradaLancamentoMensal({
+    mesRaw: b.mes, anoRaw: b.ano, valorRaw: b.valorTotalMensal, extrasRaw: b,
+  });
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado: b.unidadeId, exigirEspecifica: true });
+  const hojeIso = hojeIsoBrasil();
+
+  const { diasDoMesTodos, diasComLancamento, diasElegiveisParaDistribuir } =
+    await localizarDiasParaDistribuicao({ unidadeId, ano, mes, hojeIso });
+
+  if (!diasElegiveisParaDistribuir.length) {
+    throw ApiError.badRequest(
+      diasComLancamento.length
+        ? "Todos os dias já decorridos deste mês já têm lançamento — não há dia disponível para a distribuição."
+        : "Este mês ainda não tem nenhum dia decorrido para receber a distribuição.",
+    );
+  }
+
+  const preview = {
+    mes, ano, valorTotalMensal,
+    diasNoMes: diasDoMesTodos.length,
+    diasComLancamento: diasComLancamento.length,
+    diasParaDistribuir: diasElegiveisParaDistribuir.length,
+    valorMedioAproximado: valorTotalMensal / diasElegiveisParaDistribuir.length,
+    // Só informativo pro preview mostrar o que também será distribuído.
+    camposExtrasInformados: CAMPOS_EXTRAS_MENSAL.filter(([campo]) => extras[campo] != null).map(([campo]) => campo),
+  };
+  if (!confirmar) return preview;
+
+  const n = diasElegiveisParaDistribuir.length;
+  const fatias = distribuirValorMensal(valorTotalMensal, n);
+  // Cada campo extra só é distribuído se o franqueado informou o total —
+  // senão fica null em todo dia (nunca 0). Contagens usam distribuição
+  // inteira; valores em R$ usam a mesma exatidão em centavos do faturamento.
+  const fatiasQtdVendas = extras.qtdVendasTotal != null ? distribuirQuantidadeMensal(extras.qtdVendasTotal, n) : null;
+  const fatiasNovosClientes = extras.novosClientesTotal != null ? distribuirQuantidadeMensal(extras.novosClientesTotal, n) : null;
+  const fatiasTaxasComissoes = extras.taxasComissoesTotal != null ? distribuirValorMensal(extras.taxasComissoesTotal, n) : null;
+  const fatiasServicosPromocoes = extras.servicosPromocoesTotal != null ? distribuirValorMensal(extras.servicosPromocoesTotal, n) : null;
+  const fatiasTaxasEntregadores = extras.taxasEntregadoresTotal != null ? distribuirValorMensal(extras.taxasEntregadoresTotal, n) : null;
+  const fatiasOutrasDeducoes = extras.outrasDeducoesTotal != null ? distribuirValorMensal(extras.outrasDeducoesTotal, n) : null;
+
+  const { data: lote, error: eLote } = await supabase.from("lancamentos_financeiros_distribuicao_mensal").insert({
+    organizacao_id: organizacaoId, unidade_id: unidadeId, ano, mes,
+    valor_total_centavos: Math.round(valorTotalMensal * 100),
+    dias_distribuidos: n,
+    usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+  }).select("id").single();
+  if (eLote) throw ApiError.badRequest(eLote.message);
+
+  const linhas = diasElegiveisParaDistribuir.map((dataLancamento, i) => ({
+    organizacao_id: organizacaoId, unidade_id: unidadeId, data_lancamento: dataLancamento,
+    situacao: "normal", status: "finalizado",
+    origem_lancamento: "distribuicao_mensal", distribuicao_mensal_id: lote.id,
+    valor_vendas_ifood: fatias[i],
+    qtd_vendas: fatiasQtdVendas ? fatiasQtdVendas[i] : null,
+    // valor_vendas_bruto (Desempenho) NÃO é perguntado de novo — o
+    // franqueado já informou o faturamento total uma vez (Financeiro). Só
+    // quando ele também informa a quantidade de pedidos é que a mesma fatia
+    // de faturamento é reaproveitada aqui, pra ticket médio poder ser
+    // calculado; sem quantidade, fica null (sem ticket médio mesmo).
+    valor_vendas_bruto: fatiasQtdVendas ? fatias[i] : null,
+    novos_clientes: fatiasNovosClientes ? fatiasNovosClientes[i] : null,
+    taxas_comissoes: fatiasTaxasComissoes ? fatiasTaxasComissoes[i] : null,
+    servicos_promocoes: fatiasServicosPromocoes ? fatiasServicosPromocoes[i] : null,
+    taxas_entregadores: fatiasTaxasEntregadores ? fatiasTaxasEntregadores[i] : null,
+    outras_deducoes: fatiasOutrasDeducoes ? fatiasOutrasDeducoes[i] : null,
+    usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+    finalizado_em: new Date().toISOString(),
+  }));
+
+  const { error: eIns } = await supabase.from(TABELA).insert(linhas);
+  if (eIns) {
+    // Não deixa um lote órfão se a inserção dos dias falhar no meio (ex.:
+    // corrida com um lançamento diário criado entre o preview e a confirmação).
+    await supabase.from("lancamentos_financeiros_distribuicao_mensal").delete().eq("id", lote.id);
+    if (/duplicate key|unique/i.test(eIns.message)) {
+      throw new ApiError(409, "Algum dia deste mês recebeu um lançamento entre a prévia e a confirmação. Recarregue e tente novamente.");
+    }
+    throw ApiError.badRequest(eIns.message);
+  }
+
+  return { ...preview, confirmado: true, distribuicaoId: lote.id, diasCriados: diasElegiveisParaDistribuir };
 }
 
 // ---------------------------------------------------------------------------

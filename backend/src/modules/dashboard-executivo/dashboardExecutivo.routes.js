@@ -13,13 +13,24 @@ const ver = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_VER);
 const lancar = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_LANCAR);
 const configurar = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_CONFIGURAR);
 const resetarTeste = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_RESETAR_TESTE);
+const excluir = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_EXCLUIR);
 
 dashboardExecutivoRouter.get("/unidades", ver, controller.unidades);
 dashboardExecutivoRouter.get("/mes", ver, controller.mes);
 dashboardExecutivoRouter.get("/historico", ver, controller.historico);
+dashboardExecutivoRouter.get("/simulador-preco", ver, controller.simuladorPreco);
 dashboardExecutivoRouter.get("/lancamentos/:data", ver, controller.lancamentoPorData);
 dashboardExecutivoRouter.post("/lancamentos", lancar, controller.criarLancamento);
 dashboardExecutivoRouter.put("/lancamentos/:id", lancar, controller.atualizarLancamento);
+
+// Exclusão universal do lançamento de um dia — real ou teste, restrita a
+// organization_admin (ver permissoes.js). Sempre exige motivo no corpo.
+dashboardExecutivoRouter.post("/lancamentos/:id/excluir", excluir, controller.excluirLancamento);
+
+// Lançamento de faturamento mensal (distribuição p/ meses históricos sem dado
+// diário). Mesma permissão de lançar um dia — é uma outra forma de criar
+// lançamento, não uma ação mais sensível.
+dashboardExecutivoRouter.post("/lancamentos-mensais", lancar, controller.lancamentoMensal);
 
 // Modelo logístico do iFood (Marketplace x Full Service) — quem só vê usa VER;
 // trocar exige CONFIGURAR (finance/operations/organization_admin, não unit_manager).

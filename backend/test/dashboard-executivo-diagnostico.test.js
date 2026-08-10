@@ -1,0 +1,270 @@
+// Testes do motor de diagnóstico do Dashboard iFood (dashboardExecutivo.diagnostico.js)
+// — puros, sem rede. Rodar: node --test test/dashboard-executivo-diagnostico.test.js
+//
+// Cobre os Casos A-H do pedido de evolução do Diagnóstico/Plano de Ação.
+
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+
+import { gerarDiagnostico, confiabilidadeDados, LIMIARES_DIAGNOSTICO } from "../src/modules/dashboard-executivo/dashboardExecutivo.diagnostico.js";
+import { saldoMeta } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
+
+const perto = (a, b, eps = 0.01) => Math.abs(a - b) <= eps;
+
+/** Monta um indicador no formato que o service já entrega ao motor. */
+function indicador({ atual, valor, metaIdeal, limite, faturamentoBase, naoAplicavel = false }) {
+  const meta = metaIdeal != null ? { metaIdeal, limite } : null;
+  return {
+    atual, valor, meta, naoAplicavel,
+    saldo: meta ? saldoMeta({ valorUtilizado: valor, percentualUtilizado: atual, limitePct: limite, faturamentoBase }) : null,
+  };
+}
+
+function baseIndicadores({ faturamentoBase = 50000 } = {}) {
+  return {
+    taxas_comissoes: indicador({ atual: null, valor: null, metaIdeal: 20.5, limite: 20.5, faturamentoBase }),
+    servicos_promocoes: indicador({ atual: null, valor: null, metaIdeal: 10, limite: 15, faturamentoBase }),
+    taxas_entregadores: indicador({ atual: null, valor: null, metaIdeal: 15, limite: 15, faturamentoBase }),
+    total_deducoes: indicador({ atual: null, valor: null, metaIdeal: 30.5, limite: 32, faturamentoBase }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+describe("Caso A — Serviços e Promoções acima da meta ideal (11,9% / ideal 10% / limite 15%)", () => {
+  test("gera ponto de atenção com excesso em R$ e margem até o limite", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.servicos_promocoes = indicador({ atual: 11.9, valor: 5950, metaIdeal: 10, limite: 15, faturamentoBase });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    const achado = d.pontosAtencao.find((a) => a.categoria === "servicos_promocoes");
+    assert.ok(achado, "deveria gerar ponto de atenção para Serviços e Promoções");
+    assert.ok(perto(achado.metricas.valorIdeal, 5000));
+    assert.ok(perto(achado.metricas.excesso, 950));
+    assert.ok(perto(achado.metricas.margemAteLimiteReais, 1550));
+
+    const acao = d.acoes.find((a) => a.diagnosticoId === achado.id);
+    assert.ok(acao, "deveria gerar uma ação ligada ao MESMO id do achado");
+    assert.match(acao.descricao, /950/); // valor de redução citado
+    assert.match(acao.descricao, /não é recomendável ampliar os gastos/i); // não incentiva gastar a margem (item 8)
+    assert.equal(acao.cta.label, "Analisar Serviços e Promoções");
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso B — Serviços e Promoções acima do limite máximo", () => {
+  test("vira alerta e mostra quanto falta para voltar ao LIMITE e à META IDEAL", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.servicos_promocoes = indicador({ atual: 17, valor: 8500, metaIdeal: 10, limite: 15, faturamentoBase });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    const achado = d.alertas.find((a) => a.categoria === "servicos_promocoes");
+    assert.ok(achado, "deveria virar alerta (acima do limite)");
+    const acao = d.acoes.find((a) => a.diagnosticoId === achado.id);
+    assert.match(acao.descricao, /voltar ao limite/i);
+    assert.match(acao.descricao, /voltar à meta ideal/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso C — Taxas dentro da meta", () => {
+  test("vira ponto forte e NÃO gera ação prioritária", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.taxas_comissoes = indicador({ atual: 18.1, valor: 9050, metaIdeal: 20.5, limite: 20.5, faturamentoBase });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    assert.ok(d.pontosFortes.some((a) => a.categoria === "taxas_comissoes"));
+    assert.ok(!d.acoes.some((a) => a.diagnosticoId.startsWith("taxas_comissoes")));
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso D — faturamento de mês fechado caiu (comparação real)", () => {
+  test("mostra diferença em R$ e percentual", () => {
+    const comparativo = { tipo: "mes_fechado", diaComparado: null, atual: 40000, anterior: 80000, diferenca: -40000, pct: -50, temEstimativa: false };
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 40000, diasComDados: 30, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo, recuperacao: null,
+    });
+    const achado = [...d.pontosAtencao, ...d.alertas].find((a) => a.id === "faturamento_caiu");
+    assert.ok(achado);
+    assert.match(achado.descricao, /R\$ 80.000,00/);
+    assert.match(achado.descricao, /R\$ 40.000,00/);
+    assert.match(achado.descricao, /50\.0%/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso E — mês em andamento não pode comparar dias parciais com mês fechado inteiro", () => {
+  test("comparativo tipo 'mesmo_periodo' rotula claramente o recorte comparado", () => {
+    // Estratégia A: 10 dias de agosto vs os mesmos 10 dias de julho — nunca
+    // julho inteiro. O texto deve deixar isso explícito.
+    const comparativo = { tipo: "mesmo_periodo", diaComparado: 10, atual: 15120, anterior: 18000, diferenca: -2880, pct: -16, temEstimativa: false };
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 15120, diasComDados: 10, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo, recuperacao: null,
+    });
+    const achado = [...d.pontosAtencao, ...d.alertas].find((a) => a.id === "faturamento_caiu");
+    assert.ok(achado);
+    assert.match(achado.descricao, /primeiros 10 dias/);
+    assert.ok(!/81/.test(achado.descricao), "não deveria produzir a distorção de comparar parcial com mês inteiro");
+  });
+
+  test("sem dado suficiente no mesmo período -> comparativo indisponível, motor não inventa achado", () => {
+    const comparativo = { tipo: "indisponivel", pct: null, atual: 1000, anterior: null, diferenca: null, diaComparado: 10, temEstimativa: false };
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 1000, diasComDados: 2, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo, recuperacao: null,
+    });
+    assert.ok(![...d.pontosFortes, ...d.pontosAtencao, ...d.alertas].some((a) => a.categoria === "faturamento"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso F — 9 dias pendentes geram alerta acionável", () => {
+  test("CTA 'Regularizar 9 dias' aponta para a aba de lançamentos", () => {
+    const datas = ["2026-08-02", "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-08", "2026-08-09", "2026-08-10"];
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 1000, diasComDados: 1, diasPendentes: 9, diasPendentesDatas: datas, diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+    const achado = [...d.pontosAtencao, ...d.alertas].find((a) => a.id === "dias_pendentes");
+    assert.ok(achado);
+    assert.match(achado.titulo, /9/);
+    const acao = d.acoes.find((a) => a.diagnosticoId === "dias_pendentes");
+    assert.equal(acao.titulo, "Regularizar 9 dias");
+    assert.equal(acao.cta.aba, "lancamentos");
+    // amostra mostra só os 5 primeiros + "+N dias" (item 20 do pedido)
+    assert.match(acao.descricao, /\+4 dia/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso G — dados financeiros ausentes não geram números falsos", () => {
+  test("mês sem nenhum lançamento -> semDadosSuficientes, nenhum achado inventado", () => {
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: null, diasComDados: 0, diasPendentes: 30, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+    assert.equal(d.semDadosSuficientes, true);
+    assert.deepEqual(d.pontosFortes, []);
+    assert.deepEqual(d.alertas, []);
+    assert.deepEqual(d.acoes, []);
+  });
+
+  test("mês com faturamento mas SEM detalhamento (ex.: só lançamento mensal) -> 'dados insuficientes', nunca '0% dentro da meta'", () => {
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 31000, diasComDados: 31, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 31,
+      comparativo: null, recuperacao: null,
+    });
+    const achado = d.pontosAtencao.find((a) => a.id === "detalhamento_financeiro_ausente");
+    assert.ok(achado, "deveria sinalizar detalhamento ausente");
+    assert.ok(!d.pontosFortes.some((a) => /taxas_comissoes|servicos_promocoes/.test(a.categoria)), "não deveria fingir indicador dentro da meta sem dado");
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Caso H — mês anterior com distribuição mensal estimada", () => {
+  test("comparativo sinaliza temEstimativa=true; o texto avisa que não é dado diário real", () => {
+    const comparativo = { tipo: "mes_fechado", diaComparado: null, atual: 40000, anterior: 31000, diferenca: 9000, pct: 29.03, temEstimativa: true };
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 40000, diasComDados: 30, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo, recuperacao: null,
+    });
+    const achado = d.pontosFortes.find((a) => a.id === "faturamento_cresceu");
+    assert.ok(achado);
+    assert.match(achado.descricao, /estimado por distribuição mensal/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Plano de recuperação — cenários quando a meta integral é pouco provável", () => {
+  test("média necessária mais que o dobro da atual -> cenários, não uma meta inventada como certa", () => {
+    const comparativo = { tipo: "mesmo_periodo", diaComparado: 2, atual: 3600, anterior: 40000, diferenca: -36400, pct: -91, temEstimativa: false };
+    const recuperacao = {
+      referencia: 80000, atual: 3600, faltante: 76400, diasRestantes: 2,
+      mediaAtual: 1800, mediaNecessaria: 38200, poucoProvavel: true,
+      cenarios: { conservador: 1800, parcial: 1980, forte: 2160 },
+    };
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 3600, diasComDados: 2, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo, recuperacao,
+    });
+    const acao = d.acoes.find((a) => a.diagnosticoId === "faturamento_caiu");
+    assert.ok(acao);
+    assert.equal(acao.titulo, "Cenários para o restante do mês");
+    assert.match(acao.descricao, /conservador/);
+    assert.match(acao.descricao, /recuperação forte/);
+    assert.ok(!/certeza/.test(acao.descricao));
+  });
+
+  test("meta alcançável -> plano direto com média necessária", () => {
+    const comparativo = { tipo: "mesmo_periodo", diaComparado: 15, atual: 20000, anterior: 30000, diferenca: -10000, pct: -33.3, temEstimativa: false };
+    const recuperacao = {
+      referencia: 80000, atual: 40000, faltante: 40000, diasRestantes: 15,
+      mediaAtual: 1800, mediaNecessaria: 2666.67, poucoProvavel: false,
+      cenarios: { conservador: 1800, parcial: 1980, forte: 2160 },
+    };
+    const d = gerarDiagnostico({
+      indicadores: baseIndicadores(), faturamentoBase: 40000, diasComDados: 15, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo, recuperacao,
+    });
+    const acao = d.acoes.find((a) => a.diagnosticoId === "faturamento_caiu");
+    assert.equal(acao.titulo, "Plano de recuperação do faturamento");
+    assert.match(acao.descricao, /2\.666,67/);
+    assert.match(acao.descricao, /15 dia/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("confiabilidadeDados — regras objetivas e centralizadas", () => {
+  test("mês completo sem pendências nem estimativas -> alta", () => {
+    assert.equal(confiabilidadeDados({ diasComDados: 30, diasPendentes: 0, diasEstimados: 0 }).nivel, "alta");
+  });
+  test("alguns dias pendentes -> média", () => {
+    assert.equal(confiabilidadeDados({ diasComDados: 25, diasPendentes: 2, diasEstimados: 0 }).nivel, "media");
+  });
+  test("muitos dias pendentes -> baixa", () => {
+    assert.equal(confiabilidadeDados({ diasComDados: 10, diasPendentes: LIMIARES_DIAGNOSTICO.diasPendentesParaBaixa, diasEstimados: 0 }).nivel, "baixa");
+  });
+  test("qualquer dia estimado por distribuição mensal -> baixa (mesmo sem pendência)", () => {
+    assert.equal(confiabilidadeDados({ diasComDados: 30, diasPendentes: 0, diasEstimados: 5 }).nivel, "baixa");
+  });
+  test("sem nenhum lançamento -> indisponível", () => {
+    assert.equal(confiabilidadeDados({ diasComDados: 0, diasPendentes: 30, diasEstimados: 0 }).nivel, "indisponivel");
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("Total de Deduções — aponta o componente com maior participação, sem inferir causa", () => {
+  test("identifica o maior componente entre os conhecidos", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.taxas_comissoes = indicador({ atual: 18, valor: 9000, metaIdeal: 20.5, limite: 20.5, faturamentoBase });
+    indicadores.servicos_promocoes = indicador({ atual: 12, valor: 6000, metaIdeal: 10, limite: 15, faturamentoBase });
+    indicadores.total_deducoes = indicador({ atual: 30, valor: 15000, metaIdeal: 30.5, limite: 32, faturamentoBase });
+    // dentro da própria meta -> ponto forte, sem "maior componente" (não se aplica)
+    const dentro = gerarDiagnostico({ indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0, comparativo: null, recuperacao: null });
+    assert.ok(dentro.pontosFortes.some((a) => a.id === "total_deducoes_dentro_da_meta"));
+
+    indicadores.total_deducoes = indicador({ atual: 33, valor: 16500, metaIdeal: 30.5, limite: 32, faturamentoBase });
+    const fora = gerarDiagnostico({ indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0, comparativo: null, recuperacao: null });
+    const achado = fora.alertas.find((a) => a.categoria === "total_deducoes");
+    assert.match(achado.descricao, /Taxas e Comissões/); // 18% > 12% -> maior participação
+    assert.match(achado.descricao, /não significa necessariamente a causa/i); // nunca infere causa
+  });
+});

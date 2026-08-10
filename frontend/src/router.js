@@ -7,6 +7,7 @@ import { renderVendas } from "./vendas.js";
 import { renderMartinBrower } from "./martinbrower.js";
 import { renderInsumos } from "./insumos.js";
 import { renderDashboardExecutivo } from "./dashboardExecutivo.js";
+import { renderBonificacaoMensal } from "./bonificacaoMensal.js";
 
 // Navega para uma rota da sidebar
 export function irPara(rotaId) {
@@ -43,6 +44,9 @@ export function renderRotaAtual() {
       break;
     case "dashboard-executivo":
       renderDashboardExecutivo();
+      break;
+    case "bonificacao-mensal":
+      renderBonificacaoMensal();
       break;
     case "martinbrower":
       renderMartinBrower();

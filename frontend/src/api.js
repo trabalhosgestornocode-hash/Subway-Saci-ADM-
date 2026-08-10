@@ -194,6 +194,8 @@ export const dashExecUnidades = () => getJson(`${DEX}/unidades`);
 export const dashExecMes = (f) => getJson(`${DEX}/mes${qs(f)}`);
 export const dashExecLancamento = (data, f) => getJson(`${DEX}/lancamentos/${encodeURIComponent(data)}${qs(f)}`);
 export const dashExecHistorico = (f) => getJson(`${DEX}/historico${qs(f)}`);
+export const dashExecSimuladorPreco = (f) => getJson(`${DEX}/simulador-preco${qs(f)}`);
+export const dashExecExcluirLancamento = (id, dados) => postJson(`${DEX}/lancamentos/${id}/excluir`, dados);
 export const dashExecCriarLancamento = (dados) => postJson(`${DEX}/lancamentos`, dados);
 export async function dashExecAtualizarLancamento(id, dados) {
   const r = await fetch(`${API_BASE}${DEX}/lancamentos/${id}`, {
@@ -212,9 +214,25 @@ export async function dashExecAtualizarModeloLogistico(unidadeId, dados) {
   return tratar(r);
 }
 
+// ---------- Lançamento de faturamento mensal (distribuição p/ meses históricos) ----------
+export const dashExecPreviewLancamentoMensal = (dados) => postJson(`${DEX}/lancamentos-mensais`, { ...dados, confirmar: false });
+export const dashExecConfirmarLancamentoMensal = (dados) => postJson(`${DEX}/lancamentos-mensais`, { ...dados, confirmar: true });
+
 // ---------- Reset de dia (SÓ em unidade de teste) ----------
 export const dashExecPreviewResetTeste = (unidadeId, data) => postJson(`${DEX}/unidades/${unidadeId}/reset-teste`, { data, confirmar: false });
 export const dashExecConfirmarResetTeste = (unidadeId, data) => postJson(`${DEX}/unidades/${unidadeId}/reset-teste`, { data, confirmar: true });
+
+// ---------- Bonificação Mensal (metas + lançamentos diários + importação Visio) ----------
+const BM = "/api/v1/bonificacao-mensal";
+export const bonifMes = (f) => getJson(`${BM}/mes${qs(f)}`);
+export const bonifMetas = () => getJson(`${BM}/metas`);
+export const bonifHistorico = (f) => getJson(`${BM}/historico${qs(f)}`);
+export const bonifLancamento = (data) => getJson(`${BM}/lancamentos/${encodeURIComponent(data)}`);
+export const bonifSalvarLancamento = (dados) => postJson(`${BM}/lancamentos`, dados);
+export const bonifImportacoes = () => getJson(`${BM}/importacoes`);
+export const bonifArquivoImportacao = (id) => getJson(`${BM}/importacoes/${id}/arquivo`);
+export const bonifImportarPreview = (payload) => postJson(`${BM}/importar/preview`, payload);
+export const bonifImportarConfirmar = (payload) => postJson(`${BM}/importar`, payload);
 
 // ---------- Martin Brower (integração com o portal da distribuidora) ----------
 // Nenhuma credencial trafega aqui na fase atual: a sincronização automatizada

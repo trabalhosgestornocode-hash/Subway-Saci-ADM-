@@ -44,36 +44,56 @@ const RESOLVIDOS = new Set([STATUS_DIA.PREENCHIDO, STATUS_DIA.SEM_OPERACAO, STAT
 // ---------------------------------------------------------------------------
 
 /**
- * Ticket médio = valor bruto ÷ quantidade de vendas. Nunca divide por zero.
- * @param {number} valorBruto @param {number} qtdVendas @returns {number|null}
+ * Ticket médio = valor bruto ÷ quantidade de vendas. Nunca divide por zero e
+ * nunca inventa um lado da conta: se qualquer um dos dois não foi informado
+ * (null/undefined — "não sei"), o ticket médio é indisponível, não 0.
+ * @param {number|null} valorBruto @param {number|null} qtdVendas @returns {number|null}
  */
 export function ticketMedio(valorBruto, qtdVendas) {
-  const q = Number(qtdVendas) || 0;
-  if (q <= 0) return null;
-  return (Number(valorBruto) || 0) / q;
+  if (valorBruto == null || qtdVendas == null) return null;
+  const q = Number(qtdVendas);
+  const v = Number(valorBruto);
+  if (!Number.isFinite(q) || !Number.isFinite(v) || q <= 0) return null;
+  return v / q;
 }
 
 /**
- * Percentual de `valor` sobre `base` (0-100). Null quando a base é inválida.
- * @param {number} valor @param {number} base @returns {number|null}
+ * Percentual de `valor` sobre `base` (0-100). Null quando a base é inválida
+ * OU quando `valor` não foi informado (não confundir "0% de verdade" com
+ * "não sei quanto foi").
+ * @param {number|null} valor @param {number} base @returns {number|null}
  */
 export function percentual(valor, base) {
+  if (valor == null) return null;
   const b = Number(base);
   if (!Number.isFinite(b) || b <= 0) return null;
-  return (Number(valor || 0) / b) * 100;
+  return (Number(valor) / b) * 100;
 }
 
 /**
- * @param {{taxasComissoes: number, servicosPromocoes: number, taxasEntregadores: number, outrasDeducoes: number}} p
- * @returns {number}
+ * Soma as 4 deduções. Se NENHUMA foi informada, o total é indisponível
+ * (null) — não um 0 que faria um card de meta parecer "dentro da meta" por
+ * falta de dado. Se ALGUMAS foram informadas, soma só as conhecidas (melhor
+ * esforço) — é o caso normal de um lançamento diário real, onde as 4 sempre
+ * chegam preenchidas juntas.
+ * @param {{taxasComissoes: number|null, servicosPromocoes: number|null, taxasEntregadores: number|null, outrasDeducoes: number|null}} p
+ * @returns {number|null}
  */
 export function totalDeducoes({ taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes }) {
-  return Number(taxasComissoes || 0) + Number(servicosPromocoes || 0) + Number(taxasEntregadores || 0) + Number(outrasDeducoes || 0);
+  const partes = [taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes];
+  if (partes.every((p) => p == null)) return null;
+  return partes.reduce((s, p) => s + (p == null ? 0 : Number(p)), 0);
 }
 
-/** @param {number} valorVendas @param {number} totalDed @returns {number} */
+/**
+ * Receita após deduções. Indisponível se o total de deduções não pôde ser
+ * calculado — apresentar `valorVendas` sozinho aqui insinuaria "deduções
+ * zero", o que não sabemos.
+ * @param {number} valorVendas @param {number|null} totalDed @returns {number|null}
+ */
 export function receitaAposDeducoes(valorVendas, totalDed) {
-  return (Number(valorVendas) || 0) - (Number(totalDed) || 0);
+  if (totalDed == null) return null;
+  return (Number(valorVendas) || 0) - Number(totalDed);
 }
 
 /** @param {number|null} percentualTotalDeducoes @returns {number|null} */
@@ -91,6 +111,84 @@ export function mediaDiaria(valores) {
   const validos = (valores ?? []).filter((v) => v != null && Number.isFinite(Number(v)));
   if (!validos.length) return null;
   return validos.reduce((s, v) => s + Number(v), 0) / validos.length;
+}
+
+// ---------------------------------------------------------------------------
+// STATUS FRENTE À META — fonte única (era duplicado: um cálculo aqui, outro
+// no frontend). Cards, diagnóstico e a nova visão de "quanto ainda resta"
+// usam todos esta mesma função.
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {number|null} atual @param {{metaIdeal: number, limite: number}|null|undefined} meta
+ * @returns {{chave: 'sem_dados'|'dentro_da_meta'|'atencao'|'fora_da_meta', label: string}}
+ */
+export function statusIndicador(atual, meta) {
+  if (atual == null || meta == null || meta.metaIdeal == null || meta.limite == null) {
+    return { chave: "sem_dados", label: "Dados insuficientes" };
+  }
+  if (atual <= meta.metaIdeal) return { chave: "dentro_da_meta", label: "Dentro da meta" };
+  if (atual <= meta.limite) return { chave: "atencao", label: "Atenção" };
+  return { chave: "fora_da_meta", label: "Fora da meta" };
+}
+
+/**
+ * Quanto do LIMITE (não da meta ideal) ainda está disponível — em pontos
+ * percentuais e, quando dá pra calcular, em reais.
+ * limiteEmReais = faturamentoBase × limite%; saldo = limiteEmReais − valorUtilizado.
+ * @param {{valorUtilizado: number|null, percentualUtilizado: number|null, limitePct: number|null, faturamentoBase: number|null}} p
+ * @returns {{disponivelPp: number|null, disponivelReais: number|null, limiteReais: number|null, status: 'sem_dados'|'disponivel'|'limite_atingido'|'acima_do_limite'}}
+ */
+export function saldoMeta({ valorUtilizado, percentualUtilizado, limitePct, faturamentoBase }) {
+  if (percentualUtilizado == null || limitePct == null) {
+    return { disponivelPp: null, disponivelReais: null, limiteReais: null, status: "sem_dados" };
+  }
+  const disponivelPp = limitePct - percentualUtilizado;
+  let limiteReais = null;
+  let disponivelReais = null;
+  if (faturamentoBase != null && faturamentoBase > 0 && valorUtilizado != null) {
+    limiteReais = (faturamentoBase * limitePct) / 100;
+    disponivelReais = limiteReais - valorUtilizado;
+  }
+  const status = disponivelPp > 0 ? "disponivel" : disponivelPp === 0 ? "limite_atingido" : "acima_do_limite";
+  return { disponivelPp, disponivelReais, limiteReais, status };
+}
+
+// ---------------------------------------------------------------------------
+// LANÇAMENTO DE FATURAMENTO MENSAL — distribuição exata em centavos
+// ---------------------------------------------------------------------------
+
+/**
+ * Distribui um valor mensal (reais) por N dias sem perder nem sobrar um
+ * centavo: converte para centavos inteiros, divide, e o resto (sempre < N
+ * centavos) vai para os primeiros dias. A soma dos valores retornados é
+ * SEMPRE exatamente igual a `valorTotalReais` — nunca aproxima.
+ * @param {number} valorTotalReais @param {number} quantidadeDias
+ * @returns {number[]} um valor em reais por dia (tamanho = quantidadeDias)
+ */
+export function distribuirValorMensal(valorTotalReais, quantidadeDias) {
+  const dias = Math.trunc(Number(quantidadeDias));
+  if (!Number.isFinite(dias) || dias <= 0) return [];
+  const totalCentavos = Math.round(Number(valorTotalReais) * 100);
+  const baseCentavos = Math.floor(totalCentavos / dias);
+  const resto = totalCentavos - baseCentavos * dias;
+  return Array.from({ length: dias }, (_, i) => (baseCentavos + (i < resto ? 1 : 0)) / 100);
+}
+
+/**
+ * Mesma ideia de `distribuirValorMensal`, mas para CONTAGENS inteiras
+ * (quantidade de pedidos, novos clientes do mês) — sem centavos, o resto vai
+ * pros primeiros dias. A soma é sempre exatamente igual ao total informado.
+ * @param {number} quantidadeTotal @param {number} quantidadeDias
+ * @returns {number[]}
+ */
+export function distribuirQuantidadeMensal(quantidadeTotal, quantidadeDias) {
+  const dias = Math.trunc(Number(quantidadeDias));
+  if (!Number.isFinite(dias) || dias <= 0) return [];
+  const total = Math.trunc(Number(quantidadeTotal));
+  const base = Math.floor(total / dias);
+  const resto = total - base * dias;
+  return Array.from({ length: dias }, (_, i) => base + (i < resto ? 1 : 0));
 }
 
 /** @param {number|null} media @param {number} diasPrevistos @returns {number|null} */
@@ -298,96 +396,7 @@ export function indicadorAplicavel(modelo, indicador) {
   return (INDICADORES_POR_MODELO[modelo] ?? INDICADORES_POR_MODELO.full_service).includes(indicador);
 }
 
-// ---------------------------------------------------------------------------
-// DIAGNÓSTICO E RECOMENDAÇÕES
-// ---------------------------------------------------------------------------
-
-const ROTULO_INDICADOR = {
-  taxas_comissoes: "Taxas e comissões",
-  servicos_promocoes: "Serviços e promoções",
-  taxas_entregadores: "Taxas de entregadores",
-  total_deducoes: "Total de deduções",
-};
-
-const fmtPct1 = (v) => `${Number(v).toFixed(1)}%`;
-
-/**
- * Diagnóstico executivo — nunca apresenta ponto forte sem dados suficientes.
- * Indicador não aplicável ao modelo logístico da unidade (ex.: "taxas de
- * entregadores" no Full Service) nunca é julgado — nem vira ponto forte,
- * nem atenção, nem alerta.
- * @param {{indicadores: Record<string, number|null>|null, metas: Record<string, {metaIdeal: number, limite: number}>, diasPendentesNoMes: number, comparativoMesAnteriorPct: number|null, modelo: string}} p
- */
-export function diagnostico({ indicadores, metas, diasPendentesNoMes, comparativoMesAnteriorPct, modelo }) {
-  const pontosFortes = [];
-  const pontosAtencao = [];
-  const alertas = [];
-  const indicadoresForaDaMeta = [];
-
-  if (!indicadores) {
-    return { pontosFortes, pontosAtencao, alertas, indicadoresForaDaMeta, semDadosSuficientes: true };
-  }
-
-  for (const chave of Object.keys(ROTULO_INDICADOR)) {
-    if (!indicadorAplicavel(modelo, chave)) continue;
-    const valor = indicadores[chave];
-    const meta = metas?.[chave];
-    if (valor == null || !meta) continue;
-    const rotulo = ROTULO_INDICADOR[chave];
-    if (valor <= meta.metaIdeal) {
-      pontosFortes.push(`${rotulo} dentro da meta ideal (${fmtPct1(valor)} ≤ ${fmtPct1(meta.metaIdeal)}).`);
-    } else if (valor <= meta.limite) {
-      pontosAtencao.push(`${rotulo} acima da meta ideal, mas ainda dentro do limite (${fmtPct1(valor)}).`);
-      indicadoresForaDaMeta.push(chave);
-    } else {
-      const critico = chave === "total_deducoes";
-      alertas.push(`${critico ? "[Crítico] " : ""}${rotulo} ultrapassou o limite (${fmtPct1(valor)} > ${fmtPct1(meta.limite)}).`);
-      indicadoresForaDaMeta.push(chave);
-    }
-  }
-
-  const pendentes = Number(diasPendentesNoMes) || 0;
-  if (pendentes > 0) {
-    alertas.push(`${pendentes} dia(s) pendente(s) neste mês — os dados ainda estão incompletos.`);
-  }
-
-  if (comparativoMesAnteriorPct != null) {
-    if (comparativoMesAnteriorPct > 0) {
-      pontosFortes.push(`Faturamento cresceu ${fmtPct1(comparativoMesAnteriorPct)} em relação ao mês anterior.`);
-    } else if (comparativoMesAnteriorPct < -5) {
-      pontosAtencao.push(`Faturamento caiu ${fmtPct1(Math.abs(comparativoMesAnteriorPct))} em relação ao mês anterior.`);
-    }
-  }
-
-  return { pontosFortes, pontosAtencao, alertas, indicadoresForaDaMeta, semDadosSuficientes: false };
-}
-
-const RECOMENDACAO_POR_INDICADOR = {
-  taxas_comissoes: "Acompanhar de perto as taxas e comissões do iFood — estão pressionando a margem.",
-  servicos_promocoes: "Revisar as campanhas e promoções ativas, priorizando as com melhor retorno sobre o investimento.",
-  taxas_entregadores: "Revisar o custo das taxas de entregadores da loja.",
-  total_deducoes: "Priorizar ações que reduzam custos e aumentem a rentabilidade — o total de deduções está fora da meta.",
-};
-
-/**
- * Ações recomendadas — sempre amarradas a um indicador ou pendência real,
- * nunca genéricas.
- * @param {{indicadoresForaDaMeta: string[], diasPendentesNoMes: number, semDadosSuficientes: boolean}} p
- * @returns {string[]}
- */
-export function recomendacoes({ indicadoresForaDaMeta, diasPendentesNoMes, semDadosSuficientes }) {
-  if (semDadosSuficientes) {
-    return ["Ainda não há lançamentos suficientes neste mês para gerar recomendações confiáveis."];
-  }
-  const lista = [];
-  for (const chave of indicadoresForaDaMeta ?? []) {
-    if (RECOMENDACAO_POR_INDICADOR[chave]) lista.push(RECOMENDACAO_POR_INDICADOR[chave]);
-  }
-  if ((Number(diasPendentesNoMes) || 0) > 0) {
-    lista.push("Regularizar os dias pendentes para manter os indicadores confiáveis.");
-  }
-  if (!lista.length) {
-    lista.push("Manter o desempenho atual — todos os indicadores estão dentro da meta.");
-  }
-  return lista;
-}
+// Diagnóstico executivo e Plano de Ação viraram um motor à parte —
+// dashboardExecutivo.diagnostico.js — que usa statusIndicador/saldoMeta
+// daqui como base, mas gera pontos fortes/atenção/alertas/ações
+// quantitativos, ligados 1:1 por id (ver DIAGNOSTICO_ARQUITETURA lá).

@@ -125,7 +125,7 @@ body {
 }
 .login-btn:disabled { opacity: 1; }
 
-/* ===================== ASSINATURA DO DESENVOLVEDOR (PeuCode) =====================
+/* ===================== ASSINATURA DO DESENVOLVEDOR (atlaz.company) =====================
    Discreta, fixa no canto inferior esquerdo. Para REMOVER: apague o bloco
    <div class="dev-credito"> no index.html (o CSS abaixo pode ficar, sem efeito).
    Para AJUSTAR opacidade/posição/tamanho, edite as variáveis --dev-* logo abaixo. */
@@ -737,12 +737,12 @@ body {
   .cfg-notif-head, .cfg-notif-row { grid-template-columns: 1fr repeat(3, 46px); }
 }
 
-/* Assinatura PeuCode na sidebar */
+/* Assinatura do desenvolvedor na sidebar (atlaz.company) */
 .sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.sidebar-peucode { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,.34); text-decoration: none; letter-spacing: .2px; transition: color var(--t); }
-.sidebar-peucode:hover { color: rgba(255,255,255,.6); }
-.sidebar-peucode b { font-weight: 700; color: rgba(255,255,255,.5); }
-.sidebar-peucode-mark { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 9.5px; color: rgba(255,190,197,.6); }
+.sidebar-atlaz { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,.34); text-decoration: none; letter-spacing: .2px; transition: color var(--t); }
+.sidebar-atlaz:hover { color: rgba(255,255,255,.6); }
+.sidebar-atlaz b { font-weight: 700; color: rgba(255,255,255,.5); }
+.sidebar-atlaz-mark { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 9.5px; color: rgba(255,190,197,.6); }
 
 /* ===================== VENDAS ===================== */
 /* cabeçalho da página: título/contexto + ação principal */
@@ -1859,6 +1859,7 @@ tr.dex-linha-na { opacity: .65; }
 
 .dex-filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
 .dex-filtros .cfg-campo { min-width: 160px; }
+.dex-btn-lancamento-mensal { flex-shrink: 0; white-space: nowrap; }
 
 .dex-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1.5px solid var(--linha); padding-bottom: 0; }
 .dex-tab {
@@ -1898,6 +1899,19 @@ tr.dex-linha-na { opacity: .65; }
 .dex-card-sub { font-size: 12.5px; color: var(--cinza); display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .card.destaque .dex-card-sub { color: rgba(255,255,255,.85); }
 
+/* Barra de "quanto do limite já foi usado" (Taxas e Comissões / Serviços e
+   Promoções) — mais fina que .dex-progress de propósito, é um detalhe do
+   card, não o destaque da tela. Cor acompanha o status (ok/warn/bad). */
+.dex-meta-bar { height: 6px; background: var(--superficie-2); border-radius: 6px; overflow: hidden; margin: 8px 0 4px; }
+.dex-meta-bar > div { height: 100%; border-radius: 6px; transition: width .4s ease; }
+.dex-meta-bar > div.ok { background: var(--ok); }
+.dex-meta-bar > div.warn { background: var(--warn); }
+.dex-meta-bar > div.bad { background: var(--bad); }
+.dex-meta-bar > div.muted { background: var(--muted); }
+.dex-card-saldo { font-size: 12px; color: var(--cinza); display: block; }
+.dex-card-saldo b { color: var(--texto); font-weight: 700; }
+.dex-card-saldo.acima b { color: var(--bad); }
+
 .dex-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 18px; }
 .dex-painel { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 16px 18px; box-shadow: var(--sombra-sm); }
 .dex-painel h3 { font-size: 15px; margin-bottom: 12px; }
@@ -1905,6 +1919,31 @@ tr.dex-linha-na { opacity: .65; }
 
 .dex-projecao { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--sombra-sm); }
 .dex-projecao h3 { font-size: 15px; margin-bottom: 12px; }
+
+/* Painel de comparação rápida — horizontal e compacto de propósito (não é
+   mais uma ficha longa): cabeçalho com título+seletores numa linha, números
+   em "chips" (label pequeno em cima, valor em destaque embaixo) na linha de
+   baixo. Sem grade de divisórias. Altura livre (nunca fixa), mas o conteúdo
+   em si já cabe folgado entre ~140-190px em desktop. */
+.dex-simulador { padding: 14px 20px; margin-bottom: 18px; }
+.dex-sim-cabecalho { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--linha); }
+.dex-sim-titulo-wrap { flex: 1 1 260px; min-width: 0; }
+.dex-simulador h3 { font-size: 14.5px; margin-bottom: 3px; }
+.dex-sim-desc { font-size: 11.5px; color: var(--cinza); max-width: 480px; }
+.dex-sim-selects { display: flex; gap: 10px; flex-shrink: 0; }
+.dex-sim-selects .cfg-campo { min-width: 0; gap: 3px; }
+.dex-sim-selects .cfg-campo span { font-size: 10px; }
+.dex-sim-selects select { padding: 6px 10px; font-size: 12.5px; min-width: 88px; }
+
+.dex-sim-chips { display: flex; flex-wrap: wrap; gap: 22px 28px; align-items: flex-end; }
+.dex-sim-chip { display: flex; flex-direction: column; gap: 3px; }
+.dex-sim-chip > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; color: var(--cinza); font-weight: 700; }
+.dex-sim-chip > b { font-size: 17px; font-weight: 800; line-height: 1.1; }
+.dex-sim-chip > b small { font-size: 12px; font-weight: 700; color: var(--cinza); }
+.dex-sim-chip-destaque > b { color: var(--verde-vivo); }
+.dex-sim-badge { font-size: 9px; font-weight: 700; background: var(--muted-bg); color: var(--cinza); padding: 1px 5px; border-radius: 5px; margin-left: 4px; vertical-align: middle; }
+.dex-sim-aviso { font-size: 11.5px; color: var(--cinza); margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .dex-sim-cabecalho { flex-direction: column; } .dex-sim-selects { width: 100%; } .dex-sim-selects .cfg-campo { flex: 1; } }
 .dex-projecao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .dex-projecao-grid > div { display: flex; flex-direction: column; gap: 4px; }
 .dex-projecao-grid span { font-size: 11.5px; color: var(--cinza); text-transform: uppercase; font-weight: 700; letter-spacing: .3px; }
@@ -1933,6 +1972,23 @@ tr.dex-linha-na { opacity: .65; }
 .dex-diag-bloco.alerta li::before { color: var(--bad); }
 .dex-diag-vazio { color: var(--cinza); font-size: 13.5px; }
 .dex-recom-lista li::before { color: var(--verde-vivo); }
+.dex-confiabilidade-dados { font-size: 12.5px; color: var(--cinza); margin-bottom: 12px; }
+
+/* Plano de Ação — um bloco compacto por ação, numerado (ordem de prioridade
+   já vem do backend), borda lateral pela mesma cor semântica do achado que
+   originou a ação — sem inventar uma cor nova. */
+.dex-acao { display: flex; gap: 10px; padding: 12px; border: 1px solid var(--linha); border-left: 3px solid var(--linha); border-radius: 10px; margin-bottom: 10px; background: var(--superficie-2); }
+.dex-acao:last-child { margin-bottom: 0; }
+.dex-acao.alerta { border-left-color: var(--bad); }
+.dex-acao.atencao { border-left-color: var(--warn); }
+.dex-acao.forte { border-left-color: var(--ok); }
+.dex-acao-num { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--card); border: 1px solid var(--linha); display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800; color: var(--cinza); }
+.dex-acao-corpo { flex: 1; min-width: 0; }
+.dex-acao-titulo { display: block; font-size: 13.5px; margin-bottom: 4px; }
+.dex-acao-desc { font-size: 12.5px; color: var(--cinza); line-height: 1.5; margin-bottom: 8px; }
+.dex-acao-detalhe { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--linha); }
+.dex-acao-vazia { border-left-color: var(--ok); }
+.dex-acao-vazia p { font-size: 12.5px; color: var(--cinza); margin-top: 4px; }
 
 /* calendário */
 .dex-cal-wrap { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--sombra-sm); }
@@ -1945,6 +2001,11 @@ tr.dex-linha-na { opacity: .65; }
 .dex-cal-dia[data-clicavel]:hover { transform: translateY(-2px); box-shadow: var(--sombra); }
 .dex-cal-num { font-size: 15px; font-weight: 800; }
 .dex-cal-status { font-size: 9.5px; text-transform: uppercase; letter-spacing: .2px; font-weight: 700; }
+/* Dia originado de "Lançar faturamento mensal": mesma cor do status, só uma
+   borda tracejada discreta + um "~" junto do número — sinaliza "estimado"
+   sem inventar uma cor nova nem poluir a grade. */
+.dex-cal-dia.estimado, .pill.estimado { border: 1px dashed currentColor; }
+.dex-cal-estimado { font-size: 11px; font-weight: 700; opacity: .75; }
 .dex-legenda { display: flex; gap: 10px; flex-wrap: wrap; }
 .dex-leg-item { display: inline-flex; }
 
@@ -1997,3 +2058,262 @@ tr.dex-linha-na { opacity: .65; }
   .dex-cal { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); }
   .dex-conf-grid { grid-template-columns: 1fr; }
 }
+
+/* ===========================================================================
+   BONIFICAÇÃO MENSAL — Central de Performance. Redesign completo (hero,
+   gauges, gráficos, drawer). Reaproveita o que já existia no resto do
+   sistema (pill, vd-pv-*, modal-*, btn) para manter a mesma identidade;
+   tudo daqui pra baixo até o fim do arquivo é específico deste módulo.
+   Paleta: institucional (vermelho) só como ACCENT — nunca preenchimento
+   dominante. Verde=sucesso, laranja=atenção, vermelho=crítico real,
+   azul=institucional/projeção, cinza=sem dados (nunca vermelho — item 2).
+   =========================================================================== */
+.bm-unidade-chip { align-self: center; padding: 7px 12px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linha); font-size: 13px; font-weight: 650; color: var(--texto); }
+.bm-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; animation: fadeInUp .35s ease both; }
+.bm-filtros { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.bm-filtros .cfg-campo { min-width: 130px; }
+.bm-conteudo { display: flex; flex-direction: column; gap: 22px; }
+
+.bm-secao { animation: fadeInUp .3s ease both; }
+.bm-secao-titulo { font-size: 13px; font-weight: 750; text-transform: uppercase; letter-spacing: .5px; color: var(--cinza); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+.bm-card {
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 16px 18px;
+  box-shadow: var(--sombra-sm); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.bm-card:hover { transform: translateY(-2px); box-shadow: var(--sombra); border-color: color-mix(in srgb, var(--linha) 60%, var(--cinza-claro)); }
+.bm-card-topo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--texto); margin-bottom: 8px; flex-wrap: wrap; }
+.bm-card-topo .pill { margin-left: auto; }
+.bm-vazio-inline { font-size: 13px; color: var(--cinza); padding: 6px 0; }
+
+/* Grid responsivo (item 22) — auto-fit se ajusta sozinho: desktop grande
+   cabe 4-5 colunas, notebook 3, tablet 2, mobile 1 — sem scroll horizontal. */
+.bm-grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.bm-metas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+
+/* ---------------------------------------------------------------------
+   HERO — bonificação atual/projetada (item 1). NUNCA usa cor de "crítico"
+   (item 2) — é sempre progresso institucional/positivo.
+   --------------------------------------------------------------------- */
+.bm-hero {
+  display: grid; grid-template-columns: 1.6fr 1fr; gap: 24px; align-items: center;
+  background: linear-gradient(135deg, var(--card), color-mix(in srgb, var(--card) 92%, var(--ok)));
+  border: 1px solid var(--linha); border-radius: 18px; padding: 26px 28px; box-shadow: var(--sombra);
+  animation: fadeInUp .4s ease both;
+}
+.bm-hero-topo { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.bm-hero-rotulo { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--cinza); }
+.bm-hero-valor { font-size: 42px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+.bm-hero-sub { font-size: 13.5px; color: var(--cinza); margin: 4px 0 14px; }
+.bm-hero-barra { height: 14px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linha); overflow: hidden; }
+.bm-hero-barra-fill {
+  height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, var(--info), var(--ok));
+  transition: width 1s cubic-bezier(.16,1,.3,1);
+}
+.bm-hero-barra-fill.preenchida { width: var(--pct); }
+.bm-caminho { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.bm-caminho-ponta { font-size: 12px; color: var(--cinza-claro); font-weight: 650; white-space: nowrap; }
+.bm-caminho-trilho { position: relative; flex: 1; height: 2px; background: var(--linha); border-radius: 2px; }
+.bm-caminho-marca { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--ok); border: 2.5px solid var(--card); box-shadow: 0 0 0 1.5px var(--ok); transform: translate(-50%, -50%); transition: left .8s cubic-bezier(.16,1,.3,1); }
+
+.bm-hero-stats { display: flex; flex-direction: column; gap: 10px; }
+.bm-hero-stat { background: var(--card); border: 1px solid var(--linha); border-radius: 12px; padding: 10px 14px; display: flex; align-items: baseline; gap: 8px; }
+.bm-hero-stat b { font-size: 20px; font-weight: 800; }
+.bm-hero-stat span { font-size: 12.5px; color: var(--cinza); }
+.bm-hero-stat.critico { border-color: rgba(219,59,59,.35); background: var(--bad-bg); }
+.bm-hero-stat.critico b { color: var(--bad); }
+
+@media (max-width: 900px) { .bm-hero { grid-template-columns: 1fr; } .bm-hero-stats { flex-direction: row; flex-wrap: wrap; } .bm-hero-stat { flex: 1; min-width: 120px; } }
+
+/* ---------------------------------------------------------------------
+   EVOLUÇÃO DO FATURAMENTO — gráfico grande + resumo lateral (itens 3-4-11)
+   --------------------------------------------------------------------- */
+.bm-fat-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: stretch; }
+.bm-chart-card { min-height: 280px; display: flex; align-items: center; justify-content: center; }
+.bm-fat-resumo { display: flex; flex-direction: column; gap: 8px; }
+.bm-fat-linha { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed var(--linha); }
+.bm-fat-linha:last-of-type { border-bottom: none; }
+.bm-fat-linha span { color: var(--cinza); }
+.bm-fat-linha b { font-size: 15px; }
+.bm-fat-ritmo { font-size: 12.5px; color: var(--cinza); margin: 6px 0 4px; line-height: 1.5; }
+@media (max-width: 900px) { .bm-fat-grid { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------------
+   PRÓXIMAS CONQUISTAS (item 9)
+   --------------------------------------------------------------------- */
+.bm-conquistas { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.bm-conquista-card { background: var(--card); border: 1px solid var(--linha); border-radius: 14px; padding: 14px 16px; transition: transform .18s ease, box-shadow .18s ease; }
+.bm-conquista-card:hover { transform: translateY(-2px); box-shadow: var(--sombra); }
+.bm-conquista-topo { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.bm-conquista-valores { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+.bm-conquista-valores .seta { color: var(--cinza-claro); font-weight: 400; margin: 0 4px; }
+.bm-conquista-barra { height: 6px; border-radius: 999px; background: var(--superficie-2); overflow: hidden; margin-bottom: 8px; }
+.bm-conquista-barra > div { height: 100%; background: linear-gradient(90deg, var(--info), var(--ok)); border-radius: 999px; transition: width .6s ease; }
+.bm-conquista-baixo { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.bm-conquista-baixo span { color: var(--cinza); }
+.bm-conquista-baixo b { color: var(--ok); font-size: 13.5px; }
+
+/* Toast "nova faixa alcançada" (item 19) — discreto, some sozinho. */
+.bm-conquista-toast {
+  position: fixed; right: 20px; bottom: 20px; z-index: 200; display: flex; align-items: flex-start; gap: 12px;
+  background: var(--card); border: 1px solid var(--ok); border-left: 4px solid var(--ok); border-radius: 14px;
+  padding: 14px 16px; box-shadow: var(--sombra); max-width: 340px; font-size: 13px;
+  opacity: 0; transform: translateY(12px) scale(.97); transition: opacity .25s ease, transform .25s ease;
+}
+.bm-conquista-toast.show { opacity: 1; transform: translateY(0) scale(1); }
+.bm-conquista-emoji { font-size: 22px; }
+.bm-conquista-bonus { color: var(--ok); font-weight: 700; }
+.bm-conquista-fechar { margin-left: auto; background: none; border: none; font-size: 16px; color: var(--cinza-claro); cursor: pointer; line-height: 1; }
+
+/* ---------------------------------------------------------------------
+   GAUGE semicircular (bebidas/adicionais/diversos/CMV)
+   --------------------------------------------------------------------- */
+.bm-gauge-card { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.bm-gauge-card.neutro { opacity: .75; }
+.bm-gauge-card .bm-card-topo { width: 100%; }
+.bm-gauge { width: 100%; max-width: 150px; }
+.bm-gauge-trilho { stroke: var(--superficie-2); stroke-width: 14; }
+.bm-gauge-fill { stroke-width: 14; transition: stroke-dashoffset 1s cubic-bezier(.16,1,.3,1); }
+.bm-gauge-marco { stroke: var(--texto); opacity: .3; }
+.bm-gauge-marco.atingido { opacity: .6; }
+.bm-gauge-valor { font-size: 22px; font-weight: 800; margin-top: -14px; }
+.bm-gauge-detalhe { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--cinza); margin-top: 8px; width: 100%; text-align: left; }
+.bm-gauge-detalhe b { color: var(--texto); }
+.bm-menor-melhor { font-size: 10.5px; color: var(--cinza-claro); font-weight: 500; display: block; }
+
+.bm-card-spark { display: flex; align-items: center; gap: 8px; margin-top: 4px; justify-content: center; }
+.bm-spark { width: 84px; height: 26px; }
+.bm-tendencia { font-size: 11px; font-weight: 650; padding: 2px 7px; border-radius: 999px; }
+.bm-tendencia.melhorando { color: var(--ok); background: var(--ok-bg); }
+.bm-tendencia.piorando { color: var(--bad); background: var(--bad-bg); }
+.bm-tendencia.estavel { color: var(--cinza); background: var(--superficie-2); }
+
+/* Régua horizontal — Ticket Médio / REV (item 13) */
+.bm-regua-card { text-align: left; }
+.bm-regua-valor { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+.bm-regua-barra { position: relative; height: 9px; border-radius: 999px; background: var(--superficie-2); overflow: visible; margin-bottom: 8px; }
+.bm-regua-barra > div { height: 100%; border-radius: 999px; transition: width .8s cubic-bezier(.16,1,.3,1); }
+.bm-regua-marco { position: absolute; top: -2px; width: 2px; height: 13px; background: var(--texto); opacity: .35; }
+
+/* ---------------------------------------------------------------------
+   ESCADA DE FAIXAS (item 15) — usada em Metas e no resumo de Faturamento.
+   --------------------------------------------------------------------- */
+.bm-escada { display: flex; align-items: stretch; gap: 0; margin-top: 12px; flex-wrap: wrap; }
+.bm-escada-passo { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; min-width: 84px; flex: 1; }
+.bm-escada-bolha {
+  width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; font-weight: 750; background: var(--superficie-2); border: 2px solid var(--linha); color: var(--cinza);
+}
+.bm-escada-passo.concluida .bm-escada-bolha { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.bm-escada-passo.atual .bm-escada-bolha { background: var(--info); border-color: var(--info); color: #fff; box-shadow: 0 0 0 4px var(--info-bg); animation: bmPulso 1.8s ease-in-out infinite; }
+.bm-escada-txt { display: flex; flex-direction: column; }
+.bm-escada-txt b { font-size: 12px; }
+.bm-escada-txt span { font-size: 11px; color: var(--cinza); }
+.bm-escada-passo.concluida .bm-escada-txt span { color: var(--ok); font-weight: 650; }
+.bm-escada-linha { flex: 0 0 24px; height: 2px; background: var(--linha); align-self: center; margin-top: -22px; }
+.bm-escada-linha.concluida { background: var(--ok); }
+@keyframes bmPulso { 0%, 100% { box-shadow: 0 0 0 4px var(--info-bg); } 50% { box-shadow: 0 0 0 7px var(--info-bg); } }
+
+.bm-meta-card .bm-escada { margin-top: 14px; }
+
+/* ---------------------------------------------------------------------
+   EXPERIÊNCIA DO CLIENTE — chips compactos (item 8), não cards gigantes.
+   --------------------------------------------------------------------- */
+.bm-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.bm-chip { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--linha); border-radius: 12px; padding: 10px 12px; transition: transform .15s ease; }
+.bm-chip:hover { transform: translateY(-1px); }
+.bm-chip-icone { font-size: 18px; }
+.bm-chip-txt { display: flex; flex-direction: column; flex: 1; }
+.bm-chip-txt b { font-size: 12px; color: var(--cinza); font-weight: 650; }
+.bm-chip-txt span { font-size: 14px; font-weight: 700; }
+.bm-chip-status { font-size: 13px; font-weight: 800; width: 20px; text-align: center; }
+.bm-chip.sucesso .bm-chip-status { color: var(--ok); }
+.bm-chip.critico .bm-chip-status { color: var(--bad); }
+.bm-chip.atencao .bm-chip-status { color: var(--warn); }
+.bm-chip.institucional .bm-chip-status { color: var(--info); }
+.bm-chip.neutro { opacity: .7; }
+
+/* ---------------------------------------------------------------------
+   ALERTAS
+   --------------------------------------------------------------------- */
+.bm-alertas { display: flex; flex-direction: column; gap: 8px; }
+.bm-alerta { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 10px; font-size: 13px; flex-wrap: wrap; }
+.bm-alerta.warn { background: var(--warn-bg); border: 1px solid rgba(196,138,18,.25); }
+.bm-alerta.info { background: var(--info-bg); border: 1px solid rgba(47,119,196,.25); }
+.bm-alerta span { color: var(--cinza); font-size: 12.5px; }
+
+/* ---------------------------------------------------------------------
+   LANÇAMENTOS — resumo do topo (item 16)
+   --------------------------------------------------------------------- */
+.bm-cal-resumo { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; padding: 14px 18px; background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); }
+.bm-cal-resumo-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--cinza); }
+.bm-cal-resumo-pct { margin-left: auto; display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.bm-cal-resumo-barra { height: 6px; border-radius: 999px; background: var(--superficie-2); overflow: hidden; }
+.bm-cal-resumo-barra > div { height: 100%; background: linear-gradient(90deg, var(--info), var(--ok)); border-radius: 999px; transition: width .6s ease; }
+.bm-cal-resumo-pct small { font-size: 11.5px; color: var(--cinza-claro); }
+
+/* ---------------------------------------------------------------------
+   DRAWER lateral — detalhe do dia (item 17), substitui o painel inline.
+   --------------------------------------------------------------------- */
+.bm-drawer-overlay {
+  position: fixed; inset: 0; background: rgba(10, 12, 14, 0); z-index: 160;
+  display: flex; justify-content: flex-end; transition: background .25s ease;
+}
+.bm-drawer-overlay.aberto { background: rgba(10, 12, 14, .38); }
+.bm-drawer {
+  width: min(420px, 100vw); height: 100%; background: var(--card); box-shadow: -8px 0 24px rgba(0,0,0,.14);
+  padding: 24px 22px; overflow-y: auto; transform: translateX(100%); transition: transform .28s cubic-bezier(.16,1,.3,1);
+  position: relative;
+}
+.bm-drawer-overlay.aberto .bm-drawer { transform: translateX(0); }
+.bm-drawer .modal-close { position: absolute; top: 18px; right: 18px; }
+.bm-drawer-bloco { margin: 14px 0; }
+.bm-drawer-conteudo h3 { margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+@media (max-width: 480px) { .bm-drawer { width: 100vw; } }
+
+/* ---------------------------------------------------------------------
+   EMPTY STATE (item 20)
+   --------------------------------------------------------------------- */
+.bm-empty { text-align: center; padding: 64px 24px; background: var(--card); border: 1px dashed var(--linha); border-radius: 18px; }
+.bm-empty-icone { font-size: 44px; display: block; margin-bottom: 14px; }
+.bm-empty h3 { font-size: 19px; margin-bottom: 8px; }
+.bm-empty p { color: var(--cinza); max-width: 460px; margin: 0 auto 18px; font-size: 13.5px; line-height: 1.6; }
+
+/* ---------------------------------------------------------------------
+   HISTÓRICO
+   --------------------------------------------------------------------- */
+.bm-historico-card { text-align: left; }
+
+@media (max-width: 700px) {
+  .bm-hero-valor { font-size: 32px; }
+  .bm-grid-cards, .bm-metas-grid, .bm-conquistas, .bm-chips { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 460px) {
+  .bm-grid-cards, .bm-metas-grid, .bm-conquistas, .bm-chips { grid-template-columns: 1fr; }
+}
+
+/* Modal "Importar Visio" */
+.bm-modal { max-width: 640px; }
+.bm-imp-form { display: flex; flex-direction: column; gap: 14px; }
+.bm-imp-data { max-width: 220px; }
+.bm-drop-titulo { font-size: 13.5px; font-weight: 700; margin-bottom: 2px; }
+.bm-drop-desc { font-size: 12.5px; color: var(--cinza); margin-bottom: 8px; }
+.bm-drop-area {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  padding: 22px 14px; border-radius: 12px; border: 1.5px dashed var(--linha); background: var(--superficie-2);
+  cursor: pointer; transition: border-color .15s ease, background .15s ease;
+}
+.bm-drop-area:hover, .bm-drop-area:focus-visible { border-color: var(--info); outline: none; }
+.bm-drop.arrastando .bm-drop-area { border-color: var(--info); background: var(--info-bg); }
+.bm-drop.preenchido .bm-drop-area { border-color: var(--ok); background: var(--ok-bg); }
+.bm-drop-icone { font-size: 22px; }
+.bm-drop-txt { font-size: 13px; color: var(--texto); }
+.bm-drop-txt u { color: var(--info); text-decoration: none; }
+.bm-drop-area em { font-size: 12px; color: var(--cinza-claro); font-style: normal; }
+
+.bm-pv-bloco { margin-bottom: 10px; }
+.bm-pv-bloco > b { display: block; font-size: 13px; margin-bottom: 4px; }
+.bm-pv-corrigir { margin-top: 10px; border-top: 1px dashed var(--linha); padding-top: 10px; }
+.bm-pv-corrigir summary { cursor: pointer; font-size: 13px; font-weight: 650; color: var(--info); }
+.bm-pv-corrigir .cfg-form-grid { margin-top: 10px; }

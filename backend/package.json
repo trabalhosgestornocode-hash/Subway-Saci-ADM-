@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.js",
     "start": "node src/server.js",
-    "test": "node --test test/",
+    "test": "node --env-file-if-exists=.env --test test/",
     "test:isolation": "node --env-file-if-exists=.env.test --test test/isolamento-tenant.test.js",
     "test:isolation:mb": "node --env-file-if-exists=.env.test --test test/isolamento-martinbrower.test.js",
     "test:isolation:all": "node --env-file-if-exists=.env.test --test test/isolamento-tenant.test.js test/isolamento-martinbrower.test.js",
