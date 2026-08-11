@@ -12,6 +12,7 @@ import {
   provisionarModulosEmpresa, definirModulosEmpresa, rotuloModulo,
 } from "../../shared/modulos.js";
 import { auditar, ACOES } from "../../shared/auditoria.js";
+import { clonarCatalogo } from "../../shared/clonarCatalogo.js";
 import { criarSessao, revogarSessoes } from "../sessao/sessao.service.js";
 import { contar, buscar } from "./plataforma.repo.js";
 import * as v from "../../shared/validar.js";
@@ -212,10 +213,25 @@ export async function criarEmpresa(req, body) {
     .insert({ organizacao_id: empresa.id, nome: nomeUnidade, ativo: true });
   if (eUnidade) console.error("[plataforma] empresa criada sem unidade inicial:", eUnidade.message);
 
-  // Provisiona os módulos escolhidos no assistente. Nenhuma clonagem do
-  // modelo inicial roda aqui — `modeloOrigemId` fica só como referência para
-  // a funcionalidade futura (ver docs/CLAUDE.md e o plano desta entrega).
+  // Provisiona os módulos escolhidos no assistente.
   await provisionarModulosEmpresa(empresa.id, moduloIds, req.user.id);
+
+  // Clona o catálogo do modelo (categorias/insumos/produtos/ficha técnica/
+  // preços) — se um modelo foi escolhido. NÃO fatal: a empresa, a unidade e
+  // os módulos já foram gravados neste ponto, e desfazer tudo isso porque a
+  // clonagem falhou seria pior do que entregar uma empresa criada com o
+  // catálogo vazio e um aviso claro (em vez de, como antes, ficar vazia
+  // SEM NENHUM aviso — que era exatamente o bug: nada avisava que a
+  // clonagem nunca tinha rodado).
+  let clone = null, cloneErro = null;
+  if (modeloOrigemId) {
+    try {
+      clone = await clonarCatalogo(supabase, { origemId: modeloOrigemId, destinoId: empresa.id });
+    } catch (e) {
+      cloneErro = e.message;
+      console.error("[plataforma] falha ao clonar catálogo do modelo para", empresa.id, ":", cloneErro);
+    }
+  }
 
   await auditar({
     atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
@@ -223,12 +239,55 @@ export async function criarEmpresa(req, body) {
     organizacaoId: empresa.id,
     detalhes: {
       nome: empresa.nome, status: empresa.status, unidade: nomeUnidade,
-      modulos: moduloIds, modeloOrigemId,
+      modulos: moduloIds, modeloOrigemId, clone, cloneErro,
     },
     ...origemDe(req),
   });
 
-  return { id: empresa.id, nome: empresa.nome, status: empresa.status };
+  return {
+    id: empresa.id, nome: empresa.nome, status: empresa.status,
+    clone, cloneErro,
+  };
+}
+
+/**
+ * Reclona o catálogo do modelo de origem para dentro de uma empresa JÁ
+ * criada — recuperação manual para quando a clonagem automática (feita na
+ * criação) falhou, ou nunca rodou (empresas criadas antes desta correção
+ * terem o modelo_origem_id gravado sem nunca ter recebido o catálogo).
+ *
+ * Só roda se a empresa tiver `modelo_origem_id` definido E o catálogo
+ * estiver REALMENTE vazio (0 produtos e 0 insumos) — nunca duplica em cima
+ * de dado que já existe.
+ * @param {import('express').Request} req
+ */
+export async function clonarModeloParaEmpresa(req, idBruto) {
+  const id = v.uuid(idBruto, "Empresa");
+  const { data: empresa } = await supabase.from("organizacoes")
+    .select("id, nome, modelo_origem_id").eq("id", id).maybeSingle();
+  if (!empresa) throw ApiError.notFound("Empresa não encontrada.");
+  if (!empresa.modelo_origem_id) throw ApiError.badRequest("Esta empresa não tem um modelo inicial definido.");
+
+  const [produtos, insumos] = await Promise.all([
+    contar("produtos", (q) => q.eq("organizacao_id", id)),
+    contar("insumos", (q) => q.eq("organizacao_id", id)),
+  ]);
+  if ((produtos ?? 0) > 0 || (insumos ?? 0) > 0) {
+    throw ApiError.badRequest(
+      "Esta empresa já tem produtos ou insumos cadastrados — clonar de novo duplicaria os dados. " +
+      "Apague os registros existentes antes, se quiser recomeçar a partir do modelo.");
+  }
+
+  const clone = await clonarCatalogo(supabase, { origemId: empresa.modelo_origem_id, destinoId: id });
+
+  await auditar({
+    atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
+    acao: ACOES.EMPRESA_MODELO_CLONADO, entidade: "organizacao", entidadeId: id, organizacaoId: id,
+    detalhes: { empresa: empresa.nome, modeloOrigemId: empresa.modelo_origem_id, clone },
+    ...origemDe(req),
+  });
+
+  return { id, clone };
 }
 
 /**

@@ -62,6 +62,12 @@ export const PERMISSOES = {
   BONIFICACAO_MENSAL_VER: "bonificacao_mensal.ver",
   // Importar os 2 PDFs da Visio e lançar/corrigir manualmente um dia.
   BONIFICACAO_MENSAL_LANCAR: "bonificacao_mensal.lancar",
+  // Excluir um lançamento de verdade (DELETE, com motivo + snapshot).
+  // Deliberadamente NÃO listada em nenhum papel abaixo — só entra em
+  // organization_admin via Object.values(P). Mesmo espírito de
+  // DASHBOARD_EXECUTIVO_EXCLUIR: uma exclusão de dado financeiro não é uma
+  // ação de operação do dia a dia.
+  BONIFICACAO_MENSAL_EXCLUIR: "bonificacao_mensal.excluir",
 };
 
 const P = PERMISSOES;

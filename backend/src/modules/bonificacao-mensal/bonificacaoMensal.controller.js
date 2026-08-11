@@ -13,6 +13,11 @@ export const lancamentoPorData = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
+export const excluirLancamento = asyncHandler(async (req, res) => {
+  const data = await service.excluirLancamento({ ...tenant(req), usuario: req.user, data: req.params.data, motivo: req.body?.motivo });
+  res.json({ data });
+});
+
 export const salvarLancamento = asyncHandler(async (req, res) => {
   const data = await service.upsertLancamentoManual({ ...tenant(req), usuario: req.user, dados: req.body ?? {} });
   res.status(201).json({ data });

@@ -13,7 +13,17 @@
 // estrutura padronizada — a validação cruzada (Geral >= Loja, mesma
 // unidade) acontece na camada de serviço.
 import { ApiError } from "../../shared/ApiError.js";
+import { emProducao } from "../../config/seguranca.js";
 import { sha256, norm, parseBR, textoParaMatriz, decodificarArquivo } from "../vendas/sw-parser.js";
+
+// ---------------------------------------------------------------------
+// LOG DE DESENVOLVIMENTO
+// Ligado fora de produção, por padrão — é o que permite depurar "por que
+// este PDF não leu" sem precisar mexer em código. Nunca imprime o texto cru
+// do PDF inteiro (pode ter dado de faturamento) nem roda em produção.
+// ---------------------------------------------------------------------
+const DEBUG = !emProducao;
+const logDebug = (...args) => { if (DEBUG) console.log("[visio-parser]", ...args); };
 
 // pdf-parse padrão cola as colunas; este pagerender preserva a estrutura de
 // tabela inserindo TAB entre itens da mesma linha (mesmo Y) — cópia local
@@ -43,24 +53,169 @@ async function matrizDePdf(buf) {
   const { text } = await pdfParse(buf, { pagerender: renderPaginaComColunas });
   const matriz = textoParaMatriz(text);
   if (!matriz.length) throw ApiError.badRequest("Não consegui extrair texto deste PDF (pode ser digitalizado/imagem). Exporte novamente da Visio.");
+  logDebug(`matriz extraída: ${matriz.length} linha(s) de texto.`);
   return matriz;
 }
 
 // ---------- reconhecimento de células ----------
 const MONEY_RE = /^(?:r\$|\$)\s?-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$/i;
 const INT_RE = /^\d+$/;
+// PPD ("Torque por estabelecimento") NÃO é sempre inteiro — o relatório
+// Geral (soma de todos os canais) traz PPD fracionário (ex.: "180,5"),
+// enquanto o relatório de uma unidade/canal isolado costuma dar um inteiro
+// (ex.: "57"). INT_RE sozinho rejeitava a linha inteira no Geral e o parser
+// "não encontrava" a tabela — não é que faltasse, era decimal demais pra ele.
+// Reaproveitado também como "número puro" (sem % nem $) na leitura por nome
+// do Mix de Vendas, abaixo — aceita inteiro OU decimal, do mesmo jeito.
+const DECIMAL_RE = /^-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$/;
 const PCT_RE = /^-?\d{1,3}(?:[.,]\d+)?%$/;
 
 const parsePct = (s) => (s == null ? null : parseBR(String(s).replace("%", "")));
+/** Número "puro" (sem % — isso é quantidade, nunca percentual de faturamento). */
+const numeroPuro = (s) => (DECIMAL_RE.test(String(s ?? "").trim()) ? parseBR(s) : null);
 
-// Rótulos aceitos por campo — tolerante a maiúsculas/acentos (comparados via norm()).
-const ROTULO = {
-  sanduiches: "sanduiches/saladas",
-  bebidas: "bebidas",
-  adicionais: "adicionais",
-  diversos: "diversos",
-  total: "total",
+/**
+ * Normaliza uma célula para COMPARAÇÃO semântica (nunca para exibição):
+ * minúsculas, sem acento (via norm(), de sw-parser.js), sem caracteres
+ * invisíveis que a extração de PDF às vezes deixa (zero-width, NBSP),
+ * espaços/quebras colapsados, sem pontuação de borda ("Bebidas:", "- Bebidas").
+ * Cobre os itens pedidos: trim, collapse de espaços, normalização Unicode,
+ * comparação case-insensitive, tolerância a acentos e a pequenas variações.
+ */
+function normCel(s) {
+  return norm(String(s ?? "").replace(/[​‌‍﻿ ]/g, " "))
+    .replace(/\s+/g, " ")
+    .replace(/^[:\-–—.\s]+|[:\-–—.\s]+$/g, "")
+    .trim();
+}
+
+// Rótulos aceitos por categoria do Mix de Vendas — comparados via normCel().
+// Cada categoria é buscada PELO NOME, nunca pela posição da linha: um
+// relatório pode listar Bebidas/Adicionais/Diversos em qualquer ordem.
+const ALIASES_CATEGORIA = {
+  sanduiches: ["sanduiches/saladas", "sanduiches / saladas", "sanduiche/salada", "sanduiches e saladas", "sanduiches", "saladas"],
+  bebidas: ["bebidas", "bebida"],
+  adicionais: ["adicionais", "adicional"],
+  diversos: ["diversos", "diverso"],
+  total: ["total"],
 };
+const CATEGORIAS_MIX = ["sanduiches", "bebidas", "adicionais", "diversos"];
+const ROTULO_CATEGORIA = { sanduiches: "Sanduíches/Saladas", bebidas: "Bebidas", adicionais: "Adicionais", diversos: "Diversos" };
+const ANCORA_SECAO = normCel("% de acompanhamentos em vendas principais");
+
+/** A célula (já normalizada) É o rótulo desta categoria? */
+function ehRotuloDe(categoria, normalizado) {
+  return ALIASES_CATEGORIA[categoria].some((a) => normalizado === a || normalizado.replace(/[\s/]/g, "") === a.replace(/[\s/]/g, ""));
+}
+
+/**
+ * Corrige rótulos que a extração do PDF quebrou em duas linhas de 1 célula
+ * (ex.: "Sanduíches/" numa linha e "Saladas" na seguinte — item pedido
+ * explicitamente: "Sanduíches/Saladas eventualmente separado por quebra de
+ * linha"). Só funde quando a linha isolada NÃO é, sozinha, um rótulo válido
+ * — nunca mexe em conteúdo que já faz sentido como está.
+ * @param {string[][]} matriz
+ * @returns {string[][]}
+ */
+function fundirRotulosQuebrados(matriz) {
+  const out = [];
+  for (let i = 0; i < matriz.length; i++) {
+    const atual = matriz[i];
+    const prox = matriz[i + 1];
+    const jaEhRotulo = atual?.length === 1 && CATEGORIAS_MIX.some((c) => ehRotuloDe(c, normCel(atual[0])));
+    const juntoVira = atual?.length === 1 && prox?.length === 1
+      && CATEGORIAS_MIX.some((c) => ehRotuloDe(c, normCel(`${atual[0]} ${prox[0]}`)) || ehRotuloDe(c, normCel(`${atual[0]}${prox[0]}`)));
+    if (!jaEhRotulo && juntoVira) {
+      out.push([`${atual[0]} ${prox[0]}`.trim()]);
+      i++; // linha seguinte já foi consumida na fusão
+      continue;
+    }
+    out.push(atual);
+  }
+  return out;
+}
+
+/**
+ * Busca, dentro de uma faixa [de, ate) da matriz, a QUANTIDADE de cada
+ * categoria do Mix de Vendas — sempre pelo NOME da categoria, nunca por
+ * posição fixa de linha. Cobre os formatos reais observados:
+ *   1. ["Bebidas", "34"]                — rótulo e valor na mesma linha
+ *   2. ["Bebidas"] seguido de ["34"]     — rótulo e valor em linhas separadas
+ * Se um rótulo bater mas nenhum número "puro" (sem %) for encontrado perto
+ * dele, a busca NÃO desiste da categoria — continua procurando outra
+ * ocorrência do mesmo nome mais adiante (existe uma tabela de REFERÊNCIA de
+ * mercado, mais acima no relatório, que também usa "Bebidas" como rótulo
+ * mas só tem percentuais — nunca é confundida com a quantidade real porque
+ * seus valores têm "%" e por isso nunca batem em numeroPuro()).
+ * @param {string[][]} matriz já com fundirRotulosQuebrados aplicado
+ * @param {number} de @param {number} ate
+ */
+function buscarCategoriasPorNome(matriz, de, ate) {
+  const valores = {};
+  const log = [];
+  const fim = Math.min(ate, matriz.length);
+
+  for (const categoria of CATEGORIAS_MIX) {
+    for (let i = Math.max(de, 0); i < fim; i++) {
+      const row = matriz[i] || [];
+      if (!row.length || !ehRotuloDe(categoria, normCel(row[0]))) continue;
+
+      let valor = row.length >= 2 ? numeroPuro(row[1]) : null;
+      for (let j = i + 1; valor == null && j < Math.min(i + 4, fim); j++) {
+        const r2 = matriz[j] || [];
+        if (r2.length === 1) valor = numeroPuro(r2[0]);
+        else break; // linha com mais de 1 célula não é "só o número" — não é isto
+      }
+
+      if (valor != null) {
+        valores[categoria] = valor;
+        log.push(`${ROTULO_CATEGORIA[categoria]} -> linha ${i} ("${row.join(" | ")}") = ${valor}`);
+        break;
+      }
+      // rótulo bateu mas sem valor perto — provavelmente outra tabela
+      // (ex.: o quadro de referência "Como deve ser meu Mix de vendas?",
+      // que também tem uma linha "Bebidas" mas só com percentuais). Segue
+      // procurando outra ocorrência do mesmo nome.
+    }
+  }
+  return { valores, log };
+}
+
+/**
+ * Percentuais que o PRÓPRIO PDF calculou (linhas soltas de 1 célula logo
+ * após "Total") — só para a validação cruzada do item 11; o cálculo de
+ * negócio NUNCA usa este valor, só as quantidades. Por isso é best-effort:
+ * se a ordem das 3 categorias aqui não bater com a das quantidades acima,
+ * o pior caso é um aviso de divergência impreciso — nunca um dado errado
+ * gravado (ver bonificacaoMensal.service.js#processarImportacaoVisio).
+ * @param {string[][]} matriz @param {number} de @param {number} ate
+ */
+function buscarPercentuaisDoTotal(matriz, de, ate) {
+  const fim = Math.min(ate, matriz.length);
+  let idxTotal = -1;
+  for (let i = Math.max(de, 0); i < fim; i++) {
+    const row = matriz[i] || [];
+    if (row.length && ehRotuloDe("total", normCel(row[0]))) { idxTotal = i; break; }
+  }
+  if (idxTotal < 0) return {};
+
+  const pcts = [];
+  for (let j = idxTotal + 1; j < Math.min(idxTotal + 6, fim) && pcts.length < 4; j++) {
+    const r = matriz[j];
+    if (r && r.length === 1 && PCT_RE.test(r[0])) pcts.push(parsePct(r[0]));
+    else if (pcts.length) break; // sequência já começou e quebrou — para
+  }
+  // A 1ª é sempre 100% (Sanduíches/Saladas é a base do mix) — as 3
+  // seguintes, na ordem em que aparecem no PDF, são bebidas/adicionais/diversos.
+  const [, percentualBebidasPdf = null, percentualAdicionaisPdf = null, percentualDiversosPdf = null] = pcts;
+  return { percentualBebidasPdf, percentualAdicionaisPdf, percentualDiversosPdf };
+}
+
+/** pt-BR: ["Adicionais"] -> "Adicionais"; ["Adicionais","Diversos"] -> "Adicionais e Diversos". */
+function listarPt(itens) {
+  if (itens.length <= 1) return itens[0] ?? "";
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
 
 /**
  * Localiza a tabela "Torque por estabelecimento" (única fonte confiável de
@@ -68,7 +223,9 @@ const ROTULO = {
  * [Fat. bruto, Torque bruto, Faturamento, PPD, Torque, Perdas, Produtos func.],
  * seguida (não necessariamente na linha imediatamente ao lado — o PDF
  * repete a tabela e o nome vem numa linha própria) pelo nome do
- * estabelecimento.
+ * estabelecimento. A ordem das COLUNAS aqui é fixa pelo próprio layout da
+ * Visio (é uma tabela real, não rótulos soltos que podem trocar de posição
+ * como no Mix de Vendas) — não há o mesmo risco de reordenação.
  * @param {string[][]} matriz
  */
 function extrairTorquePorEstabelecimento(matriz) {
@@ -76,7 +233,7 @@ function extrairTorquePorEstabelecimento(matriz) {
     const row = matriz[i] || [];
     if (row.length !== 7) continue;
     if (!(MONEY_RE.test(row[0]) && MONEY_RE.test(row[1]) && MONEY_RE.test(row[2])
-      && INT_RE.test(row[3]) && MONEY_RE.test(row[4]) && MONEY_RE.test(row[5]) && INT_RE.test(row[6]))) continue;
+      && DECIMAL_RE.test(row[3]) && MONEY_RE.test(row[4]) && MONEY_RE.test(row[5]) && INT_RE.test(row[6]))) continue;
 
     // nome do estabelecimento: primeira linha de 1 célula, depois desta,
     // que não seja "Total" (a tabela costuma se repetir logo abaixo).
@@ -95,50 +252,71 @@ function extrairTorquePorEstabelecimento(matriz) {
 }
 
 /**
- * Localiza a tabela "% de acompanhamentos em vendas principais":
- *   Sanduíches/Saladas | qtd
- *   Bebidas             | qtd
- *   Adicionais          | qtd
- *   Diversos            | qtd
- *   Total               | qtd | pct%
- *   <4 linhas de 1 célula, na mesma ordem: %sanduíches, %bebidas, %adicionais, %diversos>
- * As 4 últimas são o percentual que O PRÓPRIO PDF calculou — guardadas só
- * para a validação cruzada do item 11; o cálculo de negócio nunca as usa.
- * @param {string[][]} matriz
+ * Localiza as quantidades do Mix de Vendas — Sanduíches/Saladas, Bebidas,
+ * Adicionais, Diversos — SEMPRE pelo nome de cada categoria, nunca pela
+ * posição da linha (uma categoria pode vir em qualquer ordem entre
+ * relatórios diferentes).
+ *
+ * Estratégia em 2 passos:
+ *   1. Escopado à seção "% de acompanhamentos em vendas principais" — é
+ *      onde a Visio sempre publica a quantidade de verdade, e escopar evita
+ *      confundir com a tabela de REFERÊNCIA de mercado ("Como deve ser meu
+ *      Mix de vendas?"), que aparece antes e também usa os mesmos rótulos,
+ *      mas só com percentuais de benchmark (nunca quantidade).
+ *   2. Fallback: documento inteiro, só para as categorias que a seção não
+ *      resolveu. Seguro mesmo assim porque o valor buscado nunca tem "%"
+ *      (ver numeroPuro) — a tabela de referência não pode ser confundida
+ *      com a quantidade real mesmo sendo revarrida.
+ *
+ * Exportada (só ela, entre as funções internas deste arquivo) para dar pra
+ * testar a resiliência — ordem trocada, rótulo quebrado, etc. — direto
+ * contra uma matriz sintética, sem precisar de um PDF de verdade pra cada
+ * variação de layout (ver bonificacao-mensal-visio-parser.test.js).
+ *
+ * @param {string[][]} matrizOriginal
+ * @param {string} rotulo "Geral" | "Loja" | outro — só para os logs/erros
  */
-function extrairMixVendas(matriz) {
-  const idx = matriz.findIndex((r) => r?.length >= 2 && norm(r[0]) === ROTULO.sanduiches && INT_RE.test(String(r[1]).trim()));
-  if (idx < 0) return null;
+export function extrairMixVendas(matrizOriginal, rotulo) {
+  const matriz = fundirRotulosQuebrados(matrizOriginal);
 
-  const linhaCategoria = (offset, chave) => {
-    const r = matriz[idx + offset];
-    if (!r || r.length < 2 || norm(r[0]) !== chave || !INT_RE.test(String(r[1]).trim())) return null;
-    return parseBR(r[1]);
-  };
-  const sanduichesSaladas = parseBR(matriz[idx][1]);
-  const bebidas = linhaCategoria(1, ROTULO.bebidas);
-  const adicionais = linhaCategoria(2, ROTULO.adicionais);
-  const diversos = linhaCategoria(3, ROTULO.diversos);
-  if (bebidas == null || adicionais == null || diversos == null) return null;
+  const idxSecao = matriz.findIndex((r) => r.some((c) => normCel(c) === ANCORA_SECAO || normCel(c).includes(ANCORA_SECAO)));
+  logDebug(`[${rotulo}] seção "% de acompanhamentos em vendas principais": ${idxSecao >= 0 ? `encontrada na linha ${idxSecao}` : "NÃO encontrada — indo direto para o fallback no documento inteiro"}.`);
 
-  // percentuais do próprio PDF (linhas de 1 célula logo após "Total")
-  const totalRow = matriz[idx + 4];
-  let cursor = idx + 5;
-  if (totalRow && totalRow.length === 1 && PCT_RE.test(totalRow[0])) cursor = idx + 4; // layout sem linha "Total" separada
-  const pcts = [];
-  for (let j = cursor; j < Math.min(cursor + 4, matriz.length); j++) {
-    const r = matriz[j];
-    if (r && r.length === 1 && PCT_RE.test(r[0])) pcts.push(parsePct(r[0]));
-    else break;
+  let valores = {};
+  if (idxSecao >= 0) {
+    const r1 = buscarCategoriasPorNome(matriz, idxSecao, idxSecao + 15);
+    valores = r1.valores;
+    r1.log.forEach((l) => logDebug(`[${rotulo}] (seção)`, l));
   }
-  const [, percentualBebidasPdf = null, percentualAdicionaisPdf = null, percentualDiversosPdf = null] = pcts.length === 4 ? pcts : [];
 
-  return { sanduichesSaladas, bebidas, adicionais, diversos, percentualBebidasPdf, percentualAdicionaisPdf, percentualDiversosPdf };
+  const faltandoNaSecao = CATEGORIAS_MIX.filter((c) => valores[c] == null);
+  if (faltandoNaSecao.length) {
+    logDebug(`[${rotulo}] fallback (documento inteiro) para: ${faltandoNaSecao.map((c) => ROTULO_CATEGORIA[c]).join(", ")}.`);
+    const r2 = buscarCategoriasPorNome(matriz, 0, matriz.length);
+    r2.log.forEach((l) => logDebug(`[${rotulo}] (documento inteiro)`, l));
+    valores = { ...r2.valores, ...valores }; // o que já foi achado na seção principal tem prioridade
+  }
+
+  const faltando = CATEGORIAS_MIX.filter((c) => valores[c] == null);
+  if (faltando.length) logDebug(`[${rotulo}] categorias não localizadas: ${faltando.map((c) => ROTULO_CATEGORIA[c]).join(", ")}.`);
+
+  const percentuais = idxSecao >= 0 ? buscarPercentuaisDoTotal(matriz, idxSecao, idxSecao + 15) : {};
+
+  return {
+    sanduichesSaladas: valores.sanduiches ?? null,
+    bebidas: valores.bebidas ?? null,
+    adicionais: valores.adicionais ?? null,
+    diversos: valores.diversos ?? null,
+    ...percentuais,
+    faltando: faltando.map((c) => ROTULO_CATEGORIA[c]),
+  };
 }
 
 /**
  * Parser central do relatório "Relatório de Produtos" da Visio.
  * @param {Buffer} buf
+ * @param {{rotulo?: string}} [opts] rotulo = "Geral"/"Loja" — só enriquece as
+ *   mensagens de erro (qual dos dois relatórios falhou); nunca muda a lógica.
  * @returns {Promise<{
  *   estabelecimento: string|null, faturamento: number, ppd: number,
  *   sandwichesSalads: number, beverages: number, additions: number, miscellaneous: number,
@@ -146,14 +324,22 @@ function extrairMixVendas(matriz) {
  *   hash: string
  * }>}
  */
-export async function parseVisioProductReport(buf) {
+export async function parseVisioProductReport(buf, opts = {}) {
+  const rotulo = opts.rotulo || null;
+  const alvo = rotulo ? `no Relatório ${rotulo}` : "neste relatório";
   const matriz = await matrizDePdf(buf);
 
   const torque = extrairTorquePorEstabelecimento(matriz);
-  if (!torque) throw ApiError.badRequest("Não foi possível localizar o faturamento e o PPD neste relatório. Confira se é um \"Relatório de Produtos\" exportado da Visio.");
+  if (!torque) {
+    logDebug(`[${rotulo ?? "?"}] tabela "Torque por estabelecimento" não localizada — motivo mais comum: layout não é um Relatório de Produtos.`);
+    throw ApiError.badRequest(`Não foi possível localizar o faturamento e o PPD ${alvo}. Confira se é um "Relatório de Produtos" exportado da Visio.`);
+  }
 
-  const mix = extrairMixVendas(matriz);
-  if (!mix) throw ApiError.badRequest("Não foi possível localizar as quantidades de Sanduíches/Saladas, Bebidas, Adicionais e Diversos neste relatório.");
+  const mix = extrairMixVendas(matriz, rotulo ?? "?");
+  if (mix.faltando.length) {
+    const plural = mix.faltando.length > 1 ? "as quantidades de" : "a quantidade de";
+    throw ApiError.badRequest(`Não foi possível localizar ${plural} ${listarPt(mix.faltando)} ${alvo}.`);
+  }
 
   return {
     estabelecimento: torque.estabelecimento,

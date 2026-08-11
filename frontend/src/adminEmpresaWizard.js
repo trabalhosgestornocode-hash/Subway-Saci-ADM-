@@ -95,7 +95,7 @@ async function aoAvancar() {
   const original = btn.textContent;
   btn.textContent = "Aguarde…";
   try {
-    await adminApi.criarEmpresa({
+    const criada = await adminApi.criarEmpresa({
       nome: estado.nome, cnpj: estado.cnpj || undefined,
       responsavelNome: estado.responsavelNome || undefined, responsavelEmail: estado.responsavelEmail || undefined,
       telefone: estado.telefone || undefined, logoUrl: estado.logoUrl || undefined,
@@ -104,7 +104,13 @@ async function aoAvancar() {
       observacoes: estado.observacoes || undefined,
       modulos: [...estado.modulos], modeloOrigemId: estado.modeloOrigemId || undefined,
     });
-    toast("Empresa criada.");
+    // A clonagem do catálogo do modelo não derruba a criação se falhar (a
+    // empresa já existe nesse ponto) — mas o SuperAdmin precisa SABER que
+    // faltou, em vez de só descobrir depois com um catálogo vazio sem
+    // explicação. Dá pra reclonar na aba "Modelo Inicial" da empresa.
+    toast(criada?.cloneErro
+      ? `Empresa criada, mas a cópia do modelo falhou: ${criada.cloneErro}. Você pode tentar de novo na aba "Modelo Inicial".`
+      : "Empresa criada.");
     fecharModal();
     recarregarAdmin();
   } catch (e) {
@@ -191,7 +197,7 @@ const CORPOS = {
     return grade(
       selecao({
         id: "e-modelo", label: "Modelo inicial", opcoes, valor: estado.modeloOrigemId, vazio: "Nenhum",
-        dica: "Só registra a referência — nenhum produto/insumo é copiado nesta versão.",
+        dica: "Copia produtos, insumos e fichas técnicas do modelo pra dentro da empresa nova — são registros PRÓPRIOS dela, sem vínculo com o modelo depois.",
       })
     );
   },

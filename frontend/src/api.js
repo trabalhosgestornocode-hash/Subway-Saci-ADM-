@@ -255,6 +255,7 @@ export const bonifMetas = () => getJson(`${BM}/metas`);
 export const bonifHistorico = (f) => getJson(`${BM}/historico${qs(f)}`);
 export const bonifLancamento = (data) => getJson(`${BM}/lancamentos/${encodeURIComponent(data)}`);
 export const bonifSalvarLancamento = (dados) => postJson(`${BM}/lancamentos`, dados);
+export const bonifExcluirLancamento = (data, motivo) => postJson(`${BM}/lancamentos/${encodeURIComponent(data)}/excluir`, { motivo });
 export const bonifImportacoes = () => getJson(`${BM}/importacoes`);
 export const bonifArquivoImportacao = (id) => getJson(`${BM}/importacoes/${id}/arquivo`);
 export const bonifImportarPreview = (payload) => postJson(`${BM}/importar/preview`, payload);

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { supabase } from "../src/config/supabase.js";
-import { processarImportacaoVisio, obterMes, listarMetas } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
+import { processarImportacaoVisio, obterMes, listarMetas, excluirLancamento } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -120,5 +120,46 @@ describe("Fluxo completo de importação + Teste F (duplicidade)", () => {
     assert.equal(r.lancamento.faturamentoGeral, 9999.99);
     assert.equal(r.lancamento.manualOverride.faturamento_geral, true);
     assert.equal(r.lancamento.origem, "misto");
+  });
+});
+
+describe("Teste G — excluir lançamento libera o PDF para reimportação", () => {
+  after(limparDadosDeTeste);
+
+  test("excluir apaga o lançamento, grava o snapshot e libera as importações", async () => {
+    await limparDadosDeTeste();
+    const r1 = await processarImportacaoVisio({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, payload: payloadCompleto(), confirmar: true });
+    assert.equal(r1.persistido, true);
+
+    const idsImportacaoAntes = [r1.lancamento.importacaoGeralId, r1.lancamento.importacaoLojaId].filter(Boolean);
+    assert.equal(idsImportacaoAntes.length, 2); // geral + loja
+
+    const rExcluir = await excluirLancamento({
+      organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO,
+      data: DATA_TESTE, motivo: "teste automatizado — corrigir data errada",
+    });
+    assert.equal(rExcluir.excluido, true);
+    assert.equal(rExcluir.importacoesLiberadas, 2);
+
+    const { data: lancamento } = await supabase.from("bonificacao_lancamentos_diarios")
+      .select("id").eq("unidade_id", SACI_UNIDADE_ID).eq("data", DATA_TESTE).maybeSingle();
+    assert.equal(lancamento, null, "o lançamento deveria ter sido apagado de verdade");
+
+    const { data: importacoesRestantes } = await supabase.from("bonificacao_importacoes")
+      .select("id").in("id", idsImportacaoAntes);
+    assert.equal((importacoesRestantes ?? []).length, 0, "as importações ligadas ao lançamento deveriam ter sido liberadas");
+
+    const { data: snapshot } = await supabase.from("bonificacao_lancamentos_exclusoes")
+      .select("id, motivo, lancamento_snapshot").eq("unidade_id", SACI_UNIDADE_ID).eq("data_lancamento", DATA_TESTE)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    assert.ok(snapshot, "deveria existir um snapshot da exclusão");
+    assert.equal(snapshot.motivo, "teste automatizado — corrigir data errada");
+    assert.equal(snapshot.lancamento_snapshot.id, r1.lancamento.id); // guardou o registro certo, por inteiro
+  });
+
+  test("depois de excluído, o MESMO arquivo pode ser reimportado (era isto que estava bloqueado)", async () => {
+    const r2 = await processarImportacaoVisio({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, payload: payloadCompleto(), confirmar: true });
+    assert.equal(r2.persistido, true);
+    assert.equal(r2.lancamento.faturamentoGeral, 9845.09);
   });
 });

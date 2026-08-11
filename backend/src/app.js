@@ -31,6 +31,9 @@ export function createApp() {
   // A primeira chamada que casar vence — express.json não reprocessa req.body.
   app.use("/api/v1/vendas/importar", express.json({ limit: LIMITES_CORPO.vendasImportacao }));
   app.use("/api/v1/integracoes/martin-brower/import-manual", express.json({ limit: LIMITES_CORPO.martinBrowerImportacao }));
+  // Cobre /bonificacao-mensal/importar E /bonificacao-mensal/importar/preview
+  // (prefixo casa os dois) — os 2 PDFs da Visio vão nesse corpo.
+  app.use("/api/v1/bonificacao-mensal/importar", express.json({ limit: LIMITES_CORPO.bonificacaoMensalImportacao }));
   app.use(express.json({ limit: LIMITES_CORPO.padrao }));
 
   app.use(morgan(emProducao ? "combined" : "dev", {

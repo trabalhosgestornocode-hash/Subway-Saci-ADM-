@@ -6,7 +6,7 @@
 import { el, escapeHtml, toast, fmtMoeda, fmtPct, fmtDataHora } from "./utils.js";
 import { state } from "./state.js";
 import { pode } from "./sessao.js";
-import { bonifMes, bonifMetas, bonifHistorico, bonifLancamento, bonifSalvarLancamento } from "./api.js";
+import { bonifMes, bonifMetas, bonifHistorico, bonifLancamento, bonifSalvarLancamento, bonifExcluirLancamento } from "./api.js";
 import { abrirImportarVisioModal } from "./bonificacaoMensalImportModal.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { destruirGraficosBonificacao, graficoEvolucaoFaturamento, graficoEvolucaoMix } from "./charts.js";
@@ -70,6 +70,7 @@ registrarResetDeContexto(() => {
 });
 
 const podeLancar = () => pode("bonificacao_mensal.lancar");
+const podeExcluir = () => pode("bonificacao_mensal.excluir");
 const vazio = (emoji, titulo, msg, extra = "") =>
   `<div class="estado"><span class="emoji">${emoji}</span><h3>${escapeHtml(titulo)}</h3><p>${escapeHtml(msg)}</p>${extra}</div>`;
 const carregando = () => `<div class="estado"><div class="spinner"></div>Carregando…</div>`;
@@ -593,6 +594,7 @@ async function abrirDrawerDia(data) {
     if (contextoMudou(g)) return;
     corpo.innerHTML = detalheDiaHtml(data, l);
     corpo.querySelector("#bm-dia-sem-op")?.addEventListener("click", () => marcarSemOperacao(data));
+    corpo.querySelector("#bm-dia-excluir")?.addEventListener("click", () => excluirLancamentoDia(data));
   } catch (e) {
     if (contextoMudou(g)) return;
     corpo.innerHTML = vazio("⚠️", "Erro ao carregar o dia", e.message);
@@ -600,9 +602,14 @@ async function abrirDrawerDia(data) {
 }
 
 function detalheDiaHtml(data, l) {
-  const acoes = podeLancar() ? `<div class="ed-acoes"><button class="btn btn-ghost btn-sm" id="bm-dia-sem-op">🚫 Marcar sem operação</button></div>` : "";
+  const botaoSemOp = podeLancar() ? `<button class="btn btn-ghost btn-sm" id="bm-dia-sem-op">🚫 Marcar sem operação</button>` : "";
+  // Excluir só existe quando HÁ o que excluir — e é sempre de verdade (DELETE
+  // + libera os PDFs importados nesse dia pra reimportação, ver o service).
+  const botaoExcluir = (l && podeExcluir())
+    ? `<button class="btn btn-perigo btn-sm" id="bm-dia-excluir" title="Apaga este lançamento e libera os PDFs importados nele para reimportar em outra data">🗑️ Excluir lançamento</button>` : "";
+  const acoes = (botaoSemOp || botaoExcluir) ? `<div class="ed-acoes">${botaoSemOp}${botaoExcluir}</div>` : "";
   if (!l) return `<h3>${fmtDataBr(data)}</h3><p class="bm-vazio-inline">Nenhum lançamento para este dia ainda.</p>${acoes}`;
-  if (l.semOperacao) return `<h3>${fmtDataBr(data)}</h3><span class="pill muted">Sem operação</span><p class="bm-vazio-inline">${escapeHtml(l.motivoSemOperacao || "")}</p>`;
+  if (l.semOperacao) return `<h3>${fmtDataBr(data)}</h3><span class="pill muted">Sem operação</span><p class="bm-vazio-inline">${escapeHtml(l.motivoSemOperacao || "")}</p>${acoes}`;
   const item = (lbl, val) => `<div class="vd-pv-item"><span>${lbl}</span><b>${val}</b></div>`;
   return `<h3>${fmtDataBr(data)} <span class="pill ${l.origem === "manual" ? "info" : l.origem === "misto" ? "warn" : "ok"}">${l.origem}</span></h3>
     <div class="bm-drawer-bloco"><div class="vd-pv-titulo">Geral</div><div class="vd-pv-grid">${item("Faturamento", fmtMoeda(l.faturamentoGeral))}${item("PPD", l.ppdGeral ?? "—")}</div></div>
@@ -626,6 +633,25 @@ async function marcarSemOperacao(data) {
     toast("Dia marcado como sem operação.");
     await carregarConteudo();
     await abrirDrawerDia(data);
+  } catch (e) { toast("Erro: " + e.message); }
+}
+
+/**
+ * Exclusão de VERDADE — para corrigir um dia importado errado (ex.: a data
+ * do lançamento ficou errada). Libera também os PDFs desse dia pra
+ * reimportação (o backend apaga bonificacao_importacoes junto — sem isso, o
+ * mesmo arquivo continuaria bloqueado por já ter sido importado antes,
+ * mesmo numa data diferente).
+ */
+async function excluirLancamentoDia(data) {
+  const motivo = prompt(`Motivo da exclusão do lançamento de ${fmtDataBr(data)}:\n\n(isso também libera os PDFs importados neste dia para reimportar em outra data)`);
+  if (!motivo) return;
+  if (!confirm(`Excluir de vez o lançamento de ${fmtDataBr(data)}? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await bonifExcluirLancamento(data, motivo);
+    toast("Lançamento excluído.");
+    fecharDrawer();
+    await carregarConteudo();
   } catch (e) { toast("Erro: " + e.message); }
 }
 

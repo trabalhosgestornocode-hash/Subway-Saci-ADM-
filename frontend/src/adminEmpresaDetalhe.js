@@ -108,6 +108,9 @@ function ligarAba(aba) {
         "Acessos atualizados — as sessões ativas desta empresa foram encerradas."
       );
     });
+  } else if (aba === "modelo") {
+    el("#ed-clonar-modelo")?.addEventListener("click", () =>
+      salvar(() => adminApi.clonarModeloEmpresa(empresaId), "Catálogo do modelo clonado."));
   }
 }
 
@@ -194,10 +197,24 @@ const CORPOS = {
       const modelos = await adminApi.empresasModelo();
       nomeModelo = modelos.find((m) => m.id === e.modeloOrigemId)?.nome ?? nomeModelo;
     } catch { /* mantém o id como rótulo — não é crítico */ }
+    const catalogoVazio = !e.metricas.produtos && !e.metricas.insumos;
+    const acaoClonar = catalogoVazio
+      ? `<div class="adm-secao-acoes adm-secao-acoes--fim">
+           <button class="btn btn-primary btn-sm" id="ed-clonar-modelo" type="button">📋 Clonar catálogo do modelo agora</button>
+         </div>`
+      : `<p class="adm-nota">Esta empresa já tem produtos/insumos cadastrados — clonar de novo duplicaria os dados,
+         então o botão só aparece com o catálogo vazio.</p>`;
     return `
-      <div class="adm-det"><div class="adm-det-linha"><span>Modelo de origem</span><b>${escapeHtml(nomeModelo)}</b></div></div>
+      <div class="adm-det">
+        <div class="adm-det-linha"><span>Modelo de origem</span><b>${escapeHtml(nomeModelo)}</b></div>
+        <div class="adm-det-linha"><span>Produtos / Insumos hoje</span><b>${num(e.metricas.produtos)} / ${num(e.metricas.insumos)}</b></div>
+      </div>
+      ${catalogoVazio ? `<div class="adm-aviso">O catálogo desta empresa está vazio. Se a clonagem do modelo falhou
+        na criação (ou a empresa é de antes desta correção), use o botão abaixo para copiar produtos, insumos e
+        fichas técnicas do modelo agora.</div>` : ""}
       <p class="adm-nota">Atualizar empresas já provisionadas quando o Modelo Padrão mudar é uma funcionalidade
-      futura e controlada — nada aqui muda automaticamente.</p>`;
+      futura e controlada — nada aqui muda automaticamente.</p>
+      ${acaoClonar}`;
   },
 
   auditoria: async () => {

@@ -4,9 +4,9 @@
 // Roda UMA VEZ (depois da migration 030). Cria uma nova organização marcada
 // `eh_modelo = true` (não aparece na lista normal de Empresas — só no
 // seletor "Modelo inicial" do assistente de criação) e clona para dentro
-// dela, com IDs NOVOS, o catálogo atual da empresa de origem:
-//
-//   categorias -> insumos -> produtos -> ficha_tecnica -> produto_precos
+// dela, com IDs NOVOS, o catálogo atual da empresa de origem — a lógica de
+// clonagem em si mora em src/shared/clonarCatalogo.js (mesmo código que o
+// Painel SuperAdmin usa ao criar uma empresa a partir de um modelo).
 //
 // A cópia é ESTÁTICA DE PROPÓSITO: depois de rodar, o Modelo Padrão não tem
 // nenhum vínculo com a empresa de origem. Editar preço, ficha técnica ou
@@ -14,19 +14,6 @@
 // exatamente o "só uma vez e pronto" pedido: se quiser atualizar o modelo
 // mais tarde, rode de novo contra um modelo NOVO (este script recusa rodar
 // duas vezes para o MESMO nome de modelo, para nunca duplicar).
-//
-// O QUE NÃO É CLONADO (fora do escopo pedido — só catálogo):
-//   * fornecedores (insumos ficam com fornecedor_id = null no modelo);
-//   * canais_venda (comissão por canal é configuração da empresa, não do
-//     catálogo);
-//   * unidades, usuários, vendas, estoque, integrações — o modelo é só
-//     Produtos/Insumos/Ficha técnica/Categorias, como pedido.
-//   * módulos habilitados — o modelo não é uma empresa operável, não entra
-//     na lista normal, não precisa de módulos.
-//
-// A clonagem em si (produto por produto, ficha por ficha) usa a MESMA
-// estrutura de tabelas que já existe — nenhuma tabela nova além do que a
-// migration 030 já criou (organizacoes.eh_modelo/modelo_origem_id).
 //
 // PRÉ-REQUISITO: migration 030 aplicada.
 // IDEMPOTENTE quanto a duplicar: se já existe uma organização com
@@ -43,8 +30,8 @@
 // =====================================================================
 
 import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "node:crypto";
 import ws from "ws";
+import { clonarCatalogo } from "../src/shared/clonarCatalogo.js";
 if (!globalThis.WebSocket) globalThis.WebSocket = ws; // Node < 22
 
 const ORIGEM_ORGANIZACAO_ID = process.env.ORIGEM_ORGANIZACAO_ID || null;
@@ -61,15 +48,6 @@ const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persi
 
 const log = (...a) => console.log(...a);
 const passo = (n, t) => console.log(`\n[${n}] ${t}`);
-
-/** Insere em lotes — evita um único INSERT gigante se o catálogo for grande. */
-async function inserirEmLotes(tabela, linhas, tamanhoLote = 500) {
-  for (let i = 0; i < linhas.length; i += tamanhoLote) {
-    const lote = linhas.slice(i, i + tamanhoLote);
-    const { error } = await sb.from(tabela).insert(lote);
-    if (error) throw new Error(`insert ${tabela} (lote ${i}-${i + lote.length}): ${error.message}`);
-  }
-}
 
 async function main() {
   log("=== CRIAR MODELO PADRÃO — Crescer com Delivery ===");
@@ -141,7 +119,7 @@ async function main() {
   log(`  ✓ Origem: ${origem.nome} (${origem.id})`);
 
   // ---------------------------------------------------------------------
-  // 3. Cria a organização-modelo (vazia — o catálogo entra nos passos seguintes).
+  // 3. Cria a organização-modelo (vazia — o catálogo entra no passo seguinte).
   // ---------------------------------------------------------------------
   passo(3, "Criando a organização do Modelo Padrão");
   const { data: modelo, error: eModelo } = await sb.from("organizacoes").insert({
@@ -157,149 +135,31 @@ async function main() {
   log(`  ✓ Modelo criado: ${modelo.nome} (${modelo.id})`);
 
   // ---------------------------------------------------------------------
-  // 4. Categorias
+  // 4. Clona o catálogo (categorias -> insumos -> produtos -> ficha técnica -> preços).
   // ---------------------------------------------------------------------
-  passo(4, "Clonando categorias");
-  const { data: categoriasOrigem, error: eCatSel } = await sb
-    .from("categorias").select("*").eq("organizacao_id", origem.id);
-  if (eCatSel) throw new Error(`categorias(select): ${eCatSel.message}`);
-
-  const mapaCategorias = new Map(); // id antigo -> id novo
-  const categoriasNovas = (categoriasOrigem ?? []).map((c) => {
-    const novoId = randomUUID();
-    mapaCategorias.set(c.id, novoId);
-    return { id: novoId, organizacao_id: modelo.id, nome: c.nome, tipo: c.tipo, ordem: c.ordem, ativo: c.ativo };
-  });
-  await inserirEmLotes("categorias", categoriasNovas);
-  log(`  ✓ ${categoriasNovas.length} categoria(s) clonada(s).`);
+  passo(4, "Clonando o catálogo");
+  const r = await clonarCatalogo(sb, { origemId: origem.id, destinoId: modelo.id });
+  log(`  ✓ ${r.categorias} categoria(s), ${r.insumos} insumo(s), ${r.produtos} produto(s)/sub-montagem(ns),`);
+  log(`    ${r.fichaTecnica} linha(s) de ficha técnica${r.fichaIgnorada ? ` (${r.fichaIgnorada} ignorada(s) por referência órfã)` : ""}, ${r.precos} preço(s).`);
 
   // ---------------------------------------------------------------------
-  // 5. Insumos (fornecedor_id fica null — fornecedores não fazem parte do modelo)
-  // ---------------------------------------------------------------------
-  passo(5, "Clonando insumos");
-  const { data: insumosOrigem, error: eInsSel } = await sb
-    .from("insumos").select("*").eq("organizacao_id", origem.id);
-  if (eInsSel) throw new Error(`insumos(select): ${eInsSel.message}`);
-
-  const mapaInsumos = new Map();
-  const insumosNovos = (insumosOrigem ?? []).map((i) => {
-    const novoId = randomUUID();
-    mapaInsumos.set(i.id, novoId);
-    return {
-      id: novoId, organizacao_id: modelo.id,
-      categoria_id: i.categoria_id ? (mapaCategorias.get(i.categoria_id) ?? null) : null,
-      fornecedor_id: null,
-      codigo: i.codigo, nome: i.nome, tipo: i.tipo, unidade_medida: i.unidade_medida,
-      preco_caixa: i.preco_caixa, rendimento: i.rendimento, fator_correcao: i.fator_correcao,
-      preco_unitario: i.preco_unitario, estoque_minimo: i.estoque_minimo, validade_dias: i.validade_dias,
-      ativo: i.ativo, descricao: i.descricao, forma_compra: i.forma_compra,
-    };
-  });
-  await inserirEmLotes("insumos", insumosNovos);
-  log(`  ✓ ${insumosNovos.length} insumo(s) clonado(s).`);
-
-  // ---------------------------------------------------------------------
-  // 6. Produtos (inclui sub-montagens: vendavel=false também é "produto")
-  // ---------------------------------------------------------------------
-  passo(6, "Clonando produtos");
-  const { data: produtosOrigem, error: eProdSel } = await sb
-    .from("produtos").select("*").eq("organizacao_id", origem.id);
-  if (eProdSel) throw new Error(`produtos(select): ${eProdSel.message}`);
-
-  const mapaProdutos = new Map();
-  const produtosNovos = (produtosOrigem ?? []).map((p) => {
-    const novoId = randomUUID();
-    mapaProdutos.set(p.id, novoId);
-    return {
-      id: novoId, organizacao_id: modelo.id,
-      categoria_id: p.categoria_id ? (mapaCategorias.get(p.categoria_id) ?? null) : null,
-      tipo: p.tipo, nome: p.nome, sku: p.sku, codigo_pdv: p.codigo_pdv, tamanho: p.tamanho,
-      vendavel: p.vendavel, custo_manual: p.custo_manual, imagem_url: p.imagem_url, ativo: p.ativo,
-      // custo_cache fica null de propósito — é recalculado ao vivo pela ficha técnica
-      // (ver backend/src/modules/produtos/custo.js), não precisa ser "adivinhado" aqui.
-    };
-  });
-  await inserirEmLotes("produtos", produtosNovos);
-  log(`  ✓ ${produtosNovos.length} produto(s)/sub-montagem(ns) clonado(s).`);
-
-  // ---------------------------------------------------------------------
-  // 7. Ficha técnica — remapeia produto_id, insumo_id e subproduto_id.
-  //    Como TODOS os produtos já foram clonados no passo 6, referências
-  //    produto->produto (subproduto_id) resolvem sem depender de ordem.
-  // ---------------------------------------------------------------------
-  passo(7, "Clonando fichas técnicas");
-  const idsProdutosOrigem = (produtosOrigem ?? []).map((p) => p.id);
-  let fichaOrigem = [];
-  if (idsProdutosOrigem.length) {
-    const { data, error } = await sb.from("ficha_tecnica").select("*").in("produto_id", idsProdutosOrigem);
-    if (error) throw new Error(`ficha_tecnica(select): ${error.message}`);
-    fichaOrigem = data ?? [];
-  }
-
-  let fichaIgnorada = 0;
-  const fichaNova = fichaOrigem.flatMap((f) => {
-    const novoProdutoId = mapaProdutos.get(f.produto_id);
-    const novoInsumoId = f.insumo_id ? mapaInsumos.get(f.insumo_id) : null;
-    const novoSubprodutoId = f.subproduto_id ? mapaProdutos.get(f.subproduto_id) : null;
-    // Linha órfã (aponta pra insumo/produto que sumiu do mapa) não é inventada — pulada e contada.
-    if (!novoProdutoId || (f.insumo_id && !novoInsumoId) || (f.subproduto_id && !novoSubprodutoId)) {
-      fichaIgnorada++;
-      return [];
-    }
-    return [{
-      id: randomUUID(), produto_id: novoProdutoId, insumo_id: novoInsumoId, subproduto_id: novoSubprodutoId,
-      quantidade: f.quantidade, observacao: f.observacao,
-      unidade_uso: f.unidade_uso, quantidade_informada: f.quantidade_informada,
-      ordem: f.ordem, ativo: f.ativo,
-    }];
-  });
-  await inserirEmLotes("ficha_tecnica", fichaNova);
-  log(`  ✓ ${fichaNova.length} linha(s) de ficha técnica clonada(s).${fichaIgnorada ? ` (${fichaIgnorada} ignorada(s) por referência órfã)` : ""}`);
-
-  // ---------------------------------------------------------------------
-  // 8. Preços por canal/tabela
-  // ---------------------------------------------------------------------
-  passo(8, "Clonando preços");
-  let precosOrigem = [];
-  if (idsProdutosOrigem.length) {
-    const { data, error } = await sb.from("produto_precos").select("*").in("produto_id", idsProdutosOrigem);
-    if (error) throw new Error(`produto_precos(select): ${error.message}`);
-    precosOrigem = data ?? [];
-  }
-  const precosNovos = precosOrigem.flatMap((pr) => {
-    const novoProdutoId = mapaProdutos.get(pr.produto_id);
-    if (!novoProdutoId) return [];
-    return [{
-      id: randomUUID(), produto_id: novoProdutoId, canal: pr.canal, tabela: pr.tabela,
-      preco: pr.preco, desatualizado: pr.desatualizado,
-    }];
-  });
-  await inserirEmLotes("produto_precos", precosNovos);
-  log(`  ✓ ${precosNovos.length} preço(s) clonado(s).`);
-
-  // ---------------------------------------------------------------------
-  // 9. Auditoria (imutável — fica registrado quem/quando/de onde).
+  // 5. Auditoria (imutável — fica registrado quem/quando/de onde).
   // ---------------------------------------------------------------------
   await sb.from("plataforma_auditoria").insert({
     ator_tipo: "sistema", acao: "modelo_padrao.criado",
     entidade: "organizacao", entidade_id: modelo.id, organizacao_id: modelo.id,
-    detalhes: {
-      nome: modelo.nome, origem: origem.nome, origemId: origem.id,
-      categorias: categoriasNovas.length, insumos: insumosNovos.length,
-      produtos: produtosNovos.length, fichaTecnica: fichaNova.length, precos: precosNovos.length,
-      fichaIgnorada,
-    },
+    detalhes: { nome: modelo.nome, origem: origem.nome, origemId: origem.id, ...r },
   });
 
   // ---------------------------------------------------------------------
   log("\n=== CONCLUÍDO ===");
   log(`Modelo Padrão : ${modelo.nome} (${modelo.id})`);
   log(`Origem        : ${origem.nome} — cópia estática, não muda mais com a origem`);
-  log(`Categorias    : ${categoriasNovas.length}`);
-  log(`Insumos       : ${insumosNovos.length}`);
-  log(`Produtos      : ${produtosNovos.length}`);
-  log(`Ficha técnica : ${fichaNova.length}${fichaIgnorada ? ` (${fichaIgnorada} ignorada)` : ""}`);
-  log(`Preços        : ${precosNovos.length}`);
+  log(`Categorias    : ${r.categorias}`);
+  log(`Insumos       : ${r.insumos}`);
+  log(`Produtos      : ${r.produtos}`);
+  log(`Ficha técnica : ${r.fichaTecnica}${r.fichaIgnorada ? ` (${r.fichaIgnorada} ignorada)` : ""}`);
+  log(`Preços        : ${r.precos}`);
   log('\nJá aparece em "Modelo inicial" no assistente de Nova Empresa do Painel SuperAdmin.');
 }
 

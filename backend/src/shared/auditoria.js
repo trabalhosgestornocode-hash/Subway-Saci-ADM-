@@ -32,6 +32,7 @@ export const ACOES = {
   EMPRESA_EXCLUIDA: "empresa.excluida",
   EMPRESA_MODULO_HABILITADO: "empresa.modulo_habilitado",
   EMPRESA_MODULO_DESABILITADO: "empresa.modulo_desabilitado",
+  EMPRESA_MODELO_CLONADO: "empresa.modelo_clonado",
 
   // usuários e vínculos
   USUARIO_CRIADO: "usuario.criado",

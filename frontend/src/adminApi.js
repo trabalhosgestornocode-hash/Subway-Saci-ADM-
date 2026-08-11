@@ -51,6 +51,7 @@ export const adminApi = {
   unidadesDaEmpresa: (id) => get(`/empresas/${id}/unidades`),
   logsDaEmpresa: (id, limite) => get(`/empresas/${id}/logs${qs({ limite })}`),
   entrarComoEmpresa: (id) => post(`/empresas/${id}/entrar`),
+  clonarModeloEmpresa: (id) => post(`/empresas/${id}/clonar-modelo`),
 
   // Módulos (catálogo geral + por empresa)
   modulos: () => get("/modulos"),

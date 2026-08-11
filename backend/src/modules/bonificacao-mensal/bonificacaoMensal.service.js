@@ -361,8 +361,8 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
   if (!payload?.geral && !payload?.loja) throw ApiError.badRequest("Envie pelo menos um dos dois relatórios (Geral ou Loja).");
 
   let bufGeral = null, bufLoja = null, parsedGeral = null, parsedLoja = null;
-  if (payload.geral) { bufGeral = decodificarPdfVisio(payload.geral, "Geral"); parsedGeral = await parseVisioProductReport(bufGeral); }
-  if (payload.loja) { bufLoja = decodificarPdfVisio(payload.loja, "Loja"); parsedLoja = await parseVisioProductReport(bufLoja); }
+  if (payload.geral) { bufGeral = decodificarPdfVisio(payload.geral, "Geral"); parsedGeral = await parseVisioProductReport(bufGeral, { rotulo: "Geral" }); }
+  if (payload.loja) { bufLoja = decodificarPdfVisio(payload.loja, "Loja"); parsedLoja = await parseVisioProductReport(bufLoja, { rotulo: "Loja" }); }
 
   // item 19 — correção manual ANTES de salvar (a leitura do PDF pode ter
   // interpretado algum número errado). Cada campo corrigido entra no
@@ -517,6 +517,62 @@ export async function arquivoOriginal({ organizacaoId, unidadeId, importacaoId }
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(imp.arquivo_storage, 3600);
   if (error) throw ApiError.internal("Falha ao gerar o link do arquivo: " + error.message);
   return { url: data.signedUrl, nomeArquivo: imp.nome_arquivo };
+}
+
+// ---------------------------------------------------------------------------
+// EXCLUSÃO DE VERDADE (DELETE) — restrita a quem tem
+// BONIFICACAO_MENSAL_EXCLUIR (só organization_admin, ver permissoes.js).
+// Mesmo princípio do Dashboard iFood (dashboardExecutivo.service.js
+// #excluirLancamento): sempre com motivo + snapshot completo ANTES de
+// apagar — nunca se apaga um lançamento financeiro em silêncio.
+//
+// Diferente daquele, aqui a exclusão também LIBERA os PDFs importados: apaga
+// as linhas de bonificacao_importacoes ligadas a este lançamento (e o
+// arquivo no Storage). Sem isso, `uq_bimp_hash` continuaria bloqueando
+// reimportar o MESMO arquivo — que é justamente o caso de uso ("importei no
+// dia errado, quero corrigir a data"): sem liberar a importação, apagar o
+// lançamento não ajudaria em nada.
+// ---------------------------------------------------------------------------
+export async function excluirLancamento({ organizacaoId, unidadeId, usuario, data: dataRaw, motivo: motivoRaw }) {
+  const unidade = await resolverUnidade({ organizacaoId, unidadeId });
+  const data = v.dataOpcional(dataRaw, "Data do lançamento");
+  if (!data) throw ApiError.badRequest("Informe a data do lançamento a excluir.");
+  const motivo = v.texto(motivoRaw, "Motivo da exclusão", { min: 3, max: 500 });
+
+  const { data: linha, error } = await supabase.from(TABELA).select("*")
+    .eq("unidade_id", unidade.id).eq("data", data).maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  if (!linha) throw ApiError.notFound("Nenhum lançamento encontrado nesta data.");
+
+  // Snapshot ANTES de apagar — tabela própria, sem FK para o lançamento (que
+  // está prestes a deixar de existir), então o registro da exclusão nunca
+  // some junto com o que foi apagado.
+  const { error: eLog } = await supabase.from("bonificacao_lancamentos_exclusoes").insert({
+    organizacao_id: organizacaoId, unidade_id: unidade.id, data_lancamento: data,
+    lancamento_snapshot: linha, motivo,
+    usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+  });
+  if (eLog) console.error("[bonificacao-mensal] falha ao registrar log de exclusão:", eLog.message);
+
+  // Libera os PDFs para reimportação: arquivo no Storage primeiro (best
+  // effort — mesmo espírito de uploadOriginal, um erro aqui não pode travar
+  // a exclusão), depois as linhas de bonificacao_importacoes.
+  const idsImportacao = [linha.importacao_geral_id, linha.importacao_loja_id].filter(Boolean);
+  if (idsImportacao.length) {
+    const { data: imps } = await supabase.from(TABELA_IMPORT).select("id, arquivo_storage").in("id", idsImportacao);
+    for (const imp of imps || []) {
+      if (!imp.arquivo_storage) continue;
+      const { error: eStorage } = await supabase.storage.from(BUCKET).remove([imp.arquivo_storage]);
+      if (eStorage) console.error("[bonificacao-mensal] falha ao remover arquivo do storage:", eStorage.message);
+    }
+    const { error: eImp } = await supabase.from(TABELA_IMPORT).delete().in("id", idsImportacao);
+    if (eImp) console.error("[bonificacao-mensal] falha ao remover importações do lançamento excluído:", eImp.message);
+  }
+
+  const { error: eDel } = await supabase.from(TABELA).delete().eq("id", linha.id);
+  if (eDel) throw ApiError.badRequest(eDel.message);
+
+  return { excluido: true, data, unidadeId: unidade.id, importacoesLiberadas: idsImportacao.length };
 }
 
 // ---------------------------------------------------------------------------

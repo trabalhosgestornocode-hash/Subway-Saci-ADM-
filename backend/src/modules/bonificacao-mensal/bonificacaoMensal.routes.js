@@ -7,12 +7,14 @@ export const bonificacaoMensalRouter = Router();
 
 const ver = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_VER);
 const lancar = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_LANCAR);
+const excluir = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_EXCLUIR);
 
 bonificacaoMensalRouter.get("/mes", ver, controller.mes);
 bonificacaoMensalRouter.get("/metas", ver, controller.metas);
 bonificacaoMensalRouter.get("/historico", ver, controller.historico);
 bonificacaoMensalRouter.get("/lancamentos/:data", ver, controller.lancamentoPorData);
 bonificacaoMensalRouter.post("/lancamentos", lancar, controller.salvarLancamento);
+bonificacaoMensalRouter.post("/lancamentos/:data/excluir", excluir, controller.excluirLancamento);
 
 bonificacaoMensalRouter.get("/importacoes", ver, controller.importacoes);
 bonificacaoMensalRouter.get("/importacoes/:id/arquivo", ver, controller.arquivoImportacao);

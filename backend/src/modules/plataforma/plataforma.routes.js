@@ -33,6 +33,7 @@ plataformaRouter.get("/empresas/:id/usuarios", c.usuariosDaEmpresa);
 plataformaRouter.get("/empresas/:id/unidades", c.unidadesDaEmpresa);
 plataformaRouter.get("/empresas/:id/logs", c.logsDaEmpresa);
 plataformaRouter.post("/empresas/:id/entrar", c.entrarComoEmpresa);
+plataformaRouter.post("/empresas/:id/clonar-modelo", c.clonarModeloEmpresa);
 
 // ---- Módulos (catálogo geral + por empresa)
 plataformaRouter.get("/modulos", c.catalogoModulos);   // antes de /empresas/:id/modulos, sem colisão (prefixo diferente)

@@ -94,6 +94,12 @@ export const LIMITES_CORPO = {
   padrao: "1mb",
   vendasImportacao: "30mb",   // relatórios CSV/Excel/PDF em base64
   martinBrowerImportacao: "8mb", // JSON do loadItens colado pelo admin
+  // Bonificação Mensal manda os DOIS PDFs da Visio (Geral + Loja) no mesmo
+  // corpo — até 15 MB cada (ver MAX_ARQUIVO em visio-parser.js), +33% do
+  // base64 e a duplicidade do preview/confirmar somam bem mais que os 1 MB
+  // padrão. Sem esta exceção, a rota falha com "request entity too large"
+  // mesmo com um único PDF um pouco maior.
+  bonificacaoMensalImportacao: "50mb",
 };
 
 // --- timeouts do servidor -------------------------------------------------

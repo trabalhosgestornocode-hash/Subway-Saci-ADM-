@@ -63,6 +63,11 @@ export const unidadesDaEmpresa = asyncHandler(async (req, res) => {
   ok(res, await buscar("unidades", "id, nome, ativo", (q) => q.eq("organizacao_id", id).order("nome")));
 });
 
+// Reclona o catálogo do modelo — recuperação manual para empresas cujo
+// catálogo nunca chegou a ser copiado (ver plataforma.empresas.service.js).
+export const clonarModeloEmpresa = asyncHandler(async (req, res) =>
+  ok(res, await empresas.clonarModeloParaEmpresa(req, req.params.id), 201));
+
 // --------------------------------------------------------------- Módulos
 // Catálogo (fixo em código) — alimenta o passo "Acessos" do assistente de
 // criação e a aba "Acessos" da página da empresa.
