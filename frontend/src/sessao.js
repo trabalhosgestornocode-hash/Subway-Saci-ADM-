@@ -12,6 +12,7 @@
 import { API_BASE } from "./config.js";
 import { state } from "./state.js";
 import { getSupabase, tokenAtual } from "./supabaseClient.js";
+import { geracaoContexto, contextoMudou, invalidarGeracaoDeContexto } from "./contextoEscopo.js";
 
 const CHAVE_TOKEN = "cd.contextToken";
 
@@ -31,12 +32,14 @@ function guardarContextToken(token) {
 }
 
 export function limparContexto() {
+  invalidarGeracaoDeContexto(); // respostas em voo do contexto que acabou não valem mais
   guardarContextToken(null);
   state.sessao.empresa = null;
   state.sessao.unidade = null;
   state.sessao.papel = null;
   state.sessao.papelRotulo = null;
   state.sessao.permissoes = [];
+  state.sessao.modulos = [];
   state.sessao.impersonando = false;
 }
 
@@ -62,6 +65,11 @@ async function cabecalhos(extra = {}) {
  * expirado, que é o erro mais comum e o menos grave.
  */
 async function chamar(url, opcoes = {}) {
+  // Geração do contexto no momento do ENVIO — ver o comentário longo em
+  // api.js#tratar: um 409 de uma requisição do contexto ANTERIOR, chegando
+  // depois de o usuário já ter entrado em outra unidade, não pode apagar o
+  // token da unidade nova nem mandá-lo de volta para a tela de seleção.
+  const g = geracaoContexto();
   const r = await fetch(API_BASE + url, {
     ...opcoes,
     headers: await cabecalhos(opcoes.headers ?? {}),
@@ -73,8 +81,10 @@ async function chamar(url, opcoes = {}) {
   }
   const corpo = await r.json().catch(() => ({}));
   if (r.status === 409 && corpo?.details?.contexto === "invalido") {
-    limparContexto();
-    document.dispatchEvent(new CustomEvent("app:contexto-invalido", { detail: corpo.error }));
+    if (!contextoMudou(g)) {
+      limparContexto();
+      document.dispatchEvent(new CustomEvent("app:contexto-invalido", { detail: corpo.error }));
+    }
     throw new Error(corpo.error || "Contexto encerrado.");
   }
   if (!r.ok) throw new Error(corpo.error || `${r.status} ${r.statusText}`);
@@ -184,12 +194,16 @@ export async function selecionarContexto({ organizacaoId, unidadeId = null, troc
 
 /** Grava no estado o contexto recebido do servidor (seleção ou impersonação). */
 export function aplicarContexto(data) {
+  // A identidade do contexto muda AQUI — a geração tem que subir junto, antes
+  // que mostrarApp() monte a tela nova (ver contextoEscopo.js).
+  invalidarGeracaoDeContexto();
   guardarContextToken(data.contextToken);
   state.sessao.empresa = data.empresa;
   state.sessao.unidade = data.unidade;
   state.sessao.papel = data.papel;
   state.sessao.papelRotulo = data.papelRotulo;
   state.sessao.permissoes = data.permissoes ?? [];
+  state.sessao.modulos = data.modulos ?? [];
   state.sessao.impersonando = !!data.impersonando;
 }
 
@@ -206,6 +220,7 @@ export async function restaurarContexto() {
     state.sessao.papel = data.papel;
     state.sessao.papelRotulo = data.papelRotulo;
     state.sessao.permissoes = data.permissoes ?? [];
+    state.sessao.modulos = data.modulos ?? [];
     state.sessao.impersonando = !!data.impersonando;
     return true;
   } catch {
@@ -226,6 +241,18 @@ export function pode(permissao) {
   // esconder botões aqui só criaria divergência entre UI e API.
   if (state.sessao.impersonando) return true;
   return state.sessao.permissoes.includes(permissao);
+}
+
+/**
+ * A empresa do contexto atual contratou este módulo? Controla o menu lateral
+ * (app.js#montarMenu) e a guarda de rota (router.js#renderRotaAtual). Mesmo
+ * bypass de impersonação de `pode()` — o backend (requireModulo) decide
+ * igual, então esconder aqui e liberar lá seria a UI mentir para o suporte.
+ * @param {string} moduloId
+ */
+export function temModulo(moduloId) {
+  if (state.sessao.impersonando) return true;
+  return state.sessao.modulos.includes(moduloId);
 }
 
 // Exportado para o cliente do painel SuperAdmin reaproveitar o mesmo

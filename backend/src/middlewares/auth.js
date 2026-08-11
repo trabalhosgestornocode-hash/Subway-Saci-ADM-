@@ -24,6 +24,7 @@ import { config } from "../config/env.js";
 import { ApiError } from "../shared/ApiError.js";
 import { verificarContextToken } from "../shared/contextToken.js";
 import { temPermissao } from "../shared/permissoes.js";
+import { rotuloModulo } from "../shared/modulos.js";
 
 /** Nome do header que transporta o Context Token. */
 export const HEADER_CONTEXTO = "x-context-token";
@@ -46,6 +47,7 @@ const STATUS_BLOQUEANTES = new Set(["bloqueada", "suspensa", "cancelada"]);
  * @property {string} sessionId
  * @property {string} papel
  * @property {string[]} permissoes
+ * @property {string[]} modulos
  * @property {string|null} impersonadoPor
  * @property {boolean} impersonando
  * @property {{id: string, nome: string, status: string}} empresa
@@ -134,7 +136,7 @@ export async function requireContexto(req, _res, next) {
     // A sessão ainda vale? Esta é a leitura que torna a revogação instantânea.
     const { data: sessao, error } = await supabase
       .from("sessoes_contexto")
-      .select("id, usuario_id, organizacao_id, unidade_id, papel, permissoes, impersonado_por, expira_em, revogada_em")
+      .select("id, usuario_id, organizacao_id, unidade_id, papel, permissoes, modulos, impersonado_por, expira_em, revogada_em")
       .eq("id", p.sid)
       .maybeSingle();
 
@@ -177,6 +179,7 @@ export async function requireContexto(req, _res, next) {
       sessionId: sessao.id,
       papel: sessao.papel,
       permissoes: Array.isArray(sessao.permissoes) ? sessao.permissoes : [],
+      modulos: Array.isArray(sessao.modulos) ? sessao.modulos : [],
       impersonadoPor: sessao.impersonado_por ?? null,
       impersonando: !!sessao.impersonado_por,
       empresa: { id: empresa.id, nome: empresa.nome, status: empresa.status },
@@ -274,6 +277,27 @@ export function requirePermissao(permissao) {
     if (req.acesso.impersonando) return next();
     if (!temPermissao(req.acesso.permissoes, permissao)) {
       return next(ApiError.forbidden("Permissão insuficiente para esta ação."));
+    }
+    next();
+  };
+}
+
+/**
+ * Exige que a empresa do contexto atual tenha o módulo contratado.
+ *
+ * Mesma regra de bypass de `requirePermissao`: o superadmin em impersonação
+ * passa por qualquer módulo — ele entrou para dar suporte, e travá-lo no
+ * mesmo pacote que a empresa comprou impediria justamente o tipo de
+ * diagnóstico para o qual a impersonação existe. A rastreabilidade é a
+ * auditoria (`impersonado_por` em cada ação), não um bloqueio aqui.
+ * @param {string} moduloId
+ */
+export function requireModulo(moduloId) {
+  return (req, _res, next) => {
+    if (!req.acesso) return next(ApiError.forbidden("Contexto de empresa não definido."));
+    if (req.acesso.impersonando) return next();
+    if (!req.acesso.modulos.includes(moduloId)) {
+      return next(ApiError.forbidden(`Módulo "${rotuloModulo(moduloId)}" não contratado por esta empresa.`));
     }
     next();
   };

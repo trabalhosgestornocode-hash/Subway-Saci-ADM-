@@ -121,6 +121,12 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
       .select("id").single();
     assert.ifError(eLanc);
 
+    // Módulos (migration 030): habilita "dashboard" só para este tenant —
+    // o teste de isolamento verifica que o outro tenant não lê esta linha.
+    const { error: eMod } = await admin
+      .from("organizacao_modulos").insert({ organizacao_id: org.id, modulo_id: "dashboard" });
+    assert.ifError(eMod);
+
     return { ...u, orgId: org.id, uniId: uni.id, prodId: prod.id, vendaId: venda.id, lancId: lanc.id };
   }
 
@@ -132,7 +138,7 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
     await verificarTabelas(admin, [                          // migration/tabela ausente
       "organizacoes", "unidades", "perfis", "produtos", "vendas",
       "usuarios_organizacoes", "usuarios_unidades", "plataforma_admins",
-      "lancamentos_financeiros_diarios",
+      "lancamentos_financeiros_diarios", "modulos", "organizacao_modulos",
     ]);
     await verificarRlsAtivo(createClient(URL, ANON, opts), "produtos"); // policy RLS ausente
 
@@ -270,6 +276,27 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
     assert.ifError(error);
     assert.ok(data.some((r) => r.id === ctx.A.prodId), "superadmin não enxergou o produto de A");
     assert.ok(data.some((r) => r.id === ctx.B.prodId), "superadmin não enxergou o produto de B");
+  });
+
+  // ------- Módulos (migration 030): isolamento na nova tabela de vínculo -------
+  it("A lê os próprios módulos habilitados e NENHUM módulo de B", async () => {
+    const { data, error } = await ctx.A.cli.from("organizacao_modulos").select("organizacao_id, modulo_id");
+    assert.ifError(error);
+    assert.ok(data.length >= 1, "A deveria enxergar ao menos o próprio módulo habilitado");
+    assert.ok(data.every((r) => r.organizacao_id === ctx.A.orgId), vazamento("A viu módulo de outra organização"));
+  });
+
+  it("Inverso: B lê os próprios módulos habilitados e NENHUM módulo de A", async () => {
+    const { data, error } = await ctx.B.cli.from("organizacao_modulos").select("organizacao_id, modulo_id");
+    assert.ifError(error);
+    assert.ok(data.length >= 1, "B deveria enxergar ao menos o próprio módulo habilitado");
+    assert.ok(data.every((r) => r.organizacao_id === ctx.B.orgId), vazamento("B viu módulo de outra organização"));
+  });
+
+  it("A NÃO consegue habilitar um módulo para si mesma (só o SuperAdmin escreve)", async () => {
+    const { error } = await ctx.A.cli
+      .from("organizacao_modulos").insert({ organizacao_id: ctx.A.orgId, modulo_id: "sales" });
+    assert.ok(error, vazamento("um tenant conseguiu INSERIR em organizacao_modulos sem ser SuperAdmin"));
   });
 
   // ------- multi-membership: usuário vinculado a A e B vê os dois -------

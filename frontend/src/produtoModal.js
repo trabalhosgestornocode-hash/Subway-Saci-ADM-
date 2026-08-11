@@ -8,6 +8,7 @@ import {
 import { state } from "./state.js";
 import { UNIDADES_BASE, CATEGORIA_INSUMO_ROTULO } from "./config.js";
 import { fmtMoeda, fmtPct, fmtTexto, escapeHtml, statusCmv, toast } from "./utils.js";
+import { registrarResetDeContexto } from "./contextoEscopo.js";
 
 const CAT_LABEL = {
   sanduiche: "Sanduíche", salada: "Salada", bebida: "Bebida", sobremesa: "Sobremesa",
@@ -29,6 +30,11 @@ let overlay = null;
 let insumosCache = null; // lista de insumos ativos (para o seletor)
 function fechar() { overlay?.remove(); overlay = null; insumosCache = null; document.removeEventListener("keydown", onKey); }
 function onKey(e) { if (e.key === "Escape") fechar(); }
+
+// Trocar de empresa/unidade com o modal aberto fecha o modal e joga fora o
+// cache de insumos: o seletor da ficha técnica não pode oferecer insumos da
+// empresa anterior (seria um vínculo salvo no catálogo errado).
+registrarResetDeContexto(fechar);
 
 export async function abrirProdutoModal(produtoId) {
   fechar();

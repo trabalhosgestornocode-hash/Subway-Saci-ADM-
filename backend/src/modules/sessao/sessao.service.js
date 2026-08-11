@@ -9,6 +9,7 @@ import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { emitirContextToken, VALIDADE_PADRAO_S } from "../../shared/contextToken.js";
 import { permissoesDoPapel, rotuloPapel } from "../../shared/permissoes.js";
+import { modulosDaEmpresa } from "../../shared/modulos.js";
 import { auditar, ACOES } from "../../shared/auditoria.js";
 import * as v from "../../shared/validar.js";
 
@@ -170,10 +171,11 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
   }
 
   const permissoes = permissoesDoPapel(papel);
+  const modulos = await modulosDaEmpresa(orgId);
 
   const sessao = await criarSessao({
     usuarioId: usuario.id, organizacaoId: orgId, unidadeId: unidade?.id ?? null,
-    papel, permissoes, impersonadoPor: null, ip, userAgent,
+    papel, permissoes, modulos, impersonadoPor: null, ip, userAgent,
   });
 
   await auditar({
@@ -192,6 +194,7 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
     papel,
     papelRotulo: rotuloPapel(papel),
     permissoes,
+    modulos,
     impersonando: false,
   };
 }
@@ -210,13 +213,14 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
  * @param {string|null} params.unidadeId
  * @param {string} params.papel
  * @param {string[]} params.permissoes
+ * @param {string[]} [params.modulos]
  * @param {string|null} params.impersonadoPor
  * @param {string|null} [params.ip]
  * @param {string|null} [params.userAgent]
  * @param {number} [params.validadeS]
  */
 export async function criarSessao({
-  usuarioId, organizacaoId, unidadeId, papel, permissoes,
+  usuarioId, organizacaoId, unidadeId, papel, permissoes, modulos = [],
   impersonadoPor = null, ip = null, userAgent = null, validadeS = VALIDADE_PADRAO_S,
 }) {
   await revogarSessoes({ usuarioId, motivo: impersonadoPor ? "impersonacao" : "novo_contexto" });
@@ -230,6 +234,7 @@ export async function criarSessao({
       unidade_id: unidadeId,
       papel,
       permissoes,
+      modulos,
       impersonado_por: impersonadoPor,
       ip, user_agent: userAgent,
       expira_em: expiraEm.toISOString(),
@@ -238,6 +243,9 @@ export async function criarSessao({
     .single();
   if (error || !linha) throw ApiError.internal("Não foi possível abrir a sessão de contexto.");
 
+  // Módulos não entram no payload assinado do token (diferente de `permissoes`,
+  // que entra por hoje, cosmeticamente): `requireContexto` sempre relê
+  // `sessoes_contexto.modulos`, então carregar no token não teria uso.
   const { token } = emitirContextToken({
     usuarioId, sessionId: linha.id, organizacaoId, unidadeId,
     papel, permissoes, impersonadoPor, validadeS,
@@ -350,6 +358,7 @@ export function contextoAtual(req) {
     papel: req.acesso.papel,
     papelRotulo: rotuloPapel(req.acesso.papel),
     permissoes: req.acesso.permissoes,
+    modulos: req.acesso.modulos,
     impersonando: req.acesso.impersonando,
     organizacaoId: req.tenant.organizacaoId,
     unidadeId: req.tenant.unidadeId,

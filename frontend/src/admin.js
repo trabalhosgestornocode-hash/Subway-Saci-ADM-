@@ -103,10 +103,13 @@ function ligarEventos() {
   el("#adm-btn-menu")?.addEventListener("click", () => el("#admin").classList.toggle("menu-aberto"));
   el("#adm-backdrop")?.addEventListener("click", () => el("#admin").classList.remove("menu-aberto"));
 
-  // Delegação única para TODAS as ações das views. As views renderizam
-  // `data-adm-acao` e os parâmetros em data-*; nada precisa reanexar listener
-  // depois de um re-render — que é o bug clássico deste tipo de painel.
-  el("#adm-view")?.addEventListener("click", (e) => {
+  // Delegação única para TODAS as ações das views — INCLUSIVE as de dentro do
+  // modal. `#adm-modal` é irmão de `#adm-view` no HTML (não filho), então
+  // escutar só `#adm-view` nunca capturaria um clique em algo como "Excluir
+  // empresa" dentro do modal "⋯" — o clique nem borbulhava até o listener.
+  // `document` cobre os dois; o filtro por `[data-adm-acao]` já isola isto do
+  // resto do app (o shell do tenant usa outro mecanismo de ação).
+  document.addEventListener("click", (e) => {
     const alvo = e.target.closest("[data-adm-acao]");
     if (!alvo) return;
     const { admAcao, ...dados } = alvo.dataset;

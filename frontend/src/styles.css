@@ -1688,6 +1688,27 @@ body {
 .adm-assoc { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; padding: 10px 12px; background: var(--campo-bg); border-radius: var(--raio-sm); cursor: pointer; }
 .adm-assoc:hover { background: var(--superficie-2); }
 .adm-assoc-nome { display: flex; align-items: center; gap: 8px; font-size: 13.5px; min-width: 0; }
+.adm-assoc--check { grid-template-columns: auto 1fr; }
+
+/* ---------- Página de detalhe da empresa (Informações/Acessos/Unidades/…) ---------- */
+.adm-empresa-topo { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+.adm-empresa-nome { display: flex; align-items: center; gap: 10px; font-size: 19px; margin: 0; }
+.adm-abas { display: flex; gap: 4px; border-bottom: 1.5px solid var(--linha); margin-bottom: 18px; overflow-x: auto; }
+.adm-aba {
+  padding: 9px 15px; border: none; background: none; color: var(--cinza); font-size: 13.5px; font-weight: 600;
+  cursor: pointer; border-bottom: 2.5px solid transparent; white-space: nowrap;
+}
+.adm-aba:hover { color: var(--texto); }
+.adm-aba.ativo { color: var(--verde-vivo); border-bottom-color: var(--verde-vivo); }
+
+.adm-modulos-grupo {
+  border: none; padding: 0; margin: 0 0 18px; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 7px;
+}
+.adm-modulos-grupo legend {
+  grid-column: 1 / -1; font-size: 12.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--cinza);
+  font-weight: 700; padding: 0 0 8px;
+}
 
 /* ---------- Formulários do painel ---------- */
 .adm-form-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); gap: 13px; }
@@ -1920,30 +1941,55 @@ tr.dex-linha-na { opacity: .65; }
 .dex-projecao { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--sombra-sm); }
 .dex-projecao h3 { font-size: 15px; margin-bottom: 12px; }
 
-/* Painel de comparação rápida — horizontal e compacto de propósito (não é
-   mais uma ficha longa): cabeçalho com título+seletores numa linha, números
-   em "chips" (label pequeno em cima, valor em destaque embaixo) na linha de
-   baixo. Sem grade de divisórias. Altura livre (nunca fixa), mas o conteúdo
-   em si já cabe folgado entre ~140-190px em desktop. */
+/* Simulador de preço DUPLO — Balcão e iFood lado a lado, cada um com seu
+   próprio seletor de tabela. Grid de 2 colunas no desktop; empilha em 1
+   coluna no mobile. A linha de comparação fica no rodapé, discreta. */
 .dex-simulador { padding: 14px 20px; margin-bottom: 18px; }
 .dex-sim-cabecalho { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--linha); }
 .dex-sim-titulo-wrap { flex: 1 1 260px; min-width: 0; }
 .dex-simulador h3 { font-size: 14.5px; margin-bottom: 3px; }
 .dex-sim-desc { font-size: 11.5px; color: var(--cinza); max-width: 480px; }
-.dex-sim-selects { display: flex; gap: 10px; flex-shrink: 0; }
-.dex-sim-selects .cfg-campo { min-width: 0; gap: 3px; }
-.dex-sim-selects .cfg-campo span { font-size: 10px; }
-.dex-sim-selects select { padding: 6px 10px; font-size: 12.5px; min-width: 88px; }
-
-.dex-sim-chips { display: flex; flex-wrap: wrap; gap: 22px 28px; align-items: flex-end; }
-.dex-sim-chip { display: flex; flex-direction: column; gap: 3px; }
-.dex-sim-chip > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; color: var(--cinza); font-weight: 700; }
-.dex-sim-chip > b { font-size: 17px; font-weight: 800; line-height: 1.1; }
-.dex-sim-chip > b small { font-size: 12px; font-weight: 700; color: var(--cinza); }
-.dex-sim-chip-destaque > b { color: var(--verde-vivo); }
 .dex-sim-badge { font-size: 9px; font-weight: 700; background: var(--muted-bg); color: var(--cinza); padding: 1px 5px; border-radius: 5px; margin-left: 4px; vertical-align: middle; }
 .dex-sim-aviso { font-size: 11.5px; color: var(--cinza); margin-top: 10px; display: flex; align-items: center; gap: 6px; }
-@media (max-width: 640px) { .dex-sim-cabecalho { flex-direction: column; } .dex-sim-selects { width: 100%; } .dex-sim-selects .cfg-campo { flex: 1; } }
+
+/* Os dois cenários. `minmax(0, 1fr)` (e não `1fr`) impede que um número
+   comprido estoure a coluna e crie scroll horizontal. */
+.dex-sim-duplo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.dex-sim-lado { border: 1px solid var(--linha); border-radius: 12px; padding: 12px 14px; background: var(--superficie-2); min-width: 0; }
+.dex-sim-lado-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--linha); }
+.dex-sim-lado-titulo { font-size: 12.5px; font-weight: 750; letter-spacing: .2px; }
+.dex-sim-lado-tabela { display: flex; align-items: center; gap: 6px; }
+.dex-sim-lado-tabela > span { font-size: 10px; text-transform: uppercase; letter-spacing: .3px; color: var(--cinza); font-weight: 700; }
+.dex-sim-lado-tabela select { padding: 4px 8px; font-size: 12px; min-width: 74px; border-radius: 8px; }
+.dex-sim-lado-corpo { min-height: 132px; }
+
+/* Linhas label→valor: mais legível que chips quando são 4-6 números por lado
+   e os dois lados precisam ficar alinhados para comparação visual. */
+.dex-sim-linhas { display: flex; flex-direction: column; }
+.dex-sim-linha { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 12.5px; }
+.dex-sim-linha + .dex-sim-linha { border-top: 1px dashed var(--linha); }
+.dex-sim-linha > span { color: var(--cinza); }
+.dex-sim-linha > b { font-size: 14px; font-weight: 750; text-align: right; }
+.dex-sim-linha > b small { font-size: 11px; font-weight: 700; color: var(--cinza); }
+.dex-sim-linha-destaque { margin-top: 2px; padding-top: 7px; border-top: 1.5px solid var(--linha) !important; }
+.dex-sim-linha-destaque > b { font-size: 16px; font-weight: 800; color: var(--verde-vivo); }
+
+/* Rodapé de comparação — só aparece quando os dois lados têm o número. */
+.dex-sim-comparacao { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--linha); }
+.dex-sim-comp-rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--cinza-claro); font-weight: 750; }
+.dex-sim-comp-item { display: flex; align-items: baseline; gap: 7px; font-size: 12px; }
+.dex-sim-comp-item > span { color: var(--cinza); }
+.dex-sim-comp-item > b { font-size: 13.5px; font-weight: 800; }
+.dex-sim-comp-item.positivo > b { color: var(--ok); }
+.dex-sim-comp-item.negativo > b { color: var(--bad); }
+.dex-sim-comp-item.neutro > b { color: var(--cinza); }
+
+@media (max-width: 760px) {
+  .dex-sim-duplo { grid-template-columns: minmax(0, 1fr); }
+  .dex-sim-lado-corpo { min-height: 0; }
+  .dex-sim-cabecalho { flex-direction: column; }
+  .dex-sim-comparacao { gap: 10px 16px; }
+}
 .dex-projecao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .dex-projecao-grid > div { display: flex; flex-direction: column; gap: 4px; }
 .dex-projecao-grid span { font-size: 11.5px; color: var(--cinza); text-transform: uppercase; font-weight: 700; letter-spacing: .3px; }

@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { requireContexto, exigirSenhaDefinitiva } from "./middlewares/auth.js";
+import { requireContexto, exigirSenhaDefinitiva, requireModulo } from "./middlewares/auth.js";
+import { MODULOS } from "./shared/modulos.js";
 import { produtosRouter } from "./modules/produtos/produtos.routes.js";
 import { insumosRouter } from "./modules/insumos/insumos.routes.js";
 import { cmvRouter } from "./modules/cmv/cmv.routes.js";
@@ -43,17 +44,22 @@ router.use(exigirSenhaDefinitiva);
 router.use("/plataforma", plataformaRouter);
 
 // --- 3. Rotas de tenant: a partir daqui, nada responde sem Context Token.
+//     Cada sub-router de MÓDULO (não infraestrutura, como `usuarios`) leva
+//     `requireModulo` na própria montagem — mesma filosofia do comentário
+//     acima: o bloqueio fica visível num único lugar, e um módulo novo não
+//     entra na API sem essa decisão explícita. `requireModulo` bypassa em
+//     impersonação, igual a `requirePermissao`.
 const tenant = Router();
 tenant.use(requireContexto);
-tenant.use("/produtos", produtosRouter);
-tenant.use("/insumos", insumosRouter);
-tenant.use("/cmv", cmvRouter);
-tenant.use("/dashboard", dashboardRouter);
-tenant.use("/dashboard-executivo", dashboardExecutivoRouter);
-tenant.use("/bonificacao-mensal", bonificacaoMensalRouter);
-tenant.use("/usuarios", usuariosRouter);
-tenant.use("/vendas", vendasRouter);
-tenant.use("/integracoes/martin-brower", martinBrowerRouter);
+tenant.use("/produtos", requireModulo(MODULOS.PRODUTOS_CMV), produtosRouter);
+tenant.use("/insumos", requireModulo(MODULOS.INGREDIENTS), insumosRouter);
+tenant.use("/cmv", requireModulo(MODULOS.PRODUTOS_CMV), cmvRouter);
+tenant.use("/dashboard", requireModulo(MODULOS.DASHBOARD), dashboardRouter);
+tenant.use("/dashboard-executivo", requireModulo(MODULOS.IFOOD_DASHBOARD), dashboardExecutivoRouter);
+tenant.use("/bonificacao-mensal", requireModulo(MODULOS.MONTHLY_BONUS), bonificacaoMensalRouter);
+tenant.use("/usuarios", usuariosRouter);   // infraestrutura do tenant, não um módulo contratável
+tenant.use("/vendas", requireModulo(MODULOS.SALES), vendasRouter);
+tenant.use("/integracoes/martin-brower", requireModulo(MODULOS.MARTIN_BROWER), martinBrowerRouter);
 router.use(tenant);
 
 // `contexto` é legado: existia para o seletor de organização antes do Context

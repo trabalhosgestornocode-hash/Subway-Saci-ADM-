@@ -7,6 +7,10 @@
 import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { permissoesDoPapel, rotuloPapel, PAPEIS_VINCULO } from "../../shared/permissoes.js";
+import {
+  CATALOGO_MODULOS, modulosDaEmpresa, validarModulos,
+  provisionarModulosEmpresa, definirModulosEmpresa, rotuloModulo,
+} from "../../shared/modulos.js";
 import { auditar, ACOES } from "../../shared/auditoria.js";
 import { criarSessao, revogarSessoes } from "../sessao/sessao.service.js";
 import { contar, buscar } from "./plataforma.repo.js";
@@ -33,13 +37,19 @@ const STATUS_SEM_ACESSO = new Set(["bloqueada", "suspensa", "cancelada"]);
 // Leitura
 // --------------------------------------------------------------------------
 
-/** @param {{busca?: string, status?: string, limite?: unknown}} filtros */
-export async function listarEmpresas({ busca, status, limite } = {}) {
+/**
+ * @param {{busca?: string, status?: string, limite?: unknown, ehModelo?: unknown}} filtros
+ *   `ehModelo` não informado = só empresas clientes (exclui Modelos Padrão da
+ *   lista principal, para não misturar molde com cliente). `ehModelo=true`
+ *   é o que alimenta o seletor de "Modelo inicial" do assistente de criação.
+ */
+export async function listarEmpresas({ busca, status, limite, ehModelo } = {}) {
   let q = supabase.from("organizacoes")
-    .select("id, nome, cnpj, logo_url, responsavel_nome, responsavel_email, telefone, status, trial_expira_em, ativo, created_at, planos(id, nome, codigo)")
+    .select("id, nome, cnpj, logo_url, responsavel_nome, responsavel_email, telefone, status, trial_expira_em, ativo, created_at, eh_modelo, modelo_origem_id, planos(id, nome, codigo)")
     .order("nome")
     .limit(v.limite(limite, 200, 1, 500));
 
+  q = q.eq("eh_modelo", v.booleano(ehModelo, false));
   if (status) q = q.eq("status", v.umDe(status, "Status", STATUS_EMPRESA));
   if (busca) {
     const termo = v.texto(busca, "Busca", { max: 120 }).replace(/[%,()]/g, " ");
@@ -77,6 +87,8 @@ const formatarEmpresa = (e) => ({
   plano: e.planos ? { id: e.planos.id, nome: e.planos.nome, codigo: e.planos.codigo } : null,
   criadoEm: e.created_at,
   acessoLiberado: !STATUS_SEM_ACESSO.has(e.status),
+  ehModelo: e.eh_modelo ?? false,
+  modeloOrigemId: e.modelo_origem_id ?? null,
 });
 
 /** Ficha completa de uma empresa: dados, unidades, usuários e assinatura. */
@@ -84,7 +96,7 @@ export async function obterEmpresa(idBruto) {
   const id = v.uuid(idBruto, "Empresa");
 
   const { data: e, error } = await supabase.from("organizacoes")
-    .select("id, nome, cnpj, logo_url, responsavel_nome, responsavel_email, telefone, status, trial_expira_em, observacoes, ativo, created_at, planos(id, nome, codigo)")
+    .select("id, nome, cnpj, logo_url, responsavel_nome, responsavel_email, telefone, status, trial_expira_em, observacoes, ativo, created_at, eh_modelo, modelo_origem_id, planos(id, nome, codigo)")
     .eq("id", id).maybeSingle();
   if (error) throw ApiError.internal(error.message);
   if (!e) throw ApiError.notFound("Empresa não encontrada.");
@@ -163,6 +175,13 @@ const formatarLog = (l) => ({
  * @param {import('express').Request} req
  */
 export async function criarEmpresa(req, body) {
+  // Módulos e modelo inicial são validados ANTES do insert: uma empresa não
+  // pode nascer com um id de módulo inexistente ou apontando para um "modelo"
+  // que não existe/não é modelo — falhar depois do insert deixaria a empresa
+  // criada pela metade.
+  const moduloIds = validarModulos(body.modulos ?? []);
+  const modeloOrigemId = await validarModeloOrigem(body.modeloOrigemId);
+
   const dados = {
     nome: v.texto(body.nome, "Nome", { max: 160 }),
     cnpj: v.cnpjOpcional(body.cnpj),
@@ -176,6 +195,7 @@ export async function criarEmpresa(req, body) {
       ? new Date(Date.now() + v.numero(body.trialDias, "Dias de teste", { min: 1, max: 365 }) * 86400_000).toISOString()
       : null,
     observacoes: v.textoOpcional(body.observacoes, "Observações", { max: 2000 }),
+    modelo_origem_id: modeloOrigemId,
   };
   dados.ativo = !STATUS_SEM_ACESSO.has(dados.status);
 
@@ -192,14 +212,37 @@ export async function criarEmpresa(req, body) {
     .insert({ organizacao_id: empresa.id, nome: nomeUnidade, ativo: true });
   if (eUnidade) console.error("[plataforma] empresa criada sem unidade inicial:", eUnidade.message);
 
+  // Provisiona os módulos escolhidos no assistente. Nenhuma clonagem do
+  // modelo inicial roda aqui — `modeloOrigemId` fica só como referência para
+  // a funcionalidade futura (ver docs/CLAUDE.md e o plano desta entrega).
+  await provisionarModulosEmpresa(empresa.id, moduloIds, req.user.id);
+
   await auditar({
     atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
     acao: ACOES.EMPRESA_CRIADA, entidade: "organizacao", entidadeId: empresa.id,
-    organizacaoId: empresa.id, detalhes: { nome: empresa.nome, status: empresa.status, unidade: nomeUnidade },
+    organizacaoId: empresa.id,
+    detalhes: {
+      nome: empresa.nome, status: empresa.status, unidade: nomeUnidade,
+      modulos: moduloIds, modeloOrigemId,
+    },
     ...origemDe(req),
   });
 
   return { id: empresa.id, nome: empresa.nome, status: empresa.status };
+}
+
+/**
+ * Confirma que o id informado é de fato uma empresa marcada como Modelo
+ * Padrão. `undefined`/vazio é válido (empresa criada sem modelo).
+ * @param {unknown} idBruto
+ * @returns {Promise<string|null>}
+ */
+async function validarModeloOrigem(idBruto) {
+  const id = v.uuidOpcional(idBruto, "Modelo inicial");
+  if (!id) return null;
+  const { data } = await supabase.from("organizacoes").select("id, eh_modelo").eq("id", id).maybeSingle();
+  if (!data?.eh_modelo) throw ApiError.badRequest("Modelo inicial inválido.");
+  return id;
 }
 
 /** @param {import('express').Request} req */
@@ -337,6 +380,72 @@ export async function excluirEmpresa(req, idBruto, body) {
 }
 
 // --------------------------------------------------------------------------
+// Módulos (aba "Acessos")
+// --------------------------------------------------------------------------
+
+/** Catálogo completo — alimenta o checklist do assistente e da aba Acessos. */
+export function catalogoModulos() {
+  return CATALOGO_MODULOS;
+}
+
+/**
+ * Catálogo + quais estão habilitados para uma empresa específica.
+ * @param {unknown} idBruto
+ */
+export async function modulosDaEmpresaAdmin(idBruto) {
+  const id = v.uuid(idBruto, "Empresa");
+  const habilitados = new Set(await modulosDaEmpresa(id));
+  return {
+    modulos: CATALOGO_MODULOS.map((m) => ({ ...m, habilitado: habilitados.has(m.id) })),
+  };
+}
+
+/**
+ * Substitui os módulos habilitados de uma empresa. Audita CADA módulo que
+ * mudou (um registro por módulo, não um único "módulos alterados") porque é
+ * assim que o SuperAdmin quer ler a trilha depois: "habilitou Bonificação
+ * Mensal", "removeu Dashboard iFood" — não um blob de ids.
+ *
+ * Revoga as sessões vivas da empresa, igual a `alterarStatusEmpresa`: a
+ * mudança de acesso tem que valer na hora, não só na próxima expiração.
+ * @param {import('express').Request} req
+ */
+export async function definirModulosEmpresaAdmin(req, idBruto, body) {
+  const id = v.uuid(idBruto, "Empresa");
+  const moduloIds = validarModulos(body?.modulos ?? []);
+
+  const { data: empresa } = await supabase.from("organizacoes").select("id, nome").eq("id", id).maybeSingle();
+  if (!empresa) throw ApiError.notFound("Empresa não encontrada.");
+
+  const { habilitados, desabilitados } = await definirModulosEmpresa(id, moduloIds, req.user.id);
+
+  const origem = origemDe(req);
+  for (const moduloId of habilitados) {
+    await auditar({
+      atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
+      acao: ACOES.EMPRESA_MODULO_HABILITADO, entidade: "organizacao", entidadeId: id, organizacaoId: id,
+      detalhes: { empresa: empresa.nome, modulo: moduloId, moduloNome: rotuloModulo(moduloId) },
+      ...origem,
+    });
+  }
+  for (const moduloId of desabilitados) {
+    await auditar({
+      atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
+      acao: ACOES.EMPRESA_MODULO_DESABILITADO, entidade: "organizacao", entidadeId: id, organizacaoId: id,
+      detalhes: { empresa: empresa.nome, modulo: moduloId, moduloNome: rotuloModulo(moduloId) },
+      ...origem,
+    });
+  }
+
+  let sessoesRevogadas = 0;
+  if (habilitados.length || desabilitados.length) {
+    sessoesRevogadas = await revogarSessoes({ organizacaoId: id, motivo: "modulos_alterados" });
+  }
+
+  return { id, modulos: moduloIds, habilitados, desabilitados, sessoesRevogadas };
+}
+
+// --------------------------------------------------------------------------
 // Entrar como empresa (impersonação auditada)
 // --------------------------------------------------------------------------
 
@@ -360,6 +469,10 @@ export async function entrarComoEmpresa(req, idBruto) {
 
   const papel = "organization_admin";
   const permissoes = permissoesDoPapel(papel);
+  // O bypass de impersonação em `requireModulo` já libera qualquer módulo
+  // para o superadmin em suporte; carregar os módulos reais da empresa aqui
+  // é só para manter o formato da sessão consistente com o de um login normal.
+  const modulos = await modulosDaEmpresa(id);
   const { ip, userAgent } = origemDe(req);
 
   const sessao = await criarSessao({
@@ -368,6 +481,7 @@ export async function entrarComoEmpresa(req, idBruto) {
     unidadeId: null,
     papel,
     permissoes,
+    modulos,
     impersonadoPor: req.user.id,
     ip, userAgent,
     validadeS: 60 * 60,
@@ -397,6 +511,7 @@ export async function entrarComoEmpresa(req, idBruto) {
     papel,
     papelRotulo: rotuloPapel(papel),
     permissoes,
+    modulos,
     impersonando: true,
   };
 }

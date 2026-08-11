@@ -1,6 +1,7 @@
 import { state } from "./state.js";
 import { MENU } from "./config.js";
-import { el, els } from "./utils.js";
+import { el, els, toast } from "./utils.js";
+import { temModulo } from "./sessao.js";
 import * as views from "./views.js";
 import { renderConfiguracoes } from "./configuracoes.js";
 import { renderVendas } from "./vendas.js";
@@ -9,9 +10,23 @@ import { renderInsumos } from "./insumos.js";
 import { renderDashboardExecutivo } from "./dashboardExecutivo.js";
 import { renderBonificacaoMensal } from "./bonificacaoMensal.js";
 
+/** Um item da sidebar está liberado para a empresa do contexto atual? */
+const acessivel = (item) => !item.modulo || temModulo(item.modulo);
+
+/**
+ * Primeira rota que a empresa atual pode ver — usado como destino de entrada
+ * (login) e como fallback quando a rota corrente perde o acesso (módulo
+ * revogado). "configuracoes" nunca é gateado por módulo, então sempre existe
+ * uma rota de saída: nunca cai num loop de redirecionamento.
+ */
+export function primeiraRotaAcessivel() {
+  return MENU.find(acessivel)?.id ?? "configuracoes";
+}
+
 // Navega para uma rota da sidebar
 export function irPara(rotaId) {
-  const item = MENU.find((m) => m.id === rotaId) || MENU[0];
+  const alvo = MENU.find((m) => m.id === rotaId) || MENU[0];
+  const item = acessivel(alvo) ? alvo : (MENU.find((m) => m.id === primeiraRotaAcessivel()) ?? MENU[0]);
   state.rota = item.id;
   el("#page-title").textContent = item.label;
   els("#menu li").forEach((li) => li.classList.toggle("ativo", li.dataset.rota === item.id));
@@ -22,6 +37,18 @@ export function irPara(rotaId) {
 // Renderiza a view da rota atual (chamado também após (re)carregar dados)
 export function renderRotaAtual() {
   const item = MENU.find((m) => m.id === state.rota) || MENU[0];
+
+  // Defesa em profundidade: o menu já esconde o que a empresa não contratou
+  // (montarMenu, em app.js), mas um estado inconsistente (módulo revogado com
+  // a página já aberta, ou `state.rota` mexido por fora) não deve renderizar
+  // dado nenhum — a API recusaria de qualquer forma. Redireciona em vez de
+  // mostrar uma tela vazia sem explicação.
+  if (!acessivel(item)) {
+    toast(`Módulo "${item.label}" não disponível para esta empresa.`);
+    irPara(primeiraRotaAcessivel());
+    return;
+  }
+
   switch (item.tipo) {
     case "pagina":
       if (item.id === "produtos") views.renderProdutos();

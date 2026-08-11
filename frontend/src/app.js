@@ -20,9 +20,10 @@ import { carregarCmv } from "./api.js";
 import {
   login, logout, restaurarSessao, listarAcessos, selecionarContexto,
   restaurarContexto, encerrarContexto, aplicarContexto,
-  precisaDefinirSenha, definirNovaSenha,
+  precisaDefinirSenha, definirNovaSenha, temModulo,
 } from "./sessao.js";
-import { irPara, renderRotaAtual } from "./router.js";
+import { irPara, renderRotaAtual, primeiraRotaAcessivel } from "./router.js";
+import { resetarEscopoDeContexto } from "./contextoEscopo.js";
 import { acoes } from "./actions.js";
 import { getLinha, contarAlertas } from "./views.js";
 import { abrirProdutoModal } from "./produtoModal.js";
@@ -32,7 +33,10 @@ import { abrirPainelAdmin, fecharPainelAdmin } from "./admin.js";
 // ---------- sidebar ----------
 function montarMenu() {
   el("#menu").innerHTML = SECOES.map((secao) => {
-    const itens = MENU.filter((m) => m.secao === secao);
+    // Um item sem `modulo` é sempre visível; com `modulo`, só se a empresa do
+    // contexto atual contratou (ver sessao.js#temModulo — bloqueio real está
+    // na API, isto aqui é só não oferecer o que já sabemos que vai dar 403).
+    const itens = MENU.filter((m) => m.secao === secao && (!m.modulo || temModulo(m.modulo)));
     if (!itens.length) return "";
     return `<li class="menu-secao">${secao}</li>` + itens.map((m) => {
       const logo = m.integ && INTEGRACOES[m.integ]?.logo;
@@ -119,6 +123,14 @@ function mostrarTela(qual) {
 
 // ---------- tela: app (tenant) ----------
 function mostrarApp() {
+  // FUNIL ÚNICO de entrada no shell do tenant (seleção de unidade,
+  // restauração de sessão e impersonação passam todos por aqui) — e por isso
+  // o único lugar certo para invalidar o contexto anterior. Tem que ser a
+  // PRIMEIRA coisa: qualquer render abaixo desta linha precisa enxergar
+  // memória limpa, senão mostra dado da unidade anterior por alguns
+  // milissegundos (ver contextoEscopo.js).
+  resetarEscopoDeContexto();
+
   const { usuario, empresa, unidade, papelRotulo, impersonando } = state.sessao;
   const nome = usuario?.nome || usuario?.email || "usuário";
 
@@ -148,7 +160,7 @@ function mostrarApp() {
   montarMenu();
   iniciarRelogio();
   popularTabelas();
-  irPara("dashboard");
+  irPara(primeiraRotaAcessivel());
   carregar();
 }
 

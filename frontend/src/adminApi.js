@@ -38,6 +38,7 @@ export const adminApi = {
 
   // Empresas
   empresas: (f) => get(`/empresas${qs(f)}`),
+  empresasModelo: () => get(`/empresas${qs({ ehModelo: true })}`),
   empresa: (id) => get(`/empresas/${id}`),
   criarEmpresa: (dados) => post("/empresas", dados),
   atualizarEmpresa: (id, dados) => patch(`/empresas/${id}`, dados),
@@ -50,6 +51,11 @@ export const adminApi = {
   unidadesDaEmpresa: (id) => get(`/empresas/${id}/unidades`),
   logsDaEmpresa: (id, limite) => get(`/empresas/${id}/logs${qs({ limite })}`),
   entrarComoEmpresa: (id) => post(`/empresas/${id}/entrar`),
+
+  // Módulos (catálogo geral + por empresa)
+  modulos: () => get("/modulos"),
+  modulosDaEmpresa: (id) => get(`/empresas/${id}/modulos`),
+  definirModulosEmpresa: (id, modulos) => put(`/empresas/${id}/modulos`, { modulos }),
 
   // Usuários globais
   usuarios: (f) => get(`/usuarios${qs(f)}`),

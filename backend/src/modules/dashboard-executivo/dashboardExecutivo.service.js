@@ -118,7 +118,7 @@ export async function listarUnidades({ organizacaoId, unidadeIdSessao }) {
 // ---------------------------------------------------------------------------
 export async function obterModeloLogisticoUnidade({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado }) {
   const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
-  return obterModeloLogistico({ unidadeId });
+  return obterModeloLogistico({ unidadeId, organizacaoId });
 }
 
 export async function atualizarModeloLogisticoUnidade({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, dados: body }) {
@@ -131,7 +131,7 @@ export async function atualizarModeloLogisticoUnidade({ organizacaoId, unidadeId
 
 export async function historicoModeloLogisticoUnidade({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado }) {
   const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
-  return historicoModeloLogistico({ unidadeId });
+  return historicoModeloLogistico({ unidadeId, organizacaoId });
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ export async function obterMes({ organizacaoId, unidadeIdSessao, unidadeIdSolici
   if (unidadeId) {
     // O modelo logístico é DA UNIDADE — resolve antes das metas, porque cada
     // modelo tem um conjunto de metas diferente (ver dashboardExecutivo.calc.js).
-    const modelo = await obterModeloLogistico({ unidadeId });
+    const modelo = await obterModeloLogistico({ unidadeId, organizacaoId });
     const metas = await resolverMetas({ organizacaoId, unidadeId, modeloLogistico: modelo.modeloLogistico });
     return obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIso, metas, modelo });
   }
@@ -716,8 +716,11 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
     patch.usuario_email = usuario?.email ?? antes.usuario_email;
   }
 
+  // `organizacao_id` repetido na própria escrita (não só na leitura acima,
+  // linha 676): defesa em profundidade — o `id` já foi validado contra o
+  // tenant, mas a escrita não deve depender só de quem chamou ter feito isso.
   const { data: depois, error } = await supabase
-    .from(TABELA).update(patch).eq("id", lancamentoId).select("*").single();
+    .from(TABELA).update(patch).eq("id", lancamentoId).eq("organizacao_id", organizacaoId).select("*").single();
   if (error) throw ApiError.badRequest(error.message);
 
   // Auditoria: um lançamento finalizado editado grava uma linha POR CAMPO

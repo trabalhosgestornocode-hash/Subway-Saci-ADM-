@@ -12,6 +12,8 @@
 import { el, toast } from "./utils.js";
 import { adminApi } from "./adminApi.js";
 import { entrarComoEmpresa, recarregarAdmin, irParaAdmin } from "./admin.js";
+import { abrirAssistenteNovaEmpresa } from "./adminEmpresaWizard.js";
+import { abrirPaginaEmpresa } from "./adminEmpresaDetalhe.js";
 import {
   num, pct, escapeHtml, fmtMoeda, fmtDataHora, fmtRelativo,
   STATUS_EMPRESA, STATUS_ASSINATURA, STATUS_COBRANCA, SITUACAO, pill,
@@ -165,61 +167,10 @@ function acoesEmpresa(e) {
   </div>`;
 }
 
-async function abrirDetalheEmpresa(id) {
-  const e = await adminApi.empresa(id);
-  const unidades = e.unidades.map((u) =>
-    `<li>${escapeHtml(u.nome)} ${u.ativo ? "" : '<span class="pill muted">inativa</span>'}</li>`).join("");
-  const usuarios = e.usuarios.length
-    ? e.usuarios.map((u) => `<li><b>${escapeHtml(u.nome ?? u.email ?? "—")}</b> — ${escapeHtml(u.papelRotulo)}
-        ${u.vinculoAtivo ? "" : '<span class="pill bad">acesso bloqueado</span>'}</li>`).join("")
-    : "<li>Nenhum usuário vinculado.</li>";
-
-  abrirModal({
-    titulo: e.nome,
-    corpo: `
-      <div class="adm-det">
-        <div class="adm-det-linha"><span>Status</span>${pill(STATUS_EMPRESA, e.status)}</div>
-        <div class="adm-det-linha"><span>CNPJ</span><b>${escapeHtml(e.cnpj ?? "—")}</b></div>
-        <div class="adm-det-linha"><span>Responsável</span><b>${escapeHtml(e.responsavelNome ?? "—")}</b></div>
-        <div class="adm-det-linha"><span>E-mail</span><b>${escapeHtml(e.responsavelEmail ?? "—")}</b></div>
-        <div class="adm-det-linha"><span>Telefone</span><b>${escapeHtml(e.telefone ?? "—")}</b></div>
-        <div class="adm-det-linha"><span>Plano</span><b>${escapeHtml(e.plano?.nome ?? "—")}</b></div>
-        <div class="adm-det-linha"><span>Criada em</span><b>${escapeHtml(fmtDataHora(e.criadoEm))}</b></div>
-        <div class="adm-det-linha"><span>Assinatura</span><b>${e.assinatura
-          ? `${escapeHtml(e.assinatura.planos?.nome ?? "—")} · ${escapeHtml(e.assinatura.ciclo)} · ${fmtMoeda(e.assinatura.valor)}`
-          : "sem assinatura"}</b></div>
-        <div class="adm-det-linha"><span>Produtos / Insumos</span><b>${num(e.metricas.produtos)} / ${num(e.metricas.insumos)}</b></div>
-        <div class="adm-det-linha"><span>Sessões vivas</span><b>${num(e.metricas.sessoesVivas)}</b></div>
-      </div>
-      <h3 class="adm-det-tit">Unidades (${e.unidades.length})</h3>
-      <ul class="adm-det-lista">${unidades || "<li>Nenhuma unidade.</li>"}</ul>
-      <h3 class="adm-det-tit">Usuários (${e.usuarios.length})</h3>
-      <ul class="adm-det-lista">${usuarios}</ul>
-      ${e.observacoes ? `<h3 class="adm-det-tit">Observações</h3><p>${escapeHtml(e.observacoes)}</p>` : ""}
-      <div class="adm-det-acoes">
-        <button class="btn btn-ghost btn-sm" data-adm-acao="empresa-editar" data-id="${escapeHtml(e.id)}">Editar dados</button>
-        <button class="btn btn-ghost btn-sm" data-adm-acao="empresa-logs" data-id="${escapeHtml(e.id)}" data-nome="${escapeHtml(e.nome)}">Ver logs</button>
-      </div>`,
-  });
-}
-
-function formEmpresa(e = null) {
-  const planos = cache.planos.map((p) => ({ valor: p.id, rotulo: `${p.nome} · ${fmtMoeda(p.preco_mensal)}/mês` }));
-  const status = Object.entries(STATUS_EMPRESA).map(([valor, m]) => ({ valor, rotulo: m.rotulo }));
-  return grade(
-    campo({ id: "e-nome", label: "Nome da empresa", valor: e?.nome, obrigatorio: true }) +
-    campo({ id: "e-cnpj", label: "CNPJ", valor: e?.cnpj, ph: "somente números" }) +
-    campo({ id: "e-resp", label: "Responsável", valor: e?.responsavelNome }) +
-    campo({ id: "e-email", label: "E-mail do responsável", valor: e?.responsavelEmail, tipo: "email" }) +
-    campo({ id: "e-tel", label: "Telefone", valor: e?.telefone, ph: "DDD + número" }) +
-    campo({ id: "e-logo", label: "URL da logo", valor: e?.logoUrl, ph: "https://…" }) +
-    (e ? "" : selecao({ id: "e-status", label: "Status inicial", opcoes: status, valor: "teste" })) +
-    (e ? "" : selecao({ id: "e-plano", label: "Plano", opcoes: planos, valor: "", vazio: "Sem plano" })) +
-    (e ? "" : campo({ id: "e-trial", label: "Dias de teste", tipo: "number", ph: "ex: 14", dica: "Deixe vazio para não definir prazo." })) +
-    (e ? "" : campo({ id: "e-unidade", label: "Nome da primeira unidade", ph: "Matriz", dica: "Toda empresa nasce com uma unidade — o sistema trabalha por unidade." })) +
-    area({ id: "e-obs", label: "Observações", valor: e?.observacoes })
-  );
-}
+// Detalhe de empresa (Informações/Acessos/Unidades/Usuários/Modelo/Auditoria)
+// virou uma página própria — ver adminEmpresaDetalhe.js — em vez do modal
+// único que existia aqui. O formulário de criação de empresa também saiu
+// daqui (assistente de 4 passos, ver adminEmpresaWizard.js).
 
 // ===========================================================================
 // 3. USUÁRIOS GLOBAIS + ASSOCIAÇÃO
@@ -766,43 +717,13 @@ async function agir(fn, mensagem) {
 
 const ACOES = {
   // ---- Empresas
-  "empresa-nova": () => abrirModal({
-    titulo: "Nova empresa",
-    corpo: formEmpresa(),
-    confirmar: "Criar empresa",
-    aoConfirmar: async () => {
-      await adminApi.criarEmpresa({
-        nome: valor("e-nome"), cnpj: valor("e-cnpj"),
-        responsavelNome: valor("e-resp"), responsavelEmail: valor("e-email") || undefined,
-        telefone: valor("e-tel") || undefined, logoUrl: valor("e-logo") || undefined,
-        status: valor("e-status"), planoId: valor("e-plano") || undefined,
-        trialDias: valor("e-trial") || undefined,
-        unidadeNome: valor("e-unidade") || undefined,
-        observacoes: valor("e-obs") || undefined,
-      });
-      toast("Empresa criada.");
-      recarregarAdmin();
-    },
-  }),
+  // A criação vira um assistente de 4 passos (empresa/acessos/modelo/revisão)
+  // — não cabe no modal single-step de abrirModal(), ver adminEmpresaWizard.js.
+  "empresa-nova": () => abrirAssistenteNovaEmpresa(cache.planos),
 
-  "empresa-ver": ({ id }) => abrirDetalheEmpresa(id),
-
-  "empresa-editar": async ({ id }) => {
-    const e = await adminApi.empresa(id);
-    abrirModal({
-      titulo: `Editar ${e.nome}`,
-      corpo: formEmpresa(e),
-      aoConfirmar: async () => {
-        await adminApi.atualizarEmpresa(id, {
-          nome: valor("e-nome"), cnpj: valor("e-cnpj"),
-          responsavelNome: valor("e-resp"), responsavelEmail: valor("e-email"),
-          telefone: valor("e-tel"), logoUrl: valor("e-logo"), observacoes: valor("e-obs"),
-        });
-        toast("Empresa atualizada.");
-        recarregarAdmin();
-      },
-    });
-  },
+  // Detalhes deixou de ser modal: é uma página com abas (Informações, Acessos,
+  // Unidades, Usuários, Modelo Inicial, Auditoria) — ver adminEmpresaDetalhe.js.
+  "empresa-ver": ({ id }) => abrirPaginaEmpresa(id),
 
   "empresa-entrar": async ({ id, nome }) => {
     if (!confirm(`Entrar em "${nome}" como SuperAdmin?\n\nEste acesso é registrado na auditoria e uma barra de aviso ficará visível durante toda a sessão.`)) return;
@@ -864,22 +785,6 @@ const ACOES = {
       irParaAdmin("empresas");
     },
   }),
-
-  "empresa-logs": async ({ id, nome }) => {
-    const logs = await adminApi.logsDaEmpresa(id, 100);
-    abrirModal({
-      titulo: `Logs de ${nome}`,
-      corpo: tabela({
-        colunas: ["Quando", "Ator", "Ação", "IP"],
-        linhas: logs.map((l) => [
-          escapeHtml(fmtDataHora(l.em)), escapeHtml(l.atorEmail ?? "—"),
-          escapeHtml(l.acao) + (l.impersonado ? ' <span class="pill warn">suporte</span>' : ""),
-          escapeHtml(l.ip ?? "—"),
-        ]),
-        vazio: "Nenhum registro para esta empresa.",
-      }),
-    });
-  },
 
   // ---- Usuários
   "usuario-novo": () => abrirModal({

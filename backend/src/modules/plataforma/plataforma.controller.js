@@ -24,7 +24,10 @@ export const sessoesVivas = asyncHandler(async (_req, res) => ok(res, await dash
 
 // ------------------------------------------------------------------ Empresas
 export const listarEmpresas = asyncHandler(async (req, res) =>
-  ok(res, await empresas.listarEmpresas({ busca: req.query.busca, status: req.query.status, limite: req.query.limite })));
+  ok(res, await empresas.listarEmpresas({
+    busca: req.query.busca, status: req.query.status, limite: req.query.limite,
+    ehModelo: req.query.ehModelo,
+  })));
 
 export const obterEmpresa = asyncHandler(async (req, res) => ok(res, await empresas.obterEmpresa(req.params.id)));
 
@@ -59,6 +62,17 @@ export const unidadesDaEmpresa = asyncHandler(async (req, res) => {
   const id = v.uuid(req.params.id, "Empresa");
   ok(res, await buscar("unidades", "id, nome, ativo", (q) => q.eq("organizacao_id", id).order("nome")));
 });
+
+// --------------------------------------------------------------- Módulos
+// Catálogo (fixo em código) — alimenta o passo "Acessos" do assistente de
+// criação e a aba "Acessos" da página da empresa.
+export const catalogoModulos = asyncHandler(async (_req, res) => ok(res, { modulos: empresas.catalogoModulos() }));
+
+export const modulosDaEmpresa = asyncHandler(async (req, res) =>
+  ok(res, await empresas.modulosDaEmpresaAdmin(req.params.id)));
+
+export const definirModulosEmpresa = asyncHandler(async (req, res) =>
+  ok(res, await empresas.definirModulosEmpresaAdmin(req, req.params.id, v.corpo(req.body))));
 
 // ------------------------------------------------------------------ Usuários
 export const listarUsuarios = asyncHandler(async (req, res) =>

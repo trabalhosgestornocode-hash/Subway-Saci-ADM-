@@ -3,9 +3,11 @@
 // Segue o padrão dos módulos existentes: fino, sem regra de negócio, tenant
 // sempre de req.tenant, resposta em { data }.
 //
-// NENHUM controller aqui lê organizacaoId ou unidadeId do corpo/query — se
-// o frontend quiser trocar de loja, ele manda o header x-unidade-id, que o
-// requireAuth valida contra os vínculos do usuário antes de chegar aqui.
+// NENHUM controller aqui lê organizacaoId ou unidadeId do corpo/query — os
+// dois vêm sempre de req.tenant (Context Token, validado por requireContexto
+// em auth.js). Trocar de loja é selecionar outro contexto via /sessao, não
+// mandar um header — os headers x-organizacao-id/x-unidade-id foram
+// removidos do sistema (ver o comentário no topo de middlewares/auth.js).
 
 import { asyncHandler } from "../../shared/asyncHandler.js";
 import { ApiError } from "../../shared/ApiError.js";

@@ -5,9 +5,22 @@ import { el, els, fmtMoeda, fmtTexto, fmtDataHora, escapeHtml, toast } from "./u
 import { CATEGORIAS_INSUMO, CATEGORIA_INSUMO_ROTULO } from "./config.js";
 import { listarInsumos, definirStatusInsumo, excluirInsumo } from "./api.js";
 import { abrirInsumoModal } from "./insumoModal.js";
+import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 
 // Filtros locais desta aba (não poluem o estado global de CMV).
 const filtros = { busca: "", categoria: "todos", status: "todos", semPreco: false };
+
+// Insumos são por EMPRESA — trocar de empresa (ou de unidade, que pode levar
+// junto a empresa) tem que zerar a lista em memória e os filtros. Sem isso a
+// tabela seguia mostrando os insumos da empresa anterior até a nova resposta
+// chegar, e um filtro de busca herdado fazia a empresa nova parecer vazia.
+registrarResetDeContexto(() => {
+  _itens = [];
+  filtros.busca = "";
+  filtros.categoria = "todos";
+  filtros.status = "todos";
+  filtros.semPreco = false;
+});
 
 const podeEditar = () => (state.sessao?.permissoes ?? []).includes("insumos.editar");
 const catLabel = (c) => CATEGORIA_INSUMO_ROTULO[c] ?? fmtTexto(c);
@@ -76,6 +89,7 @@ let _itens = [];
 async function carregar() {
   const tb = el("#ins-tbody");
   if (!tb) return;
+  const g = geracaoContexto();
   try {
     const { data } = await listarInsumos({
       busca: filtros.busca || undefined,
@@ -84,10 +98,12 @@ async function carregar() {
       sem_preco: filtros.semPreco ? "true" : undefined,
     });
     if (el("#ins-tbody") !== tb) return; // view trocou
+    if (contextoMudou(g)) return;        // trocou de empresa/unidade — descarta
     _itens = data.itens ?? [];
     pintarStats(data.stats ?? {});
     pintarTabela();
   } catch (e) {
+    if (contextoMudou(g)) return;
     tb.innerHTML = `<tr><td colspan="9"><div class="estado erro"><span class="emoji">⚠️</span><h3>Falha ao carregar</h3><p>${escapeHtml(e.message)}</p></div></td></tr>`;
   }
 }

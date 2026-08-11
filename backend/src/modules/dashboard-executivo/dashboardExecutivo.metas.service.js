@@ -57,12 +57,16 @@ export async function resolverMetas({ organizacaoId, unidadeId, modeloLogistico 
 // ---------------------------------------------------------------------------
 
 /**
- * @param {{unidadeId: string}} p
+ * `organizacaoId` é defesa em profundidade: todo caminho que chega aqui já
+ * passou por `resolverUnidadeAlvo` (que valida a unidade contra o tenant),
+ * mas a função não deve depender só disso — filtra de novo na própria query.
+ * @param {{unidadeId: string, organizacaoId: string}} p
  * @returns {Promise<{unidadeId: string, organizacaoId: string, nome: string, modeloLogistico: string, modeloLogisticoRotulo: string, ehTeste: boolean}>}
  */
-export async function obterModeloLogistico({ unidadeId }) {
+export async function obterModeloLogistico({ unidadeId, organizacaoId }) {
   const { data, error } = await supabase
-    .from("unidades").select("id, organizacao_id, nome, modelo_logistico_ifood, eh_teste").eq("id", unidadeId).maybeSingle();
+    .from("unidades").select("id, organizacao_id, nome, modelo_logistico_ifood, eh_teste")
+    .eq("id", unidadeId).eq("organizacao_id", organizacaoId).maybeSingle();
   if (error) throw ApiError.internal(error.message);
   if (!data) throw ApiError.notFound("Unidade não encontrada.");
   return {
@@ -93,7 +97,7 @@ export async function definirModeloLogistico({ unidadeId, organizacaoId, modeloN
   const modeloAnterior = unidade.modelo_logistico_ifood;
 
   const { error: eUpd } = await supabase
-    .from("unidades").update({ modelo_logistico_ifood: modeloNovo }).eq("id", unidadeId);
+    .from("unidades").update({ modelo_logistico_ifood: modeloNovo }).eq("id", unidadeId).eq("organizacao_id", organizacaoId);
   if (eUpd) throw ApiError.badRequest(eUpd.message);
 
   const { error: eHist } = await supabase.from("unidade_modelo_logistico_historico").insert({
@@ -116,12 +120,13 @@ export async function definirModeloLogistico({ unidadeId, organizacaoId, modeloN
   };
 }
 
-/** @param {{unidadeId: string}} p */
-export async function historicoModeloLogistico({ unidadeId }) {
+/** @param {{unidadeId: string, organizacaoId: string}} p */
+export async function historicoModeloLogistico({ unidadeId, organizacaoId }) {
   const { data, error } = await supabase
     .from("unidade_modelo_logistico_historico")
     .select("modelo_anterior, modelo_novo, usuario_nome, usuario_email, motivo, observacao, created_at")
     .eq("unidade_id", unidadeId)
+    .eq("organizacao_id", organizacaoId)
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw ApiError.internal(error.message);

@@ -1,5 +1,7 @@
 // Estado global do app. Único ponto de verdade da UI.
 
+import { registrarResetDeContexto } from "./contextoEscopo.js";
+
 /**
  * @typedef {object} Sessao
  * @property {{id: string, nome: string, email: string, superadmin: boolean}|null} usuario
@@ -10,6 +12,7 @@
  * @property {string|null} papel
  * @property {string|null} papelRotulo
  * @property {string[]} permissoes
+ * @property {string[]} modulos          módulos contratados pela empresa atual
  * @property {boolean} impersonando
  */
 
@@ -27,6 +30,7 @@ export const state = {
     papel: null,
     papelRotulo: null,
     permissoes: [],
+    modulos: [],
     impersonando: false,
   },
 
@@ -53,6 +57,27 @@ export const state = {
   erro: null,
   atualizadoEm: null,
 };
+
+// Trocar de unidade/empresa zera TUDO o que é dado de negócio aqui.
+// `state.linhas` (CMV/produtos) é o caso mais grave: sem este reset, o
+// primeiro render depois da troca ainda desenhava a tabela da unidade
+// anterior — e entre empresas diferentes isso é dado de outro cliente na
+// tela. Filtros de tela também voltam ao padrão: um filtro de busca que
+// sobrevive à troca faz a unidade nova parecer vazia sem explicar por quê.
+//
+// O que NÃO é resetado: `sessao` (quem sou eu / onde estou agora — acabou de
+// ser preenchido pela troca) e `rota` (para onde navegar é decisão de
+// app.js#mostrarApp, que manda para o dashboard).
+registrarResetDeContexto(() => {
+  state.linhas = [];
+  state.carregando = false;
+  state.erro = null;
+  state.atualizadoEm = null;
+  state.busca = "";
+  state.filtroStatus = "todos";
+  state.usuario = null;
+  state.unidade = "—";
+});
 
 // Retorna as linhas aplicando busca + filtro de status (não altera o estado)
 export function linhasFiltradas() {

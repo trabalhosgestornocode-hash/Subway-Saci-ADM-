@@ -8,6 +8,7 @@ import { state } from "./state.js";
 import { pode } from "./sessao.js";
 import { bonifMes, bonifMetas, bonifHistorico, bonifLancamento, bonifSalvarLancamento } from "./api.js";
 import { abrirImportarVisioModal } from "./bonificacaoMensalImportModal.js";
+import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { destruirGraficosBonificacao, graficoEvolucaoFaturamento, graficoEvolucaoMix } from "./charts.js";
 import { gaugeSvg, sparklineSvg, tendencia, escadaFaixas, countUp } from "./bonificacaoMensalVisuais.js";
 
@@ -51,6 +52,22 @@ const INDICADOR = {
 
 const hoje = new Date();
 const bm = { aba: "visao", mes: hoje.getMonth() + 1, ano: hoje.getFullYear(), dadosMes: null, metas: null, historico: null };
+
+// Troca de unidade/empresa: metas, lançamentos e histórico são todos por
+// unidade — nada disso pode atravessar. `metas` importa em especial porque
+// alimenta as faixas desenhadas nos cards: metas da unidade A sobre números
+// da unidade B produziria um "faltam X para a próxima faixa" simplesmente
+// errado, sem nenhum aviso na tela.
+registrarResetDeContexto(() => {
+  bm.aba = "visao";
+  bm.mes = hoje.getMonth() + 1;
+  bm.ano = hoje.getFullYear();
+  bm.dadosMes = null;
+  bm.metas = null;
+  bm.historico = null;
+  fecharDrawer();
+  destruirGraficosBonificacao();
+});
 
 const podeLancar = () => pode("bonificacao_mensal.lancar");
 const vazio = (emoji, titulo, msg, extra = "") =>
@@ -126,13 +143,16 @@ async function carregarConteudo() {
   if (!box) return;
   box.innerHTML = carregando();
   destruirGraficosBonificacao();
+  const g = geracaoContexto();
   try {
     const [{ data: mesData }, { data: metasData }] = await Promise.all([bonifMes({ mes: bm.mes, ano: bm.ano }), bonifMetas()]);
+    if (contextoMudou(g)) return; // resposta da unidade anterior — descarta
     bm.dadosMes = mesData;
     bm.metas = metasData;
     verificarNovasFaixas(mesData);
     renderAbaAtual();
   } catch (e) {
+    if (contextoMudou(g)) return;
     box.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="bm-retry">Tentar novamente</button>`);
     el("#bm-retry")?.addEventListener("click", carregarConteudo);
   }
@@ -564,11 +584,17 @@ async function abrirDrawerDia(data) {
   drawerEl.querySelector(".modal-close").addEventListener("click", fecharDrawer);
 
   const corpo = drawerEl.querySelector(".bm-drawer-conteudo");
+  const g = geracaoContexto();
   try {
     const { data: l } = await bonifLancamento(data);
+    // Trocou de unidade com o drawer abrindo: o reset já fechou este drawer.
+    // Sem esta guarda, o detalhe do dia da unidade ANTERIOR apareceria por
+    // cima da tela da unidade nova.
+    if (contextoMudou(g)) return;
     corpo.innerHTML = detalheDiaHtml(data, l);
     corpo.querySelector("#bm-dia-sem-op")?.addEventListener("click", () => marcarSemOperacao(data));
   } catch (e) {
+    if (contextoMudou(g)) return;
     corpo.innerHTML = vazio("⚠️", "Erro ao carregar o dia", e.message);
   }
 }
@@ -634,8 +660,10 @@ function metaCardHtml(m) {
 // ---------------------------------------------------------------------------
 async function renderHistorico(box) {
   box.innerHTML = carregando();
+  const g = geracaoContexto();
   try {
     const { data } = await bonifHistorico({ ano: bm.ano });
+    if (contextoMudou(g)) return; // resposta da unidade anterior — descarta
     bm.historico = data;
     if (!data.length) { box.innerHTML = vazio("📚", "Sem histórico", "Ainda não há meses fechados para exibir."); return; }
     box.innerHTML = `<section class="bm-secao"><h3 class="bm-secao-titulo">📚 Histórico de ${bm.ano}</h3>

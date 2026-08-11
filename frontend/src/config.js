@@ -25,20 +25,27 @@ export const IFOOD_LOJA = {
 export const SECOES = ["OPERAÇÃO", "INTEGRAÇÕES", "INTELIGÊNCIA", "SISTEMA"];
 
 // Itens da sidebar. tipo: pagina | construcao | integracao | integracoes
+//
+// `modulo`: id do módulo contratável (ver backend/src/shared/modulos.js) que
+// controla se este item aparece para a empresa logada. Item sem `modulo`
+// (Agente de IA, Relatórios, Integrações-hub, Configurações) fica sempre
+// visível — a Crescer não gateia infraestrutura do sistema, só as
+// funcionalidades de OPERAÇÃO/INTEGRAÇÕES que o SuperAdmin provisiona por
+// empresa (ver frontend/src/sessao.js#temModulo e app.js#montarMenu).
 export const MENU = [
-  { id: "dashboard",     label: "Dashboard",       icon: "📊", tipo: "pagina",      secao: "OPERAÇÃO" },
-  { id: "produtos",      label: "Produtos / CMV",  icon: "🥪", tipo: "pagina",      secao: "OPERAÇÃO" },
-  { id: "insumos",       label: "Insumos",         icon: "🧀", tipo: "insumos",     secao: "OPERAÇÃO" },
-  { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO" },
-  { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO" },
-  { id: "dashboard-executivo", label: "Dashboard iFood", icon: "📈", integ: "ifood", tipo: "dashboard-executivo", secao: "OPERAÇÃO" },
-  { id: "bonificacao-mensal", label: "Bonificação Mensal", icon: "🏆", tipo: "bonificacao-mensal", secao: "OPERAÇÃO" },
-  { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO" },
-  { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES" },
-  { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES" },
-  { id: "ifood",         label: "iFood",           icon: "🛵", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES" },
-  { id: "cocacola",      label: "Coca-Cola",       icon: "🥤", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES" },
-  { id: "claudiahortifruti", label: "Cláudia Hortifruti", icon: "🍓", tipo: "integracao", integ: "claudiahortifruti", secao: "INTEGRAÇÕES" },
+  { id: "dashboard",     label: "Dashboard",       icon: "📊", tipo: "pagina",      secao: "OPERAÇÃO", modulo: "dashboard" },
+  { id: "produtos",      label: "Produtos / CMV",  icon: "🥪", tipo: "pagina",      secao: "OPERAÇÃO", modulo: "products_cmv" },
+  { id: "insumos",       label: "Insumos",         icon: "🧀", tipo: "insumos",     secao: "OPERAÇÃO", modulo: "ingredients" },
+  { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "inventory" },
+  { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO", modulo: "sales" },
+  { id: "dashboard-executivo", label: "Dashboard iFood", icon: "📈", integ: "ifood", tipo: "dashboard-executivo", secao: "OPERAÇÃO", modulo: "ifood_dashboard" },
+  { id: "bonificacao-mensal", label: "Bonificação Mensal", icon: "🏆", tipo: "bonificacao-mensal", secao: "OPERAÇÃO", modulo: "monthly_bonus" },
+  { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "distributors" },
+  { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES", modulo: "martin_brower" },
+  { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES", modulo: "swfast" },
+  { id: "ifood",         label: "iFood",           icon: "🛵", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES", modulo: "ifood" },
+  { id: "cocacola",      label: "Coca-Cola",       icon: "🥤", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES", modulo: "coca_cola" },
+  { id: "claudiahortifruti", label: "Cláudia Hortifruti", icon: "🍓", tipo: "integracao", integ: "claudiahortifruti", secao: "INTEGRAÇÕES", modulo: "hortifruti" },
   { id: "ia",            label: "Agente de IA",    icon: "🤖", tipo: "integracao",  integ: "ia",           secao: "INTELIGÊNCIA" },
   { id: "relatorios",    label: "Relatórios",      icon: "📈", tipo: "construcao",  secao: "INTELIGÊNCIA" },
   { id: "integracoes",   label: "Integrações",     icon: "🔌", tipo: "integracoes", secao: "INTELIGÊNCIA" },

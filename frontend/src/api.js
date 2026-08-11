@@ -2,6 +2,7 @@ import { API_BASE } from "./config.js";
 import { statusCmv } from "./utils.js";
 import { tokenAtual } from "./supabaseClient.js";
 import { contextTokenAtual, limparContexto } from "./sessao.js";
+import { geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 
 // Anexa as DUAS credenciais a cada requisição:
 //   Authorization    -> quem sou eu (Access Token do Supabase)
@@ -21,14 +22,23 @@ async function comAuth(extra = {}) {
 // 401 e 409 significam coisas diferentes e levam a lugares diferentes:
 //   401 -> o login caiu; volta para a tela de login.
 //   409 -> o login está bom, o contexto caiu; volta para a seleção de unidade.
-async function tratar(r) {
+//
+// O parâmetro `g` (geração do contexto no momento do ENVIO) existe por causa
+// de um bug real na troca de unidade: ao trocar, o contexto anterior é
+// revogado no servidor, e qualquer requisição ainda em voo daquele contexto
+// volta 409. Sem a checagem de geração, esse 409 atrasado chamava
+// `limparContexto()` — apagando o token da unidade NOVA, que era válido — e
+// jogava o usuário de volta para a tela de seleção com um "Contexto
+// encerrado" que não fazia sentido nenhum. Um 409 só derruba a sessão se for
+// do contexto que ainda está valendo.
+async function tratar(r, g) {
   if (r.status === 401) {
     document.dispatchEvent(new CustomEvent("app:sessao-expirada"));
     throw new Error("Sessão expirada. Faça login novamente.");
   }
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    if (r.status === 409 && j?.details?.contexto === "invalido") {
+    if (r.status === 409 && j?.details?.contexto === "invalido" && !contextoMudou(g)) {
       limparContexto();
       document.dispatchEvent(new CustomEvent("app:contexto-invalido", { detail: j.error }));
     }
@@ -38,7 +48,8 @@ async function tratar(r) {
 }
 
 async function getJson(url) {
-  return tratar(await fetch(API_BASE + url, { headers: await comAuth() }));
+  const g = geracaoContexto();
+  return tratar(await fetch(API_BASE + url, { headers: await comAuth() }), g);
 }
 
 // Compatível com a API atual: nome, tamanho, preco, custo, cmv_pct, lucro_liquido, desatualizado.
@@ -69,17 +80,19 @@ export async function obterHistoricoRecente(limite = 8) {
 }
 
 export async function excluirProduto(id) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/produtos/${id}`, { method: "DELETE", headers: await comAuth() });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 export async function atualizarProduto(id, dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/produtos/${id}`, {
     method: "PUT",
     headers: await comAuth({ "Content-Type": "application/json" }),
     body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Insumos ----------
@@ -93,35 +106,40 @@ export const obterInsumo = (id) => getJson(`/api/v1/insumos/${id}`);
 export const insumoProdutos = (id) => getJson(`/api/v1/insumos/${id}/produtos`);
 export const criarInsumo = (dados) => postJson(`/api/v1/insumos`, dados);
 export async function atualizarInsumo(id, dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/insumos/${id}`, {
     method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 export async function excluirInsumo(id) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/insumos/${id}`, { method: "DELETE", headers: await comAuth() });
-  return tratar(r);
+  return tratar(r, g);
 }
 export async function definirStatusInsumo(id, ativo) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/insumos/${id}/status`, {
     method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify({ ativo }),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Ficha técnica (editor dentro do produto) ----------
 export const adicionarComponente = (produtoId, dados) => postJson(`/api/v1/produtos/${produtoId}/ficha`, dados);
 export async function atualizarComponente(produtoId, fichaId, dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/produtos/${produtoId}/ficha/${fichaId}`, {
     method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 export async function removerComponente(produtoId, fichaId) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/produtos/${produtoId}/ficha/${fichaId}`, {
     method: "DELETE", headers: await comAuth(),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Usuários (Configurações → Usuários) ----------
@@ -129,27 +147,30 @@ export async function obterUsuarios() {
   return getJson("/api/v1/usuarios");
 }
 export async function criarUsuario(dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/usuarios`, {
     method: "POST",
     headers: await comAuth({ "Content-Type": "application/json" }),
     body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 export async function atualizarUsuario(id, dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/usuarios/${id}`, {
     method: "PATCH",
     headers: await comAuth({ "Content-Type": "application/json" }),
     body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 export async function excluirUsuario(id) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/usuarios/${id}`, {
     method: "DELETE",
     headers: await comAuth(),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Vendas (consolidação SW / PDV / iFood) ----------
@@ -163,17 +184,19 @@ export const vendasFaturamento  = (f) => getJson(`/api/v1/vendas/faturamento${qs
 export const vendasProdutos     = (f) => getJson(`/api/v1/vendas/produtos${qs(f)}`);
 export const vendasImportacoes  = () => getJson(`/api/v1/vendas/importacoes`);
 export async function vendasExcluirImportacao(id) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/vendas/importacoes/${id}`, { method: "DELETE", headers: await comAuth() });
-  return tratar(r);
+  return tratar(r, g);
 }
 export const vendasDivergencias = () => getJson(`/api/v1/vendas/divergencias`);
 export const listarProdutosSistema = () => getJson(`/api/v1/produtos?vendavel=true`);
 
 async function postJson(url, body) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}${url}`, {
     method: "POST", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(body),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 export const vendasPreview = (payload) => postJson(`/api/v1/vendas/importar/preview`, payload);
 export const vendasImportar = (payload) => postJson(`/api/v1/vendas/importar`, payload);
@@ -182,10 +205,11 @@ export const vendasVincularLote = (itens) => postJson(`/api/v1/vendas/vincular-l
 export const vendasComponentesCombo = (codigo) => getJson(`/api/v1/vendas/combos/${encodeURIComponent(codigo)}/componentes`);
 export const vendasArquivoOriginal = (id) => getJson(`/api/v1/vendas/importacoes/${id}/arquivo`);
 export async function vendasResolverDivergencia(id, resolvida = true) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}/api/v1/vendas/divergencias/${id}`, {
     method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify({ resolvida }),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Dashboard Executivo (lançamento financeiro diário) ----------
@@ -198,20 +222,22 @@ export const dashExecSimuladorPreco = (f) => getJson(`${DEX}/simulador-preco${qs
 export const dashExecExcluirLancamento = (id, dados) => postJson(`${DEX}/lancamentos/${id}/excluir`, dados);
 export const dashExecCriarLancamento = (dados) => postJson(`${DEX}/lancamentos`, dados);
 export async function dashExecAtualizarLancamento(id, dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}${DEX}/lancamentos/${id}`, {
     method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Modelo logístico do iFood (Marketplace x Full Service) ----------
 export const dashExecModeloLogistico = (unidadeId) => getJson(`${DEX}/unidades/${unidadeId}/modelo-logistico`);
 export const dashExecHistoricoModelo = (unidadeId) => getJson(`${DEX}/unidades/${unidadeId}/modelo-logistico/historico`);
 export async function dashExecAtualizarModeloLogistico(unidadeId, dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}${DEX}/unidades/${unidadeId}/modelo-logistico`, {
     method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 
 // ---------- Lançamento de faturamento mensal (distribuição p/ meses históricos) ----------
@@ -248,10 +274,11 @@ export const mbSemVinculo     = () => getJson(`${MB}/unlinked`);
 export const mbStatusSessao   = (sessionId) => getJson(`${MB}/${sessionId}/status`);
 
 export async function mbSalvarConfiguracao(dados) {
+  const g = geracaoContexto();
   const r = await fetch(`${API_BASE}${MB}/settings`, {
     method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
   });
-  return tratar(r);
+  return tratar(r, g);
 }
 export const mbVincular = (dados) => postJson(`${MB}/links`, dados);
 export async function mbDesvincular(mbProdutoId) {

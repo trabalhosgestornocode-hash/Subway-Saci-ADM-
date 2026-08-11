@@ -15,6 +15,7 @@ import {
   destruirGraficosDashboardExecutivo, barraComparativaMeta, roscaDeducoes,
   linhaEvolucao, linhaEvolucaoDeducoes, barraComparativoMensal, visaoAnual,
 } from "./charts.js";
+import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { abrirLancamentoModal } from "./dashboardExecutivoForm.js";
 import { abrirLancamentoMensalModal } from "./dashboardExecutivoMensal.js";
 import { montarSimuladorPreco } from "./dashboardExecutivoSimulador.js";
@@ -49,6 +50,23 @@ const dex = {
   historico: null,
 };
 
+// Troca de unidade/empresa: nada do contexto anterior pode sobreviver aqui.
+// `unidadeId` e `unidades` são os mais críticos — sem zerar, a tela podia
+// insistir numa unidade que nem existe no contexto novo; `dadosMes` e
+// `historico` são o dado financeiro em si. Mês/ano voltam ao mês corrente
+// (é o padrão de quem acabou de entrar numa unidade).
+registrarResetDeContexto(() => {
+  dex.aba = "visao";
+  dex.unidadeId = null;
+  dex.unidades = [];
+  dex.agregadoDisponivel = false;
+  dex.mes = hoje.getMonth() + 1;
+  dex.ano = hoje.getFullYear();
+  dex.dadosMes = null;
+  dex.historico = null;
+  destruirGraficosDashboardExecutivo();
+});
+
 const podeLancar = () => pode("dashboard_executivo.lancar");
 const vazio = (emoji, titulo, msg, extra = "") =>
   `<div class="estado"><span class="emoji">${emoji}</span><h3>${escapeHtml(titulo)}</h3><p>${escapeHtml(msg)}</p>${extra}</div>`;
@@ -58,8 +76,13 @@ export async function renderDashboardExecutivo() {
   const view = el("#view");
   if (!view) return;
   view.innerHTML = carregando();
+  const g = geracaoContexto();
   try {
     const { data } = await dashExecUnidades();
+    // Trocou de unidade enquanto isto voltava: esta lista é do contexto
+    // ANTERIOR. Descarta — quem entrou na unidade nova já disparou o próprio
+    // carregamento, e escrever aqui sobrescreveria a tela certa com dado velho.
+    if (contextoMudou(g)) return;
     dex.unidades = data.unidades ?? [];
     dex.agregadoDisponivel = data.agregadoDisponivel;
     // O contexto pode ter mudado desde o último carregamento (ex.: "Trocar
@@ -72,6 +95,7 @@ export async function renderDashboardExecutivo() {
     montarLayout();
     await carregarConteudo();
   } catch (e) {
+    if (contextoMudou(g)) return;
     view.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry">Tentar novamente</button>`);
     el("#dex-retry")?.addEventListener("click", renderDashboardExecutivo);
   }
@@ -127,12 +151,15 @@ async function carregarConteudo() {
   if (!box) return;
   box.innerHTML = carregando();
   destruirGraficosDashboardExecutivo();
+  const g = geracaoContexto();
   try {
     const { data } = await dashExecMes({ unidadeId: dex.unidadeId || undefined, mes: dex.mes, ano: dex.ano });
+    if (contextoMudou(g)) return; // resposta da unidade anterior — descarta
     dex.dadosMes = data;
     renderModeloBox();
     renderAbaAtual();
   } catch (e) {
+    if (contextoMudou(g)) return;
     box.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry-mes">Tentar novamente</button>`);
     el("#dex-retry-mes")?.addEventListener("click", carregarConteudo);
   }

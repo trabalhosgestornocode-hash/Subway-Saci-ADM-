@@ -7,6 +7,7 @@ import {
   vendasPreview, vendasImportar, vendasVincular, listarProdutosSistema, vendasExcluirImportacao,
   vendasVincularLote, vendasComponentesCombo, vendasArquivoOriginal, vendasResolverDivergencia,
 } from "./api.js";
+import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 
 const SECOES = [
   { id: "visao",       icon: "📊", label: "Visão Geral" },
@@ -29,6 +30,22 @@ const vs = {
   produtos: [],
   contadores: {}, // { produtos, importacoes, divergencias } — badge só quando disponível
 };
+
+// Importações, faturamento e divergências são POR UNIDADE; o catálogo de
+// produtos do sistema é por EMPRESA. Os dois precisam sumir na troca — em
+// especial `listaProdutosCache`, que só era carregado uma vez por sessão e,
+// sem isto, oferecia produtos da empresa ANTERIOR no vínculo de importação
+// (ou seja: dá para gravar um vínculo apontando para o catálogo errado).
+registrarResetDeContexto(() => {
+  vs.secao = "visao";
+  vs.filtros = { periodo: "tudo", de: "", ate: "", canal: "todos", origem: "todos" };
+  vs.produtos = [];
+  vs.contadores = {};
+  pf.busca = ""; pf.grupo = "todos"; pf.tipo = "todos"; pf.vinculo = "todos"; pf.ord = "valor";
+  listaProdutosCache = null;
+  ultimoPayload = null;
+  fecharOverlay();
+});
 
 // ---------- helpers ----------
 const plural = (n, um, varios) => `${Number(n).toLocaleString("pt-BR")} ${Number(n) === 1 ? um : varios}`;
@@ -142,7 +159,10 @@ function carregarSecao() {
   if (!box) return;
   box.innerHTML = vs.secao === "visao" ? skeletonVisao() : skeletonLinhas(5);
   const fn = { visao: secVisao, faturamento: secFaturamento, produtos: secProdutos, importacoes: secImportacoes, divergencias: secDivergencias }[vs.secao];
+  const g = geracaoContexto();
   fn(box).catch((e) => {
+    // Erro de uma requisição da unidade anterior não pinta a tela da nova.
+    if (contextoMudou(g)) return;
     box.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="vd-retry">Tentar novamente</button>`);
     el("#vd-retry")?.addEventListener("click", carregarSecao);
   });
