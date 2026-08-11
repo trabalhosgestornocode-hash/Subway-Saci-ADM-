@@ -186,7 +186,15 @@ function renderComparacao(container) {
 
   const itens = [];
   if (b?.preco != null && i?.preco != null) {
-    itens.push(itemComparacao("Diferença de preço", i.preco - b.preco, fmtMoeda));
+    // % que a diferença representa sobre o preço do iFood — é a leitura que
+    // conecta direto com as taxas do canal: se a diferença bater perto do
+    // total de taxas (iFood + serviço + motoboy), o preço do iFood só está
+    // "recompondo" o valor do balcão depois dos descontos, não gerando mais
+    // margem de verdade. Por isso mostramos do lado a meta de total de
+    // deduções do modelo logístico da unidade — é o número de referência
+    // pra comparar contra essa diferença real.
+    const pctDelta = i.preco ? ((i.preco - b.preco) / i.preco) * 100 : null;
+    itens.push(itemComparacao("Diferença de preço", i.preco - b.preco, fmtMoeda, { pctDelta }) + refModeloHtml(i));
   }
   if (b?.cmvPct != null && i?.cmvPct != null) {
     // CMV: menor é melhor, então a seta verde/vermelha se inverte.
@@ -201,12 +209,29 @@ function renderComparacao(container) {
   box.innerHTML = `<span class="dex-sim-comp-rotulo">iFood × Balcão</span>${itens.join("")}`;
 }
 
-function itemComparacao(label, delta, fmt, { menorMelhor = false } = {}) {
+/**
+ * Linha de referência: a meta de total de deduções do modelo logístico da
+ * unidade (Marketplace/Full Service — ver metas_indicadores). É estática,
+ * não "boa" nem "ruim" como a diferença real acima — por isso não usa
+ * itemComparacao (que sempre pinta verde/vermelho). Some quando a unidade
+ * não tem meta configurada para o modelo (não inventa número).
+ * @param {object|null} i resultado do lado iFood
+ */
+function refModeloHtml(i) {
+  if (i?.metaTotalDeducoesPct == null) return "";
+  const modelo = i.modeloLogisticoRotulo ? ` (${escapeHtml(i.modeloLogisticoRotulo)})` : "";
+  return `<div class="dex-sim-comp-ref">Esperado pelo modelo${modelo}: <b>${fmtPct(i.metaTotalDeducoesPct)}</b></div>`;
+}
+
+function itemComparacao(label, delta, fmt, { menorMelhor = false, pctDelta = null } = {}) {
   const zero = Math.abs(delta) < 0.005;
   const bom = menorMelhor ? delta < 0 : delta > 0;
   const classe = zero ? "neutro" : bom ? "positivo" : "negativo";
   const sinal = zero ? "" : delta > 0 ? "+" : "−";
+  // % da diferença sobre a base (hoje só usado em "Diferença de preço") —
+  // mesmo sinal do valor principal, então não repete a lógica de zero/bom.
+  const pctHtml = pctDelta != null ? ` <small>${sinal}${fmtPct(Math.abs(pctDelta))}</small>` : "";
   return `<div class="dex-sim-comp-item ${classe}">
-    <span>${label}</span><b>${sinal}${fmt(Math.abs(delta))}</b>
+    <span>${label}</span><b>${sinal}${fmt(Math.abs(delta))}${pctHtml}</b>
   </div>`;
 }

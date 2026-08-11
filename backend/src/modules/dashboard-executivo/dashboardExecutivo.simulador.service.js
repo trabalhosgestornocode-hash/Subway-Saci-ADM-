@@ -24,6 +24,7 @@ import * as v from "../../shared/validar.js";
 import { carregarGrafo, resumoProduto } from "../produtos/custo.js";
 import { resolverUnidadeAlvo, obterMes } from "./dashboardExecutivo.service.js";
 import { hojeIsoBrasil } from "./dashboardExecutivo.calc.js";
+import { obterModeloLogistico, resolverMetas } from "./dashboardExecutivo.metas.service.js";
 
 // Nota de rodapé — a mesma para qualquer unidade/mês, por isso fica fora do
 // resultado calculado (não é dado, é texto de interface).
@@ -105,6 +106,14 @@ export async function simularPrecoProduto({ organizacaoId, unidadeIdSessao, unid
     margemEstimada: null,
     margemEstimadaPct: null,
     margemNota: null,
+    // Meta de total de deduções do MODELO LOGÍSTICO da unidade (Marketplace x
+    // Full Service) — o "quanto o iFood deveria estar cobrando no total",
+    // configurado em metas_indicadores. Independente do mês ter apuração no
+    // Financeiro (vem de meta, não de lançamento), por isso é resolvido
+    // mesmo quando taxaEstimadaPct fica null por falta de dado no mês.
+    modeloLogistico: null,
+    modeloLogisticoRotulo: null,
+    metaTotalDeducoesPct: null,
     indisponivel: null,
   };
 
@@ -128,12 +137,24 @@ export async function simularPrecoProduto({ organizacaoId, unidadeIdSessao, unid
     return resultado;
   }
 
-  // canal === "ifood": taxa = % real de Taxas e Comissões já apurado no
-  // Financeiro do MÊS/ANO selecionados nesta unidade — o mesmo indicador (e
-  // a mesma função, obterMes) que alimenta o card "Taxas e Comissões" da
-  // Visão Geral. Fonte única: nunca duas contas divergentes para o mesmo
-  // número. Não inventa um percentual fixo — se o mês não tem dado
-  // suficiente ainda, devolve só preço/custo/CMV (já preenchidos acima).
+  // Modelo logístico da unidade (Marketplace x Full Service) + a meta de
+  // TOTAL DE DEDUÇÕES configurada pra ele (comissão + serviços + motoboy
+  // próprio, ver metas_indicadores) — é o "quanto o iFood deveria estar
+  // cobrando no total" pra comparar contra a diferença de preço real que o
+  // simulador calcula. Vem de meta, não de apuração do mês, então resolve
+  // mesmo quando o mês ainda não tem Taxas e Comissões suficientes.
+  const modelo = await obterModeloLogistico({ unidadeId, organizacaoId });
+  const metas = await resolverMetas({ organizacaoId, unidadeId, modeloLogistico: modelo.modeloLogistico });
+  resultado.modeloLogistico = modelo.modeloLogistico;
+  resultado.modeloLogisticoRotulo = modelo.modeloLogisticoRotulo;
+  resultado.metaTotalDeducoesPct = metas.total_deducoes?.metaIdeal ?? null;
+
+  // taxa = % real de Taxas e Comissões já apurado no Financeiro do MÊS/ANO
+  // selecionados nesta unidade — o mesmo indicador (e a mesma função,
+  // obterMes) que alimenta o card "Taxas e Comissões" da Visão Geral. Fonte
+  // única: nunca duas contas divergentes para o mesmo número. Não inventa um
+  // percentual fixo — se o mês não tem dado suficiente ainda, devolve só
+  // preço/custo/CMV/modelo (já preenchidos acima).
   const mesDados = await obterMes({ organizacaoId, unidadeIdSessao: unidadeId, unidadeIdSolicitado: undefined, mes, ano });
   const indicadorTaxas = mesDados?.indicadoresRentabilidade?.taxas_comissoes;
   const taxaPct = indicadorTaxas && !indicadorTaxas.naoAplicavel ? indicadorTaxas.atual : null;

@@ -1983,6 +1983,9 @@ tr.dex-linha-na { opacity: .65; }
 .dex-sim-comp-item.positivo > b { color: var(--ok); }
 .dex-sim-comp-item.negativo > b { color: var(--bad); }
 .dex-sim-comp-item.neutro > b { color: var(--cinza); }
+.dex-sim-comp-item > b small { font-size: 10.5px; font-weight: 700; opacity: .72; margin-left: 1px; }
+.dex-sim-comp-ref { font-size: 10.5px; color: var(--cinza-claro); margin: -1px 0 6px; }
+.dex-sim-comp-ref > b { color: var(--cinza); font-weight: 700; }
 
 @media (max-width: 760px) {
   .dex-sim-duplo { grid-template-columns: minmax(0, 1fr); }
