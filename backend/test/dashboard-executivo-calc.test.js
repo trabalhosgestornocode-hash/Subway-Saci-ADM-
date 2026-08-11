@@ -9,7 +9,7 @@ import {
   mediaDiaria, projecaoMensal, confiabilidadeProjecao, statusDiaBase, statusMes,
   resumoPreenchimento, verificarDisponibilidade, agruparPendenciasPorMes,
   validarOutrasDeducoes, inconsistencias,
-  diasDoMes, mesAnterior, STATUS_DIA,
+  diasDoMes, mesAnterior, diaAnterior, STATUS_DIA,
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
   recalcularDistribuicaoMensal,
@@ -226,6 +226,42 @@ describe("diasDoMes / mesAnterior", () => {
   test("mês anterior a janeiro é dezembro do ano anterior", () => {
     assert.deepEqual(mesAnterior(2026, 1), { ano: 2025, mes: 12 });
     assert.deepEqual(mesAnterior(2026, 8), { ano: 2026, mes: 7 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// diaAnterior — regra "Financeiro só aparece quando data === ontem" (pedido
+// de ajuste do Lançamento Diário). Comparação de CALENDÁRIO via Date.UTC,
+// nunca diferença de milissegundos — cobre os casos exatos do pedido.
+// ---------------------------------------------------------------------------
+describe("diaAnterior", () => {
+  test("dia normal, sem virada", () => {
+    assert.equal(diaAnterior("2026-08-11"), "2026-08-10");
+    assert.equal(diaAnterior("2026-08-14"), "2026-08-13");
+  });
+
+  test("hoje=11/08: 10/08 é ontem, 09/08 e 08/08 não são", () => {
+    const ontem = diaAnterior("2026-08-11");
+    assert.equal(ontem, "2026-08-10");
+    assert.notEqual(ontem, "2026-08-09");
+    assert.notEqual(ontem, "2026-08-08");
+  });
+
+  test("hoje=14/08: 13/08 é ontem, 12/08 não é", () => {
+    const ontem = diaAnterior("2026-08-14");
+    assert.equal(ontem, "2026-08-13");
+    assert.notEqual(ontem, "2026-08-12");
+  });
+
+  test("virada de mês: dia 1 -> último dia do mês anterior", () => {
+    assert.equal(diaAnterior("2026-09-01"), "2026-08-31"); // agosto tem 31 dias
+    assert.equal(diaAnterior("2026-05-01"), "2026-04-30"); // abril tem 30 dias
+    assert.equal(diaAnterior("2028-03-01"), "2028-02-29"); // fevereiro bissexto
+    assert.equal(diaAnterior("2026-03-01"), "2026-02-28"); // fevereiro comum
+  });
+
+  test("virada de ano: 01/01 -> 31/12 do ano anterior", () => {
+    assert.equal(diaAnterior("2027-01-01"), "2026-12-31");
   });
 });
 

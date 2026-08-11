@@ -25,6 +25,22 @@ export function mesAnterior(ano, mes) {
   return mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
 }
 
+/**
+ * Dia anterior a uma data ISO (AAAA-MM-DD) — comparação de CALENDÁRIO, não
+ * subtração de milissegundos: `Date.UTC` normaliza sozinho quando o dia
+ * vira 0 (cai pro último dia do mês anterior), incluindo virada de ano
+ * (janeiro -> dezembro do ano anterior). Usado pela regra "Financeiro só
+ * aparece quando a data do lançamento é ontem" (dashboardExecutivo.service.js).
+ * @param {string} dataIso
+ * @returns {string}
+ */
+export function diaAnterior(dataIso) {
+  const [ano, mes, dia] = dataIso.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, dia - 1));
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
 /** Status possíveis de um dia no calendário do mês. */
 export const STATUS_DIA = {
   PREENCHIDO: "PREENCHIDO",

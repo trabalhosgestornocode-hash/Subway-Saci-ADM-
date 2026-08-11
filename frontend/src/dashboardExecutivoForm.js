@@ -40,8 +40,10 @@ function camposDoLancamento(l) {
     // Desempenho é opcional: um valor null (não informado) vira campo VAZIO
     // no input, nunca "null" literal nem 0 — ver dashboardExecutivo.calc.js.
     qtdVendas: l.qtdVendas ?? "", valorVendasBruto: l.valorVendasBruto ?? "", novosClientes: l.novosClientes ?? "",
-    valorVendasIfood: l.valorVendasIfood, taxasComissoes: l.taxasComissoes, servicosPromocoes: l.servicosPromocoes,
-    taxasEntregadores: l.taxasEntregadores, outrasDeducoes: l.outrasDeducoes, justificativaAjuste: l.justificativaAjuste ?? "",
+    // Financeiro TAMBÉM pode vir null agora — um rascunho de dia ≠ ontem
+    // ainda não tem esse dado (ver dashboardExecutivo.service.js#normalizarDadosLancamento).
+    valorVendasIfood: l.valorVendasIfood ?? "", taxasComissoes: l.taxasComissoes ?? "", servicosPromocoes: l.servicosPromocoes ?? "",
+    taxasEntregadores: l.taxasEntregadores ?? "", outrasDeducoes: l.outrasDeducoes ?? "", justificativaAjuste: l.justificativaAjuste ?? "",
   };
 }
 
@@ -61,9 +63,16 @@ export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, e
     data, unidadeId, modeloLogistico, ehTeste: !!ehTeste, onSalvo, passo: 1,
     modoCorrecao: false, lancamentoId: null, statusOriginal: null,
     motivoCorrecao: "", campos: camposPadrao(), avisos: [], confirmarAvisos: false, salvando: false,
+    // Autoridade é sempre o servidor (ver obterLancamentoPorData/financeiroDisponivelNaData
+    // no backend) — valores por omissão aqui só cobrem o instante antes da
+    // resposta chegar, nunca usados pra decidir nada sozinhos.
+    mostrarFinanceiro: true, periodoFinanceiroInicio: data, periodoFinanceiroFim: data,
   };
   try {
     const { data: resp } = await dashExecLancamento(data, { unidadeId: unidadeId || undefined });
+    fm.mostrarFinanceiro = resp.mostrarFinanceiro;
+    fm.periodoFinanceiroInicio = resp.periodoFinanceiroInicio;
+    fm.periodoFinanceiroFim = resp.periodoFinanceiroFim;
     if (resp.lancamento) {
       fm.lancamentoId = resp.lancamento.id;
       fm.statusOriginal = resp.lancamento.status;
@@ -145,29 +154,51 @@ async function confirmarReset(m, dataAlvo) {
   }
 }
 
-const TITULOS_PASSO = ["", "Situação da operação", "Desempenho (opcional)", "Financeiro", "Conferência", "Finalização"];
+const TITULOS_PASSO = {
+  situacao: "Situação da operação", desempenho: "Desempenho (opcional)",
+  financeiro: "Financeiro", conferencia: "Conferência",
+};
+const CORPO_PASSO = {
+  situacao: passoSituacao, desempenho: passoDesempenho, financeiro: passoFinanceiro, conferencia: passoConferencia,
+};
+
+// Lista de etapas ATIVAS pra este lançamento — muda com a situação (radio da
+// etapa 1) e com `fm.mostrarFinanceiro` (decidido pelo servidor, ver
+// abrirLancamentoModal). Financeiro só entra pra situação "normal" quando a
+// data lançada é ontem (ou já tem snapshot salvo); pras demais situações
+// (sem_operacao/zero_vendas) continua sempre presente — comportamento
+// inalterado, fora do escopo deste ajuste.
+function passosAtivos() {
+  const passos = ["situacao", "desempenho"];
+  if (fm.campos.situacao !== "normal" || fm.mostrarFinanceiro) passos.push("financeiro");
+  passos.push("conferencia");
+  return passos;
+}
 
 function renderPasso(m) {
-  const corpo = {
-    1: passoSituacao, 2: passoDesempenho, 3: passoFinanceiro, 4: passoConferencia,
-  }[fm.passo] ?? passoConferencia;
+  const passos = passosAtivos();
+  // Nunca deixa `fm.passo` apontar além do fim (pode acontecer se o usuário
+  // trocou a situação numa sessão em que financeiro ainda contava como etapa).
+  if (fm.passo > passos.length) fm.passo = passos.length;
+  const chave = passos[fm.passo - 1];
+  const corpo = CORPO_PASSO[chave];
 
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
     <div class="modal-head">
       <h2>🗓️ Lançamento diário — ${fmtDataBr(fm.data)}</h2>
       <div class="modal-tags">
-        <span class="chip">Etapa ${fm.passo}/4 · ${TITULOS_PASSO[fm.passo]}</span>
+        <span class="chip">Etapa ${fm.passo}/${passos.length} · ${TITULOS_PASSO[chave]}</span>
         ${fm.modoCorrecao ? `<span class="chip chip-unidade">Correção de lançamento finalizado</span>` : ""}
       </div>
       ${fm.ehTeste && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-reset-teste" id="dex-abrir-reset-teste" type="button">🧪 Resetar dia para teste</button>` : ""}
       ${podeExcluir() && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-excluir" id="dex-abrir-exclusao" type="button">🗑️ Excluir lançamento</button>` : ""}
     </div>
-    <div class="dex-stepper">${[1, 2, 3, 4].map((p) => `<span class="dex-step ${p === fm.passo ? "ativo" : p < fm.passo ? "feito" : ""}">${p}</span>`).join("")}</div>
+    <div class="dex-stepper">${passos.map((_, i) => `<span class="dex-step ${i + 1 === fm.passo ? "ativo" : i + 1 < fm.passo ? "feito" : ""}">${i + 1}</span>`).join("")}</div>
     <div class="dex-form-corpo">${corpo()}</div>
     <div class="ed-acoes dex-form-acoes">
       ${fm.passo > 1 ? `<button class="btn btn-ghost" id="dex-f-voltar">Voltar</button>` : `<button class="btn btn-ghost" id="dex-f-cancelar">Cancelar</button>`}
-      ${fm.passo < 4 ? `<button class="btn btn-primary" id="dex-f-avancar">Avançar</button>` : botoesFinalizacao()}
+      ${fm.passo < passos.length ? `<button class="btn btn-primary" id="dex-f-avancar">Avançar</button>` : botoesFinalizacao()}
     </div>`;
 
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
@@ -176,8 +207,8 @@ function renderPasso(m) {
   m.querySelector("#dex-f-avancar")?.addEventListener("click", () => { if (validarPassoAtual(m)) { fm.passo++; renderPasso(m); } });
   m.querySelector("#dex-abrir-reset-teste")?.addEventListener("click", () => renderResetPreview(m));
   m.querySelector("#dex-abrir-exclusao")?.addEventListener("click", () => renderExclusaoConfirmacao(m));
-  wirePasso(m);
-  if (fm.passo === 4) wireFinalizacao(m);
+  wirePasso(m, chave);
+  if (chave === "conferencia") wireFinalizacao(m);
 }
 
 const podeExcluir = () => pode("dashboard_executivo.excluir");
@@ -233,9 +264,17 @@ async function confirmarExclusao(m) {
 }
 
 function botoesFinalizacao() {
+  // Sem financeiro disponível (dia "normal" ≠ ontem, sem snapshot salvo), só
+  // dá pra salvar como rascunho — o backend recusa finalizar sem o valor das
+  // vendas do iFood (ver dashboardExecutivo.service.js#normalizarDadosLancamento).
+  // Numa correção (fm.modoCorrecao), o registro já É finalizado e portanto
+  // já TEM o financeiro pelo mesmo invariante — mostrarFinanceiro vem true.
+  const podeFinalizar = fm.campos.situacao !== "normal" || fm.mostrarFinanceiro;
   return `
     ${!fm.modoCorrecao ? `<button class="btn btn-ghost" id="dex-f-rascunho">Salvar como rascunho</button>` : ""}
-    <button class="btn btn-primary" id="dex-f-finalizar">${fm.modoCorrecao ? "Salvar correção" : "Finalizar lançamento"}</button>`;
+    ${podeFinalizar
+      ? `<button class="btn btn-primary" id="dex-f-finalizar">${fm.modoCorrecao ? "Salvar correção" : "Finalizar lançamento"}</button>`
+      : ""}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +335,7 @@ function passoFinanceiro() {
   const calc = calculoPreview(c);
   const mostrarEntreg = mostraEntregadores();
   return `
+    <p class="dex-form-info">📅 Financeiro acumulado do mês até aqui — dados consolidados de ${fmtDataBr(fm.periodoFinanceiroInicio)} até ${fmtDataBr(fm.periodoFinanceiroFim)}, o extrato que o iFood libera hoje.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="number" min="0" step="0.01" id="dex-vifood" value="${c.valorVendasIfood}"></label>
       <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="number" min="0" step="0.01" id="dex-taxas" value="${c.taxasComissoes}"></label>
@@ -337,9 +377,8 @@ function calculoPreview(c) {
 function passoConferencia() {
   const c = fm.campos;
   const linha = (l, v) => `<div class="dex-conf-item"><span>${l}</span><b>${v}</b></div>`;
-  const avisos = calcularAvisos(c);
-  fm.avisos = avisos;
   if (c.situacao !== "normal") {
+    fm.avisos = [];
     return `
       <div class="dex-conf-grid">
         ${linha("Situação", c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas")}
@@ -348,6 +387,27 @@ function passoConferencia() {
       </div>
       ${fm.modoCorrecao ? campoMotivoCorrecao() : ""}`;
   }
+
+  // Financeiro não fez parte deste lançamento (dia ≠ ontem, sem snapshot
+  // salvo) — item "SE O DIA NÃO FOR ONTEM" do pedido: nunca mostra os
+  // campos financeiros vazios/zerados, só avisa que fica como rascunho.
+  if (!fm.mostrarFinanceiro) {
+    fm.avisos = [];
+    return `
+      <div class="dex-conf-grid">
+        ${linha("Quantidade de vendas", c.qtdVendas === "" ? "—" : c.qtdVendas)}
+        ${linha("Novos clientes", c.novosClientes === "" ? "—" : c.novosClientes)}
+        ${linha("Vendas brutas", fmtMoeda(c.valorVendasBruto))}
+        ${linha("Ticket médio", fmtMoeda(ticketMedioPreview(c)))}
+      </div>
+      <p class="dex-form-info">💰 Financeiro ainda não disponível — o iFood só consolida com 1 dia de atraso.
+      Este lançamento fica como <b>rascunho</b>; reabra amanhã (quando esta data virar "ontem") para completar o
+      Financeiro e finalizar.</p>
+      ${fm.modoCorrecao ? campoMotivoCorrecao() : ""}`;
+  }
+
+  const avisos = calcularAvisos(c);
+  fm.avisos = avisos;
   const calc = calculoPreview(c);
   return `
     <div class="dex-conf-grid">
@@ -392,8 +452,8 @@ function calcularAvisos(c) {
 // ---------------------------------------------------------------------------
 // LEITURA DOS CAMPOS DO DOM -> fm.campos
 // ---------------------------------------------------------------------------
-function wirePasso(m) {
-  if (fm.passo === 1) {
+function wirePasso(m, chave) {
+  if (chave === "situacao") {
     m.querySelectorAll('input[name="situacao"]').forEach((r) => r.addEventListener("change", (e) => {
       fm.campos.situacao = e.target.value;
       m.querySelector("#dex-sem-op").hidden = e.target.value !== "sem_operacao";
@@ -401,11 +461,11 @@ function wirePasso(m) {
     m.querySelector("#dex-motivo")?.addEventListener("change", (e) => { fm.campos.motivoSemOperacao = e.target.value; });
     m.querySelector("#dex-obs")?.addEventListener("input", (e) => { fm.campos.observacao = e.target.value; });
   }
-  if (fm.passo === 2 && fm.campos.situacao === "normal") {
+  if (chave === "desempenho" && fm.campos.situacao === "normal") {
     const bind = (id, campo) => m.querySelector(id)?.addEventListener("input", (e) => { fm.campos[campo] = e.target.value; atualizarPreviewTicket(m); });
     bind("#dex-qtd", "qtdVendas"); bind("#dex-valorbruto", "valorVendasBruto"); bind("#dex-novos", "novosClientes");
   }
-  if (fm.passo === 3 && fm.campos.situacao === "normal") {
+  if (chave === "financeiro" && fm.campos.situacao === "normal") {
     const campos = ["dex-vifood:valorVendasIfood", "dex-taxas:taxasComissoes", "dex-servicos:servicosPromocoes", "dex-entregadores:taxasEntregadores", "dex-outras:outrasDeducoes"];
     campos.forEach((par) => {
       const [id, campo] = par.split(":");
@@ -413,7 +473,7 @@ function wirePasso(m) {
     });
     m.querySelector("#dex-justificativa")?.addEventListener("input", (e) => { fm.campos.justificativaAjuste = e.target.value; });
   }
-  if (fm.passo === 4) {
+  if (chave === "conferencia") {
     m.querySelector("#dex-confirmar-avisos")?.addEventListener("change", (e) => { fm.confirmarAvisos = e.target.checked; });
     m.querySelector("#dex-motivo-correcao")?.addEventListener("input", (e) => { fm.motivoCorrecao = e.target.value; });
   }
@@ -443,21 +503,25 @@ function atualizarPreviewFinanceiro(m) {
 // ---------------------------------------------------------------------------
 function validarPassoAtual(m) {
   const c = fm.campos;
-  if (fm.passo === 1) {
+  const chave = passosAtivos()[fm.passo - 1];
+  if (chave === "situacao") {
     if (c.situacao === "sem_operacao" && !c.motivoSemOperacao) {
       c.motivoSemOperacao = m.querySelector("#dex-motivo")?.value || "";
     }
     if (c.situacao === "sem_operacao" && !c.motivoSemOperacao) { toast("Informe o motivo de não operação."); return false; }
     return true;
   }
-  if (fm.passo === 2 && c.situacao === "normal") {
+  if (chave === "desempenho" && c.situacao === "normal") {
     // Desempenho é opcional — nada aqui bloqueia o avanço. Só valida o que
     // foi de fato preenchido (não pode ser negativo).
     if (c.qtdVendas !== "" && Number(c.qtdVendas) < 0) { toast("A quantidade de vendas não pode ser negativa."); return false; }
     if (c.valorVendasBruto !== "" && Number(c.valorVendasBruto) < 0) { toast("O valor bruto não pode ser negativo."); return false; }
     return true;
   }
-  if (fm.passo === 3 && c.situacao === "normal") {
+  // Financeiro só aparece nas etapas ativas quando fm.mostrarFinanceiro é
+  // true (ver passosAtivos) — chegar aqui já implica que os campos existem
+  // no DOM e são esperados preenchidos, exatamente como antes.
+  if (chave === "financeiro" && c.situacao === "normal") {
     const obrigatorios = [c.valorVendasIfood, c.taxasComissoes, c.servicosPromocoes];
     if (mostraEntregadores()) obrigatorios.push(c.taxasEntregadores);
     else c.taxasEntregadores = c.taxasEntregadores || 0; // Full Service: campo nem aparece, garante 0 no cálculo/envio
@@ -495,11 +559,18 @@ function payloadBase(status) {
   };
   if (c.situacao === "sem_operacao") return { ...base, motivoSemOperacao: c.motivoSemOperacao };
   if (c.situacao === "zero_vendas") return { ...base, novosClientes: numOuIndefinido(c.novosClientes) };
-  return {
-    ...base,
+  const desempenho = {
     // Desempenho: opcional, nunca vira 0 por conta própria.
     qtdVendas: numOuIndefinido(c.qtdVendas), valorVendasBruto: numOuIndefinido(c.valorVendasBruto), novosClientes: numOuIndefinido(c.novosClientes),
-    // Financeiro: sempre preenchido a esta altura (etapa continua obrigatória).
+  };
+  if (!fm.mostrarFinanceiro) {
+    // Etapa Financeiro nem fez parte deste lançamento (dia ≠ ontem, sem
+    // snapshot salvo) — não manda nada dela, nunca 0 (backend mantém null e
+    // só deixa o dia virar rascunho, ver normalizarDadosLancamento).
+    return { ...base, ...desempenho };
+  }
+  return {
+    ...base, ...desempenho,
     valorVendasIfood: Number(c.valorVendasIfood) || 0, taxasComissoes: Number(c.taxasComissoes) || 0,
     servicosPromocoes: Number(c.servicosPromocoes) || 0, taxasEntregadores: Number(c.taxasEntregadores) || 0,
     outrasDeducoes: Number(c.outrasDeducoes) || 0, justificativaAjuste: c.justificativaAjuste || undefined,

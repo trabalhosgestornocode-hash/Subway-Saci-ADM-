@@ -4,7 +4,7 @@ import * as v from "../../shared/validar.js";
 import { PERMISSOES, temPermissao } from "../../shared/permissoes.js";
 import { resolverMetas, obterModeloLogistico, definirModeloLogistico, historicoModeloLogistico } from "./dashboardExecutivo.metas.service.js";
 import {
-  hojeIsoBrasil, diasDoMes, mesAnterior, statusMes, resumoPreenchimento,
+  hojeIsoBrasil, diasDoMes, mesAnterior, diaAnterior, statusMes, resumoPreenchimento,
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
   totalDeducoes, receitaAposDeducoes, saldoPercentual, mediaDiaria, projecaoMensal,
   confiabilidadeProjecao, validarOutrasDeducoes,
@@ -181,7 +181,12 @@ async function calcularPendenciasMesAnterior({ unidadeId, ano, mes, hojeIso }) {
 async function calcularComparativoEPlanoRecuperacao({ unidadeId, ano, mes, hojeIso, diasComStatus, base, media }) {
   const anterior = mesAnterior(ano, mes);
   const { diasComStatus: diasAnterior } = await carregarCalendarioMes({ unidadeId, ano: anterior.ano, mes: anterior.mes, hojeIso });
-  const totalAnteriorCompleto = diasAnterior.reduce((s, d) => s + Number(d.lancamento?.valor_vendas_ifood || 0), 0);
+  // Só dias RESOLVIDOS_COM_DADOS entram na soma — um rascunho do mês
+  // anterior sem financeiro ainda (dia ≠ ontem quando foi lançado) não pode
+  // contar como "faturou R$0" no comparativo (mesmo filtro de `somarAteODia`).
+  const totalAnteriorCompleto = diasAnterior
+    .filter((d) => RESOLVIDOS_COM_DADOS.has(d.status))
+    .reduce((s, d) => s + Number(d.lancamento?.valor_vendas_ifood || 0), 0);
 
   const [anoAtualNum, mesAtualNum] = hojeIso.split("-").map(Number);
   const mesEmAndamento = ano === anoAtualNum && mes === mesAtualNum;
@@ -428,7 +433,10 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
       ],
       evolucaoDiaria: diasComStatus.map((d) => ({
         data: d.data, status: d.status,
-        valor: d.lancamento ? Number(d.lancamento.valor_vendas_ifood) : null,
+        // Um rascunho sem financeiro ainda (dia ≠ ontem) tem `valor_vendas_ifood`
+        // null — precisa continuar null aqui, nunca virar R$0 no gráfico
+        // (Number(null) seria 0, que mentiria sobre "faturou zero").
+        valor: d.lancamento?.valor_vendas_ifood != null ? Number(d.lancamento.valor_vendas_ifood) : null,
         origemLancamento: d.lancamento?.origem_lancamento ?? null,
       })),
       evolucaoDeducoes: diasComStatus.map((d) => ({
@@ -460,14 +468,16 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   if (error) throw ApiError.internal(error.message);
 
   const linhas = (data ?? []).filter((r) => r.status === "finalizado" || r.status === "rascunho"); // inclui rascunho na visão agregada (é leitura)
-  const somaSimples = (campo) => linhas.reduce((s, r) => s + Number(r[campo] || 0), 0);
   const somaNulavel = (campo) => {
     const valoresCampo = linhas.map((r) => r[campo]).filter((v) => v != null);
     return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
   };
   const valores = {
     // Financeiro é a fonte de verdade — mesma regra da visão por unidade.
-    valorVendasIfood: somaSimples("valor_vendas_ifood"),
+    // `somaNulavel`, não `somaSimples`: esta visão inclui rascunhos, e um
+    // rascunho sem financeiro ainda (dia ≠ ontem) tem valor_vendas_ifood
+    // null — não pode entrar como R$0 na soma.
+    valorVendasIfood: somaNulavel("valor_vendas_ifood"),
     taxasComissoes: somaNulavel("taxas_comissoes"),
     servicosPromocoes: somaNulavel("servicos_promocoes"),
     taxasEntregadores: somaNulavel("taxas_entregadores"),
@@ -485,11 +495,14 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
     total_deducoes: percentual(totalDed, base),
   };
 
-  // Evolução diária somada de todas as unidades (Financeiro).
+  // Evolução diária somada de todas as unidades (Financeiro). Pula
+  // contribuição nula (rascunho sem financeiro ainda) em vez de somar
+  // Number(null || 0) — não inventa R$0 pra um dia que ainda não se sabe.
   const porData = new Map();
   for (const r of linhas) {
+    if (r.valor_vendas_ifood == null) continue;
     const acc = porData.get(r.data_lancamento) ?? 0;
-    porData.set(r.data_lancamento, acc + Number(r.valor_vendas_ifood || 0));
+    porData.set(r.data_lancamento, acc + Number(r.valor_vendas_ifood));
   }
   const evolucaoDiaria = dias.map((d) => ({
     data: d, status: d > hojeIso ? STATUS_DIA.FUTURO : (porData.has(d) ? STATUS_DIA.PREENCHIDO : STATUS_DIA.PENDENTE),
@@ -546,13 +559,37 @@ export async function obterLancamentoPorData({ organizacaoId, unidadeIdSessao, u
   const { diasComStatus } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
   const disponibilidade = verificarDisponibilidade(diasComStatus, dataIso);
 
-  return { lancamento: row ? paraApi(row) : null, disponibilidade };
+  return {
+    lancamento: row ? paraApi(row) : null,
+    disponibilidade,
+    ...financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: row?.valor_vendas_ifood ?? null }),
+  };
+}
+
+/**
+ * Regra central (item "REGRA" do pedido): a etapa Financeiro só é oferecida
+ * quando a data lançada é exatamente ontem — OU quando o registro JÁ tem um
+ * snapshot financeiro salvo (nunca esconde/impede acesso a dado histórico
+ * já existente, mesmo que hoje a data não seja mais "ontem"). Comparação de
+ * CALENDÁRIO via `diaAnterior` (calc.js), nunca diferença de milissegundos.
+ * Autoridade única — usada tanto pela leitura (aqui) quanto pela escrita
+ * (`criarLancamento`/`atualizarLancamento`), nunca recalculada no frontend.
+ * @param {{dataIso: string, hojeIso: string, valorVendasIfoodExistente: number|null}} p
+ */
+function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente }) {
+  const mostrarFinanceiro = valorVendasIfoodExistente != null || dataIso === diaAnterior(hojeIso);
+  const [ano, mes] = dataIso.split("-").map(Number);
+  return {
+    mostrarFinanceiro,
+    periodoFinanceiroInicio: `${ano}-${String(mes).padStart(2, "0")}-01`,
+    periodoFinanceiroFim: dataIso,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // NORMALIZAÇÃO DOS DADOS DE ENTRADA DO FORMULÁRIO (etapas 1-3)
 // ---------------------------------------------------------------------------
-function normalizarDadosLancamento(body, { podeAjustarNegativo }) {
+function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro }) {
   const b = v.corpo(body);
   const situacao = v.umDe(b.situacao, "Situação", ["normal", "sem_operacao", "zero_vendas"]);
   const statusAlvo = v.umDeOpcional(b.status, "Status", ["rascunho", "finalizado"], "rascunho");
@@ -581,22 +618,34 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo }) {
 
   // situacao === "normal" — ETAPA DESEMPENHO (qtdVendas/valorVendasBruto/
   // novosClientes) é OPCIONAL: nada aqui bloqueia o lançamento, e o que não
-  // for informado vira null (nunca 0) — "não sei" ≠ "foi zero". A etapa
-  // Financeiro continua obrigatória: é a fonte de verdade financeira e o
-  // franqueado sempre tem esse extrato do iFood em mãos.
+  // for informado vira null (nunca 0) — "não sei" ≠ "foi zero".
+  //
+  // ETAPA FINANCEIRO: o iFood só consolida o financeiro do dia com 1 dia de
+  // atraso, então só é EXIGIDA quando a data lançada é ontem (`exigirFinanceiro`,
+  // calculado por quem chama — ver `financeiroDisponivelNaData`). Nos demais
+  // dias os 5 campos usam a MESMA função opcional do Desempenho — não
+  // inventa zero pro que ainda não existe no iFood. Isso não desfinaliza um
+  // dia antigo: quando `exigirFinanceiro` é true (inclusive por já ter
+  // snapshot salvo — ver `atualizarLancamento`), o comportamento é
+  // idêntico ao de sempre, campo obrigatório de verdade.
   const qtdVendasRaw = v.numeroOpcionalNulo(b.qtdVendas, "Quantidade de vendas", { min: 0 });
   const qtdVendas = qtdVendasRaw == null ? null : Math.trunc(qtdVendasRaw);
   const valorVendasBruto = v.numeroOpcionalNulo(b.valorVendasBruto, "Valor bruto das vendas", { min: 0 });
   const novosClientesRaw = v.numeroOpcionalNulo(b.novosClientes, "Novos clientes", { min: 0 });
   const novosClientes = novosClientesRaw == null ? null : Math.trunc(novosClientesRaw);
-  const valorVendasIfood = v.numero(b.valorVendasIfood, "Valor das vendas (iFood)", { min: 0 });
-  const taxasComissoes = v.numero(b.taxasComissoes, "Taxas e comissões", { min: 0 });
-  const servicosPromocoes = v.numero(b.servicosPromocoes, "Serviços e promoções", { min: 0 });
-  const taxasEntregadores = v.numero(b.taxasEntregadores, "Taxas de entregadores", { min: 0 });
-  const outrasDeducoes = v.numero(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 });
+  const numFinanceiro = (valor, campo) => exigirFinanceiro
+    ? v.numero(valor, campo, { min: 0 })
+    : v.numeroOpcionalNulo(valor, campo, { min: 0 });
+  const valorVendasIfood = numFinanceiro(b.valorVendasIfood, "Valor das vendas (iFood)");
+  const taxasComissoes = numFinanceiro(b.taxasComissoes, "Taxas e comissões");
+  const servicosPromocoes = numFinanceiro(b.servicosPromocoes, "Serviços e promoções");
+  const taxasEntregadores = numFinanceiro(b.taxasEntregadores, "Taxas de entregadores");
+  const outrasDeducoes = exigirFinanceiro
+    ? v.numero(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 })
+    : v.numeroOpcionalNulo(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 });
   const justificativaAjuste = v.textoOpcional(b.justificativaAjuste, "Justificativa do ajuste", { max: 500 });
 
-  const erroAjuste = validarOutrasDeducoes({ valor: outrasDeducoes, justificativa: justificativaAjuste, podeAjustarNegativo });
+  const erroAjuste = validarOutrasDeducoes({ valor: outrasDeducoes ?? 0, justificativa: justificativaAjuste, podeAjustarNegativo });
   if (erroAjuste) throw ApiError.badRequest(erroAjuste);
 
   const totalDed = totalDeducoes({ taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes });
@@ -604,6 +653,16 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo }) {
 
   if (statusAlvo === "finalizado" && avisos.length > 0 && !v.booleano(b.confirmarAvisos, false)) {
     throw ApiError.badRequest(`Existem inconsistências que precisam de confirmação antes de finalizar: ${avisos.join(" ")}`, { avisos, confirmacaoNecessaria: true });
+  }
+
+  // Invariante preservado mesmo com o financeiro agora opcional na coluna
+  // (migration 035): um dia "normal" só é FINALIZADO com o financeiro em
+  // mãos — sem ele, só pode ficar como rascunho (reforçado também por CHECK
+  // no banco). Sem essa trava, o cliente poderia forçar `status=finalizado`
+  // num dia sem financeiro simplesmente omitindo os campos no corpo.
+  if (statusAlvo === "finalizado" && valorVendasIfood == null) {
+    throw ApiError.badRequest(
+      "Não é possível finalizar este dia sem o valor das vendas do iFood — o financeiro só fica disponível a partir de amanhã. Salve como rascunho por enquanto.");
   }
 
   return {
@@ -635,7 +694,9 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
   }
 
   const podeAjustarNegativo = temPermissao(acesso.permissoes, PERMISSOES.DASHBOARD_EXECUTIVO_CORRIGIR);
-  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo });
+  // Criação nunca tem snapshot anterior — exigirFinanceiro depende só da data ser ontem.
+  const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: null });
+  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro });
 
   const linha = {
     organizacao_id: organizacaoId,
@@ -701,7 +762,16 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
     motivoCorrecao = v.texto(v.corpo(body).motivo, "Motivo da correção", { min: 3, max: 500 });
   }
 
-  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo: podeCorrigir });
+  // Edição posterior (item do pedido): nunca esconde/impede acesso a um
+  // snapshot financeiro JÁ salvo — `antes.valor_vendas_ifood != null` cobre
+  // tanto "está finalizado" (sempre tem, pelo invariante) quanto "é
+  // rascunho mas alguém já preencheu financeiro nele". Fora isso, a regra
+  // normal: só exige quando a data ainda é ontem, reavaliada agora.
+  const hojeIso = hojeIsoBrasil();
+  const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({
+    dataIso: antes.data_lancamento, hojeIso, valorVendasIfoodExistente: antes.valor_vendas_ifood,
+  });
+  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo: podeCorrigir, exigirFinanceiro });
 
   const patch = {
     situacao: dados.situacao,
@@ -843,8 +913,10 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     const linhasMes = (data ?? []).filter((r) => r.data_lancamento >= dias[0] && r.data_lancamento <= dias[dias.length - 1]);
     const linhasComDados = linhasMes.filter((r) => r.status === "finalizado" && r.situacao !== "sem_operacao");
     const linhasFinalizadas = linhasMes.filter((r) => r.status === "finalizado");
-    // Faturamento = Financeiro (fonte de verdade). Simples porque
-    // valor_vendas_ifood é sempre exigido em qualquer lançamento "normal".
+    // Faturamento = Financeiro (fonte de verdade). Simples (soma direta, sem
+    // filtrar null) porque só olha `linhasFinalizadas` — um dia FINALIZADO
+    // sempre tem valor_vendas_ifood (rascunho sem financeiro ainda nunca
+    // chega a finalizado, ver normalizarDadosLancamento).
     const somaSimples = (campo) => linhasFinalizadas.reduce((s, r) => s + Number(r[campo] || 0), 0);
     // Deduções: null quando NENHUM dia do mês tem aquele detalhamento — um
     // mês só com lançamento mensal (sem taxas/comissões conhecidas) não
