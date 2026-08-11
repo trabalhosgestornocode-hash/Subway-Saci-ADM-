@@ -191,6 +191,46 @@ export function distribuirQuantidadeMensal(quantidadeTotal, quantidadeDias) {
   return Array.from({ length: dias }, (_, i) => base + (i < resto ? 1 : 0));
 }
 
+// Campos "extra" (opcionais) de um lançamento mensal — os que usam contagem
+// inteira (pedidos, novos clientes) em vez de valor em reais. Usado tanto
+// aqui quanto no service para decidir qual função de distribuição aplicar.
+export const CAMPOS_EXTRAS_MENSAL_INTEIROS = new Set(["qtdVendasTotal", "novosClientesTotal"]);
+
+/**
+ * Funde a edição de um lançamento mensal com o que já estava salvo, e
+ * recalcula a distribuição diária — regra de atualização do item 2/3 do
+ * pedido: só substitui o que veio no `patch`; o que não veio preserva o
+ * valor salvo (nunca "some" nem vira zero). Determinístico: reaplicar o
+ * mesmo total sobre o mesmo número de dias sempre reproduz as mesmas
+ * fatias, então mesmo um campo "sem mudança real" pode passar por aqui sem
+ * problema algum.
+ *
+ * @param {{valorTotalMensal: number, extras: Record<string, number|null>}} atual — valores hoje salvos no lote
+ * @param {{valorTotalMensal?: number, extras?: Record<string, number|null>}} patch — só as chaves que o usuário de fato editou (chave ausente = não editado)
+ * @param {number} quantidadeDias — nº de dias vinculados a este lote (fixo: a edição nunca muda QUAIS dias pertencem ao lote, só os valores deles)
+ * @returns {{valorTotalMensal: number, extras: Record<string, number|null>, fatiasPorCampo: {valorVendasIfood: number[], [extra: string]: (number[]|null)}}}
+ */
+export function recalcularDistribuicaoMensal({ valorAtual, extrasAtuais, patch, quantidadeDias }) {
+  const valorTotalMensal = Object.prototype.hasOwnProperty.call(patch, "valorTotalMensal") && patch.valorTotalMensal != null
+    ? Number(patch.valorTotalMensal) : Number(valorAtual);
+
+  const patchExtras = patch.extras ?? {};
+  const extras = {};
+  for (const campo of Object.keys(extrasAtuais)) {
+    extras[campo] = Object.prototype.hasOwnProperty.call(patchExtras, campo) ? patchExtras[campo] : extrasAtuais[campo];
+  }
+
+  const fatiasPorCampo = { valorVendasIfood: distribuirValorMensal(valorTotalMensal, quantidadeDias) };
+  for (const [campo, valor] of Object.entries(extras)) {
+    if (valor == null) { fatiasPorCampo[campo] = null; continue; }
+    fatiasPorCampo[campo] = CAMPOS_EXTRAS_MENSAL_INTEIROS.has(campo)
+      ? distribuirQuantidadeMensal(valor, quantidadeDias)
+      : distribuirValorMensal(valor, quantidadeDias);
+  }
+
+  return { valorTotalMensal, extras, fatiasPorCampo };
+}
+
 /** @param {number|null} media @param {number} diasPrevistos @returns {number|null} */
 export function projecaoMensal(media, diasPrevistos) {
   if (media == null) return null;

@@ -11,6 +11,7 @@ export const dashboardExecutivoRouter = Router();
 
 const ver = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_VER);
 const lancar = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_LANCAR);
+const corrigir = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_CORRIGIR);
 const configurar = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_CONFIGURAR);
 const resetarTeste = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_RESETAR_TESTE);
 const excluir = requirePermissao(PERMISSOES.DASHBOARD_EXECUTIVO_EXCLUIR);
@@ -31,6 +32,18 @@ dashboardExecutivoRouter.post("/lancamentos/:id/excluir", excluir, controller.ex
 // diário). Mesma permissão de lançar um dia — é uma outra forma de criar
 // lançamento, não uma ação mais sensível.
 dashboardExecutivoRouter.post("/lancamentos-mensais", lancar, controller.lancamentoMensal);
+
+// Ver o lançamento mensal original de um mês (mesma permissão de leitura).
+dashboardExecutivoRouter.get("/lancamentos-mensais", ver, controller.obterLancamentoMensal);
+
+// Editar/complementar um lançamento mensal existente — os dias que ele gerou
+// já nascem 'finalizado', então editar exige CORRIGIR (mesma régua usada em
+// atualizarLancamento por dia), não só LANCAR.
+dashboardExecutivoRouter.put("/lancamentos-mensais/:id", corrigir, controller.atualizarLancamentoMensal);
+
+// Excluir um lançamento mensal (só os dias que ele gerou) — mesma permissão
+// restrita da exclusão universal de um dia (organization_admin).
+dashboardExecutivoRouter.post("/lancamentos-mensais/:id/excluir", excluir, controller.excluirLancamentoMensal);
 
 // Modelo logístico do iFood (Marketplace x Full Service) — quem só vê usa VER;
 // trocar exige CONFIGURAR (finance/operations/organization_admin, não unit_manager).

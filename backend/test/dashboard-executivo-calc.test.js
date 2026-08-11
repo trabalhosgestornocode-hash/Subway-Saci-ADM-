@@ -12,6 +12,7 @@ import {
   diasDoMes, mesAnterior, STATUS_DIA,
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
+  recalcularDistribuicaoMensal,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -411,5 +412,88 @@ describe("distribuirQuantidadeMensal — mesma exatidão, para contagens inteira
   });
   test("dias <= 0 devolve lista vazia", () => {
     assert.deepEqual(distribuirQuantidadeMensal(50, 0), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recalcularDistribuicaoMensal — regra de edição do lançamento mensal
+// (item 2/3 do pedido de melhoria do fluxo). Casos A, B e E do pedido.
+// ---------------------------------------------------------------------------
+describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensal", () => {
+  const EXTRAS_VAZIOS = {
+    qtdVendasTotal: null, novosClientesTotal: null, taxasComissoesTotal: null,
+    servicosPromocoesTotal: null, taxasEntregadoresTotal: null, outrasDeducoesTotal: null,
+  };
+
+  test("Caso A — só informar taxas depois: faturamento permanece, taxas são adicionadas", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { taxasComissoesTotal: 12000 } }, // valorTotalMensal ausente do patch = não editado
+      quantidadeDias: 31,
+    });
+    assert.equal(r.valorTotalMensal, 80000);
+    assert.equal(r.extras.taxasComissoesTotal, 12000);
+    // Os outros extras continuam null — não viraram 0 só porque um irmão foi preenchido.
+    assert.equal(r.extras.servicosPromocoesTotal, null);
+    assert.equal(r.extras.qtdVendasTotal, null);
+    assert.ok(perto(r.fatiasPorCampo.valorVendasIfood.reduce((s, f) => s + f, 0), 80000, 1e-9));
+    assert.ok(perto(r.fatiasPorCampo.taxasComissoesTotal.reduce((s, f) => s + f, 0), 12000, 1e-9));
+    assert.equal(r.fatiasPorCampo.servicosPromocoesTotal, null);
+  });
+
+  test("Caso B — alterar faturamento de R$80.000 para R$85.000: dias recalculados somam exatamente R$85.000", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { valorTotalMensal: 85000 },
+      quantidadeDias: 31,
+    });
+    assert.equal(r.valorTotalMensal, 85000);
+    assert.equal(r.fatiasPorCampo.valorVendasIfood.length, 31);
+    const soma = r.fatiasPorCampo.valorVendasIfood.reduce((s, f) => s + f, 0);
+    assert.ok(perto(soma, 85000, 1e-9), `soma foi ${soma}`);
+  });
+
+  test("Caso E — campo nunca informado (ausente do patch e já null): continua null, nunca vira zero", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { valorTotalMensal: 82000 }, // muda só o faturamento
+      quantidadeDias: 28,
+    });
+    assert.equal(r.extras.outrasDeducoesTotal, null);
+    assert.equal(r.fatiasPorCampo.outrasDeducoesTotal, null);
+  });
+
+  test("edição não mexe em campos com valor previamente salvo que não vieram no patch", () => {
+    const extrasAtuais = { ...EXTRAS_VAZIOS, taxasComissoesTotal: 12000, servicosPromocoesTotal: 3000 };
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 85000, extrasAtuais,
+      patch: { extras: { servicosPromocoesTotal: 3500 } }, // só mexe num dos dois
+      quantidadeDias: 31,
+    });
+    assert.equal(r.extras.taxasComissoesTotal, 12000); // preservado
+    assert.equal(r.extras.servicosPromocoesTotal, 3500); // atualizado
+    assert.ok(perto(r.fatiasPorCampo.taxasComissoesTotal.reduce((s, f) => s + f, 0), 12000, 1e-9));
+    assert.ok(perto(r.fatiasPorCampo.servicosPromocoesTotal.reduce((s, f) => s + f, 0), 3500, 1e-9));
+  });
+
+  test("limpar um extra explicitamente (patch com null) zera o total, não distribui mais nada", () => {
+    const extrasAtuais = { ...EXTRAS_VAZIOS, outrasDeducoesTotal: 500 };
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais,
+      patch: { extras: { outrasDeducoesTotal: null } },
+      quantidadeDias: 30,
+    });
+    assert.equal(r.extras.outrasDeducoesTotal, null);
+    assert.equal(r.fatiasPorCampo.outrasDeducoesTotal, null);
+  });
+
+  test("contagens inteiras (pedidos/clientes) usam distribuirQuantidadeMensal, não centavos", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { qtdVendasTotal: 100 } },
+      quantidadeDias: 31,
+    });
+    assert.ok(r.fatiasPorCampo.qtdVendasTotal.every((f) => Number.isInteger(f)));
+    assert.equal(r.fatiasPorCampo.qtdVendasTotal.reduce((s, f) => s + f, 0), 100);
   });
 });

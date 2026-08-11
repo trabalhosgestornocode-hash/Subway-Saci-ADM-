@@ -2039,6 +2039,22 @@ tr.dex-linha-na { opacity: .65; }
 .dex-acao-vazia { border-left-color: var(--ok); }
 .dex-acao-vazia p { font-size: 12.5px; color: var(--cinza); margin-top: 4px; }
 
+/* Faixa discreta do lançamento mensal já lançado (item 6) — nunca some sem
+   ação: sempre dá acesso a Visualizar/Editar/Excluir no topo da aba. */
+.dex-lote-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: var(--superficie-2); border: 1px dashed var(--linha); border-radius: 12px;
+  padding: 10px 16px; margin-bottom: 14px;
+}
+.dex-lote-banner-txt { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.dex-lote-banner-label { color: var(--cinza); font-weight: 650; }
+.dex-lote-banner-txt b { font-size: 15px; }
+.dex-lote-banner-meta { color: var(--cinza); font-size: 12.5px; }
+.dex-lote-banner-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.dex-lote-btn-excluir { color: var(--bad); border-color: rgba(219,59,59,.35); }
+.dex-lote-btn-excluir:hover { background: var(--bad-bg); border-color: var(--bad); }
+.dex-lm-nao-informado { color: var(--cinza); font-style: italic; font-weight: 500; }
+
 /* calendário */
 .dex-cal-wrap { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 18px 20px; margin-bottom: 18px; box-shadow: var(--sombra-sm); }
 .dex-cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; margin-bottom: 16px; }

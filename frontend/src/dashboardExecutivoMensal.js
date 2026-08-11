@@ -2,12 +2,23 @@
 // franqueado só sabe o total do mês, não o valor de cada dia. Distribui o
 // total pelos dias sem lançamento (nunca sobrescreve dia já lançado).
 //
-// Fluxo simples de propósito (item 39 do pedido): NÃO é outro wizard de 4
-// etapas — é mês/ano/valor -> prévia -> confirmar. O valor autoritativo é
-// sempre o que o backend recalcula (distribuirValorMensal em
+// Fluxo simples de propósito (item 39 do pedido original): NÃO é outro
+// wizard de 4 etapas — é mês/ano/valor -> prévia -> confirmar. O valor
+// autoritativo é sempre o que o backend recalcula (distribuirValorMensal em
 // dashboardExecutivo.calc.js), inclusive a exatidão em centavos.
-import { el, escapeHtml, toast, fmtMoeda } from "./utils.js";
-import { dashExecPreviewLancamentoMensal, dashExecConfirmarLancamentoMensal } from "./api.js";
+//
+// GERENCIAMENTO (visualizar/editar/excluir): quando o mês JÁ TEM um
+// lançamento mensal, este modal nunca mais tenta criar um segundo — abre
+// direto a tela de gerenciamento (ver dashboardExecutivo.service.js#lancamentoMensal,
+// que agora bloqueia a criação duplicada com uma mensagem acionável). Editar
+// só substitui o que o usuário de fato mexeu — campo intocado preserva o
+// valor salvo, nunca vira zero nem some (ver atualizarLancamentoMensal).
+import { el, escapeHtml, toast, fmtMoeda, fmtDataHora } from "./utils.js";
+import { pode } from "./sessao.js";
+import {
+  dashExecPreviewLancamentoMensal, dashExecConfirmarLancamentoMensal,
+  dashExecLancamentoMensal, dashExecAtualizarLancamentoMensal, dashExecExcluirLancamentoMensal,
+} from "./api.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -25,6 +36,9 @@ function abrirOverlay(html) {
   return ov.querySelector(".modal");
 }
 
+const podeEditarLote = () => pode("dashboard_executivo.corrigir");
+const podeExcluirLote = () => pode("dashboard_executivo.excluir");
+
 // Campos extras — TODOS opcionais. Preenchidos, viram totais do mês que o
 // backend distribui do mesmo jeito exato do faturamento (contagem inteira
 // pra pedidos/clientes, centavo exato pra valores). Vazios, o dia gerado
@@ -37,21 +51,41 @@ const CAMPOS_EXTRAS = [
   { campo: "taxasEntregadoresTotal", label: "Taxas de entregadores do mês (R$)", tipo: "money", ocultoSeFullService: true },
   { campo: "outrasDeducoesTotal", label: "Outras deduções do mês (R$)", tipo: "money" },
 ];
+const ROTULO_EXTRA = Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, c.label.replace(" do mês", "").replace(" (R$)", "")]));
+const camposVisiveis = () => CAMPOS_EXTRAS.filter((c) => !(c.ocultoSeFullService && lm.modeloLogistico === "full_service"));
 
 /**
- * @param {{unidadeId: string|null, mes: number, ano: number, modeloLogistico?: string, onSalvo: () => void}} p
+ * @param {{unidadeId: string|null, mes: number, ano: number, modeloLogistico?: string, onSalvo: () => void, modoInicial?: 'ver'|'editar'|'excluir'}} p
  */
-export function abrirLancamentoMensalModal({ unidadeId, mes, ano, modeloLogistico, onSalvo }) {
+export async function abrirLancamentoMensalModal({ unidadeId, mes, ano, modeloLogistico, onSalvo, modoInicial }) {
   // abrirOverlay() fecha qualquer modal anterior (fecharOverlay zera `lm`) —
   // por isso o estado só é atribuído DEPOIS de abrir o overlay novo, nunca
   // antes (mesma pegadinha documentada em dashboardExecutivoForm.js).
-  const m = abrirOverlay("");
-  lm = { unidadeId, mes, ano, modeloLogistico, valor: "", extras: {}, onSalvo };
-  renderEntrada(m);
+  const m = abrirOverlay(`<div class="estado"><div class="spinner"></div>Carregando…</div>`);
+  lm = { unidadeId, mes, ano, modeloLogistico, valor: "", extras: {}, onSalvo, lote: null, edicao: null };
+  try {
+    const { data } = await dashExecLancamentoMensal({ unidadeId: unidadeId || undefined, mes, ano });
+    if (data.existe) {
+      lm.lote = data;
+      if (modoInicial === "editar") renderEdicao(m);
+      else if (modoInicial === "excluir") renderConfirmarExclusao(m);
+      else renderGerenciamento(m);
+    } else {
+      renderEntrada(m);
+    }
+  } catch (e) {
+    m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
+      <div class="estado erro"><span class="emoji">⚠️</span><h3>Erro ao carregar</h3><p>${escapeHtml(e.message)}</p></div>`;
+    m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  }
 }
 
+// ---------------------------------------------------------------------------
+// CRIAÇÃO — só aparece quando o mês AINDA NÃO tem lançamento mensal (item 8:
+// nunca mais bloqueia dizendo "já foi lançado" sem saída — quando já existe,
+// abrirLancamentoMensalModal acima nem chega aqui, vai direto pro gerenciamento).
+// ---------------------------------------------------------------------------
 function renderEntrada(m) {
-  const camposVisiveis = CAMPOS_EXTRAS.filter((c) => !(c.ocultoSeFullService && lm.modeloLogistico === "full_service"));
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
     <div class="modal-head"><h2>📅 Lançar faturamento mensal</h2></div>
@@ -66,7 +100,7 @@ function renderEntrada(m) {
     </div>
     <p class="dex-form-info">📎 Dados complementares — preencha caso tenha esses totais do mês também. Nada aqui é obrigatório; o que ficar em branco fica "não informado", nunca zero.</p>
     <div class="cfg-form-grid">
-      ${camposVisiveis.map((c) => `
+      ${camposVisiveis().map((c) => `
         <label class="cfg-campo"><span>${c.label}</span>
           <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="Não informado"></label>`).join("")}
     </div>
@@ -118,8 +152,6 @@ async function avancarParaPrevia(m) {
   }
 }
 
-const ROTULO_EXTRA = Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, c.label.replace(" do mês", "").replace(" (R$)", "")]));
-
 function renderPrevia(m, preview) {
   const temLancamentosExistentes = preview.diasComLancamento > 0;
   const informados = preview.camposExtrasInformados ?? [];
@@ -165,5 +197,172 @@ async function confirmar(m, preview) {
   } catch (e) {
     toast("Erro: " + e.message);
     btn.disabled = false; btn.textContent = "Confirmar distribuição";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GERENCIAMENTO — item 1/6/7 do pedido: ver o lançamento mensal ORIGINAL
+// (não os dias distribuídos), com acesso a Editar e Excluir.
+// ---------------------------------------------------------------------------
+function linhaResumo(rotulo, valorHtml) {
+  return `<div class="dex-conf-item"><span>${escapeHtml(rotulo)}</span><b>${valorHtml}</b></div>`;
+}
+
+function renderGerenciamento(m) {
+  const lote = lm.lote;
+  const linhasExtras = camposVisiveis().map((c) => {
+    const valor = lote.extras[c.campo];
+    const html = valor == null ? `<span class="dex-lm-nao-informado">Não informado</span>` : (c.tipo === "money" ? fmtMoeda(valor) : String(valor));
+    return linhaResumo(c.label.replace(" do mês", ""), html);
+  }).join("");
+  const rodape = [
+    `Criado em ${fmtDataHora(lote.criadoEm)}${lote.criadoPor?.nome ? ` por ${escapeHtml(lote.criadoPor.nome)}` : ""}.`,
+    lote.atualizadoPor ? `Última atualização em ${fmtDataHora(lote.atualizadoEm)} por ${escapeHtml(lote.atualizadoPor.nome ?? lote.atualizadoPor.email ?? "—")}.` : "",
+  ].filter(Boolean).join(" ");
+
+  m.innerHTML = `
+    <button class="modal-close" aria-label="Fechar">×</button>
+    <div class="modal-head"><h2>📅 Lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
+    <p class="dex-form-info">Origem: <b>distribuição mensal</b> (<code>monthly_distribution</code>) — este é o lançamento original que gerou os ${lote.diasDistribuidos} dia(s) estimados na grade, não os valores diários em si.</p>
+    <div class="dex-conf-grid">
+      ${linhaResumo("Faturamento mensal informado", fmtMoeda(lote.valorTotalMensal))}
+      ${linhaResumo("Dias distribuídos", String(lote.diasDistribuidos))}
+      ${linhaResumo("Valor médio por dia", fmtMoeda(lote.valorMedioAproximado))}
+      ${linhasExtras}
+    </div>
+    ${lote.camposPendentes.length ? `<div class="dex-avisos"><b>📎 Dados complementares pendentes:</b> ${lote.camposPendentes.map((c) => escapeHtml(ROTULO_EXTRA[c])).join(", ")}. Use "Editar" para completar sem refazer o lançamento.</div>` : ""}
+    <p class="dex-form-info">${rodape}</p>
+    <div class="ed-acoes dex-form-acoes">
+      <button class="btn btn-ghost" id="lm-fechar">Fechar</button>
+      ${podeEditarLote() ? `<button class="btn btn-ghost" id="lm-ir-editar">✏️ Editar / Atualizar lançamento</button>` : ""}
+      ${podeExcluirLote() ? `<button class="btn btn-perigo" id="lm-ir-excluir">🗑️ Excluir lançamento mensal</button>` : ""}
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#lm-fechar").addEventListener("click", fecharOverlay);
+  m.querySelector("#lm-ir-editar")?.addEventListener("click", () => renderEdicao(m));
+  m.querySelector("#lm-ir-excluir")?.addEventListener("click", () => renderConfirmarExclusao(m));
+}
+
+// ---------------------------------------------------------------------------
+// EDIÇÃO — item 2/3 do pedido: só substitui o que o usuário de fato editar.
+// Campo deixado como estava (igual ao valor pré-preenchido) não é enviado —
+// preserva o que já estava salvo, nunca vira zero nem some em silêncio.
+// ---------------------------------------------------------------------------
+function renderEdicao(m) {
+  const lote = lm.lote;
+  if (!lm.edicao) {
+    lm.edicao = {
+      valorTotalMensal: String(lote.valorTotalMensal),
+      extras: Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, lote.extras[c.campo] ?? ""])),
+    };
+  }
+  const ed = lm.edicao;
+  m.innerHTML = `
+    <button class="modal-close" aria-label="Fechar">×</button>
+    <div class="modal-head"><h2>✏️ Editar lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
+    <p class="dex-form-info">Só o que você alterar aqui é substituído — o resto continua exatamente como estava salvo. Deixar um campo como está (sem mexer) não apaga o valor dele.</p>
+    <div class="cfg-form-grid">
+      <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$)</span>
+        <input type="number" min="0.01" step="0.01" id="lm-ed-valor" value="${ed.valorTotalMensal}"></label>
+    </div>
+    <p class="dex-form-info">⚠️ Alterar o faturamento recalcula a distribuição pelos mesmos ${lote.diasDistribuidos} dia(s) já lançados — a soma continua batendo exatamente com o novo valor.</p>
+    <div class="cfg-form-grid">
+      ${camposVisiveis().map((c) => `
+        <label class="cfg-campo"><span>${c.label}</span>
+          <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="Não informado"></label>`).join("")}
+    </div>
+    <div class="ed-acoes dex-form-acoes">
+      <button class="btn btn-ghost" id="lm-ed-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="lm-ed-salvar">Salvar alterações</button>
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#lm-ed-cancelar").addEventListener("click", () => { lm.edicao = null; renderGerenciamento(m); });
+  m.querySelector("#lm-ed-valor").addEventListener("input", (e) => { ed.valorTotalMensal = e.target.value; });
+  m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
+    ed.extras[e.target.dataset.extra] = e.target.value;
+  }));
+  m.querySelector("#lm-ed-salvar").addEventListener("click", () => salvarEdicao(m));
+}
+
+/** Só entra no patch o que MUDOU em relação ao valor salvo (`lm.lote`) — chave ausente = "não editei", preserva o que já estava lá. */
+function payloadPatchExtras() {
+  const lote = lm.lote;
+  const p = {};
+  for (const { campo } of CAMPOS_EXTRAS) {
+    const valorForm = lm.edicao.extras[campo];
+    const valorOriginal = lote.extras[campo];
+    const strOriginal = valorOriginal == null ? "" : String(valorOriginal);
+    if (valorForm === strOriginal) continue; // intocado — não manda a chave
+    p[campo] = valorForm === "" ? null : Number(valorForm); // limpou de propósito -> null explícito; senão, novo valor
+  }
+  return p;
+}
+
+async function salvarEdicao(m) {
+  const valorForm = lm.edicao.valorTotalMensal;
+  if (!valorForm || Number(valorForm) <= 0) { toast("Informe o faturamento total do mês."); return; }
+  const patch = { valorTotalMensal: Number(valorForm), ...payloadPatchExtras() };
+  const btn = m.querySelector("#lm-ed-salvar");
+  btn.disabled = true; btn.textContent = "Salvando…";
+  const loteId = lm.lote.id;
+  const onSalvo = lm.onSalvo;
+  try {
+    const { data } = await dashExecAtualizarLancamentoMensal(loteId, patch);
+    lm.lote = data; lm.edicao = null;
+    toast(`Lançamento mensal de ${MESES[data.mes - 1]}/${data.ano} atualizado.`);
+    renderGerenciamento(m);
+    onSalvo?.();
+  } catch (e) {
+    toast("Erro: " + e.message);
+    btn.disabled = false; btn.textContent = "Salvar alterações";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EXCLUSÃO — item 4 do pedido: remove SÓ os dias gerados por este lote;
+// lançamentos manuais no mesmo mês nunca são tocados (garantido no backend
+// pelo vínculo distribuicao_mensal_id, não por comparação de valores).
+// ---------------------------------------------------------------------------
+function renderConfirmarExclusao(m) {
+  const lote = lm.lote;
+  const rotuloMes = `${MESES[lote.mes - 1]}/${lote.ano}`;
+  m.innerHTML = `
+    <button class="modal-close" aria-label="Fechar">×</button>
+    <div class="modal-head"><h2>🗑️ Excluir lançamento mensal — ${rotuloMes}</h2></div>
+    <div class="dex-avisos dex-avisos-perigo">
+      <p><b>Você está prestes a excluir o lançamento mensal de ${rotuloMes} e os valores diários estimados gerados por ele.</b></p>
+      <div class="dex-conf-grid">
+        ${linhaResumo("Faturamento lançado", fmtMoeda(lote.valorTotalMensal))}
+        ${linhaResumo("Dias afetados", String(lote.diasDistribuidos))}
+      </div>
+      <p>Lançamentos manuais (reais) no mesmo mês <b>não são afetados</b> — só os dias criados por esta distribuição. O registro completo fica guardado no log de exclusões.</p>
+    </div>
+    <label class="cfg-campo ed-campo-full"><span>Motivo da exclusão (obrigatório) *</span>
+      <input type="text" id="lm-excl-motivo" placeholder="Explique por que este lançamento está sendo apagado"></label>
+    <div class="ed-acoes dex-form-acoes">
+      <button class="btn btn-ghost" id="lm-excl-cancelar">Cancelar</button>
+      <button class="btn btn-perigo" id="lm-excl-confirmar">Excluir lançamento</button>
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#lm-excl-cancelar").addEventListener("click", () => renderGerenciamento(m));
+  m.querySelector("#lm-excl-confirmar").addEventListener("click", () => confirmarExclusaoLote(m));
+}
+
+async function confirmarExclusaoLote(m) {
+  const motivo = m.querySelector("#lm-excl-motivo")?.value.trim() || "";
+  if (motivo.length < 3) { toast("Informe o motivo da exclusão (mínimo 3 caracteres)."); return; }
+  const btn = m.querySelector("#lm-excl-confirmar");
+  const loteId = lm.lote.id;
+  const unidadeId = lm.unidadeId; // captura antes: fecharOverlay() zera `lm`
+  const onSalvo = lm.onSalvo;
+  btn.disabled = true; btn.textContent = "Excluindo…";
+  try {
+    await dashExecExcluirLancamentoMensal(loteId, { unidadeId: unidadeId || undefined, motivo });
+    toast("Lançamento mensal excluído.");
+    fecharOverlay();
+    onSalvo?.();
+  } catch (e) {
+    toast("Erro: " + e.message);
+    btn.disabled = false; btn.textContent = "Excluir lançamento";
   }
 }

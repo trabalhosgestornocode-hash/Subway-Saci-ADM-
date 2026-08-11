@@ -243,6 +243,15 @@ export async function dashExecAtualizarModeloLogistico(unidadeId, dados) {
 // ---------- Lançamento de faturamento mensal (distribuição p/ meses históricos) ----------
 export const dashExecPreviewLancamentoMensal = (dados) => postJson(`${DEX}/lancamentos-mensais`, { ...dados, confirmar: false });
 export const dashExecConfirmarLancamentoMensal = (dados) => postJson(`${DEX}/lancamentos-mensais`, { ...dados, confirmar: true });
+export const dashExecLancamentoMensal = (f) => getJson(`${DEX}/lancamentos-mensais${qs(f)}`);
+export async function dashExecAtualizarLancamentoMensal(id, dados) {
+  const g = geracaoContexto();
+  const r = await fetch(`${API_BASE}${DEX}/lancamentos-mensais/${id}`, {
+    method: "PUT", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify(dados),
+  });
+  return tratar(r, g);
+}
+export const dashExecExcluirLancamentoMensal = (id, dados) => postJson(`${DEX}/lancamentos-mensais/${id}/excluir`, dados);
 
 // ---------- Reset de dia (SÓ em unidade de teste) ----------
 export const dashExecPreviewResetTeste = (unidadeId, data) => postJson(`${DEX}/unidades/${unidadeId}/reset-teste`, { data, confirmar: false });

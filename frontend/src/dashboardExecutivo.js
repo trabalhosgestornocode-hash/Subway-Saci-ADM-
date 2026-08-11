@@ -473,6 +473,7 @@ function renderLancamentos(box) {
   }
 
   box.innerHTML = `
+    ${lancamentoMensalBanner(d.lancamentoMensal)}
     ${alertaPendencias(d)}
     <section class="dex-cal-wrap">
       <div class="dex-cal">${d.calendario.map((dia) => diaHtml(dia)).join("")}</div>
@@ -487,9 +488,47 @@ function renderLancamentos(box) {
   linhaEvolucao("dex-chart-evo", d.graficos.evolucaoDiaria, "diario");
   linhaEvolucaoDeducoes("dex-chart-evoded", d.graficos.evolucaoDeducoes);
 
-  box.querySelectorAll(".dex-cal-dia[data-clicavel]").forEach((el) => el.addEventListener("click", () => {
-    abrirLancamentoModal({ data: el.dataset.data, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, ehTeste: d.ehTeste, onSalvo: carregarConteudo });
+  el("#dex-lote-ver")?.addEventListener("click", () => abrirLancamentoMensalModal({
+    unidadeId: dex.unidadeId, mes: dex.mes, ano: dex.ano, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo, modoInicial: "ver",
   }));
+  el("#dex-lote-editar")?.addEventListener("click", () => abrirLancamentoMensalModal({
+    unidadeId: dex.unidadeId, mes: dex.mes, ano: dex.ano, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo, modoInicial: "editar",
+  }));
+  el("#dex-lote-excluir")?.addEventListener("click", () => abrirLancamentoMensalModal({
+    unidadeId: dex.unidadeId, mes: dex.mes, ano: dex.ano, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo, modoInicial: "excluir",
+  }));
+
+  // Dia "estimado" (originado da distribuição mensal) nunca abre o formulário
+  // diário normal — item 7 do pedido: não é um lançamento manual
+  // independente, é uma fatia do lançamento mensal. Abre o gerenciamento dele.
+  box.querySelectorAll(".dex-cal-dia[data-clicavel]").forEach((elDia) => elDia.addEventListener("click", () => {
+    if (elDia.dataset.estimado) {
+      abrirLancamentoMensalModal({ unidadeId: dex.unidadeId, mes: dex.mes, ano: dex.ano, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo, modoInicial: "ver" });
+      return;
+    }
+    abrirLancamentoModal({ data: elDia.dataset.data, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, ehTeste: d.ehTeste, onSalvo: carregarConteudo });
+  }));
+}
+
+// Faixa discreta no topo da aba Lançamentos quando o mês já tem um
+// lançamento mensal (item 6 do pedido) — dá acesso direto a
+// visualizar/editar/excluir sem precisar clicar num dia estimado.
+function lancamentoMensalBanner(lote) {
+  if (!lote) return "";
+  const pendente = lote.camposPendentes?.length > 0;
+  return `
+    <div class="dex-lote-banner">
+      <div class="dex-lote-banner-txt">
+        <span class="dex-lote-banner-label">📅 Faturamento mensal lançado</span>
+        <b>${fmtMoeda(lote.valorTotalMensal)}</b>
+        <span class="dex-lote-banner-meta">${lote.diasDistribuidos} dia(s) distribuído(s)${pendente ? ` · <span class="pill warn">Dados complementares pendentes</span>` : ""}</span>
+      </div>
+      <div class="dex-lote-banner-acoes">
+        <button class="btn btn-ghost btn-sm" id="dex-lote-ver" type="button">Visualizar</button>
+        ${pode("dashboard_executivo.corrigir") ? `<button class="btn btn-ghost btn-sm" id="dex-lote-editar" type="button">Editar</button>` : ""}
+        ${pode("dashboard_executivo.excluir") ? `<button class="btn btn-ghost btn-sm dex-lote-btn-excluir" id="dex-lote-excluir" type="button">Excluir</button>` : ""}
+      </div>
+    </div>`;
 }
 
 function diaHtml(dia) {
@@ -501,8 +540,8 @@ function diaHtml(dia) {
   // dado financeiro válido), mas com um sinal discreto (~) de que o valor é
   // uma distribuição estimada, não um lançamento diário real.
   const estimado = dia.lancamento?.origem_lancamento === "distribuicao_mensal";
-  const tituloEstimado = estimado ? " · estimado (distribuição mensal)" : "";
-  return `<div class="dex-cal-dia pill ${s.classe}${estimado ? " estimado" : ""}" ${clicavel ? `data-clicavel data-data="${dia.data}" role="button" tabindex="0"` : ""} title="${fmtDataBr(dia.data)} · ${s.label}${tituloEstimado}">
+  const tituloEstimado = estimado ? " · Origem: distribuição mensal (clique para ver o lançamento mensal)" : "";
+  return `<div class="dex-cal-dia pill ${s.classe}${estimado ? " estimado" : ""}" ${clicavel ? `data-clicavel data-data="${dia.data}" role="button" tabindex="0"` : ""}${estimado ? " data-estimado=\"1\"" : ""} title="${fmtDataBr(dia.data)} · ${s.label}${tituloEstimado}">
     <span class="dex-cal-num">${numero}${estimado ? ' <span class="dex-cal-estimado" aria-label="Distribuição mensal estimada">~</span>' : ""}</span><span class="dex-cal-status">${s.label}</span>
   </div>`;
 }

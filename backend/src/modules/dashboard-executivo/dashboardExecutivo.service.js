@@ -9,12 +9,14 @@ import {
   totalDeducoes, receitaAposDeducoes, saldoPercentual, mediaDiaria, projecaoMensal,
   confiabilidadeProjecao, validarOutrasDeducoes,
   inconsistencias, STATUS_DIA, indicadorAplicavel, statusIndicador, saldoMeta,
-  distribuirValorMensal, distribuirQuantidadeMensal,
+  distribuirValorMensal, distribuirQuantidadeMensal, recalcularDistribuicaoMensal,
 } from "./dashboardExecutivo.calc.js";
 import { gerarDiagnostico, LIMIARES_DIAGNOSTICO } from "./dashboardExecutivo.diagnostico.js";
 
 const TABELA = "lancamentos_financeiros_diarios";
 const TABELA_AUDITORIA = "lancamentos_financeiros_auditoria";
+const TABELA_MENSAL = "lancamentos_financeiros_distribuicao_mensal";
+const TABELA_MENSAL_AUDITORIA = "lancamentos_financeiros_distribuicao_mensal_auditoria";
 const RESOLVIDOS_COM_DADOS = new Set([STATUS_DIA.PREENCHIDO, STATUS_DIA.ZERO_VENDAS]);
 
 // ---------------------------------------------------------------------------
@@ -379,6 +381,14 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
 
   const pendenciasMesesAnteriores = await calcularPendenciasMesAnterior({ unidadeId, ano, mes, hojeIso });
 
+  // Resumo do lançamento mensal deste mês (se existir) — alimenta a faixa
+  // discreta no topo da aba Lançamentos (item 6 do pedido). Reaproveita as
+  // `linhas` já carregadas por carregarCalendarioMes acima: nenhuma consulta
+  // extra além de buscar o lote em si.
+  const loteMensal = await buscarLoteMensalDoMes({ unidadeId, ano, mes });
+  const linhasDoLote = loteMensal ? linhas.filter((r) => r.distribuicao_mensal_id === loteMensal.id) : [];
+  const lancamentoMensal = montarResumoLoteMensal(loteMensal, linhasDoLote);
+
   return {
     agregado: false,
     unidadeId,
@@ -389,6 +399,7 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     resumoPreenchimento: resumo,
     calendario: diasComStatus,
     pendenciasMesesAnteriores,
+    lancamentoMensal,
     cards,
     indicadoresRentabilidade: Object.fromEntries(
       Object.entries(indicadoresRentabilidade).map(([k, atualBruto]) => {
@@ -941,6 +952,104 @@ function validarEntradaLancamentoMensal({ mesRaw, anoRaw, valorRaw, extrasRaw })
   return { mes, ano, valorTotalMensal, extras };
 }
 
+// Nome da coluna, em `lancamentos_financeiros_diarios`, que carrega a fatia
+// diária de cada campo extra do lançamento mensal.
+const COLUNA_DIARIA_EXTRA = {
+  qtdVendasTotal: "qtd_vendas",
+  novosClientesTotal: "novos_clientes",
+  taxasComissoesTotal: "taxas_comissoes",
+  servicosPromocoesTotal: "servicos_promocoes",
+  taxasEntregadoresTotal: "taxas_entregadores",
+  outrasDeducoesTotal: "outras_deducoes",
+};
+
+/** `true` só quando a chave está de fato presente no corpo (distingue "não editou" de "editou para vazio/null"). */
+function campoInformado(body, chave) {
+  return Object.prototype.hasOwnProperty.call(body, chave);
+}
+
+/** Lote mais recente de distribuição mensal para esta unidade/ano/mês, ou `null`. Só há um lote "ativo" por mês (ver `lancamentoMensal`, que bloqueia um segundo). */
+async function buscarLoteMensalDoMes({ unidadeId, ano, mes }) {
+  const { data, error } = await supabase
+    .from(TABELA_MENSAL).select("*").eq("unidade_id", unidadeId).eq("ano", ano).eq("mes", mes)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  return data;
+}
+
+/**
+ * Projeta um lote + os dias diários vinculados a ele para a API — a
+ * "leitura do lançamento mensal original" pedida no item 1 (não confundir
+ * com os valores diários distribuídos: aqui é o total que o franqueado
+ * informou, reconstituído a partir do que foi de fato gravado). Os totais
+ * dos campos extras são a SOMA das fatias diárias do lote — nunca uma
+ * cópia guardada à parte — porque a soma de `distribuirValorMensal`/
+ * `distribuirQuantidadeMensal` é sempre exatamente igual ao total original
+ * (ver dashboardExecutivo.calc.js), então não há uma segunda fonte de
+ * verdade para divergir.
+ */
+function montarResumoLoteMensal(lote, linhasDoLote) {
+  if (!lote) return null;
+  const somaNulavel = (coluna) => {
+    const valores = linhasDoLote.map((r) => r[coluna]).filter((x) => x != null);
+    return valores.length ? valores.reduce((s, x) => s + Number(x), 0) : null;
+  };
+  const extras = {};
+  for (const [campo] of CAMPOS_EXTRAS_MENSAL) extras[campo] = somaNulavel(COLUNA_DIARIA_EXTRA[campo]);
+  const camposPendentes = CAMPOS_EXTRAS_MENSAL.filter(([campo]) => extras[campo] == null).map(([campo]) => campo);
+  const valorTotalMensal = lote.valor_total_centavos / 100;
+
+  return {
+    id: lote.id,
+    unidadeId: lote.unidade_id,
+    mes: lote.mes,
+    ano: lote.ano,
+    origem: "monthly_distribution",
+    valorTotalMensal,
+    diasDistribuidos: lote.dias_distribuidos,
+    valorMedioAproximado: lote.dias_distribuidos > 0 ? valorTotalMensal / lote.dias_distribuidos : null,
+    diasCriados: linhasDoLote.map((r) => r.data_lancamento).sort(),
+    extras,
+    camposPendentes,
+    criadoEm: lote.created_at,
+    criadoPor: { id: lote.usuario_id ?? null, nome: lote.usuario_nome ?? null, email: lote.usuario_email ?? null },
+    atualizadoEm: lote.updated_at ?? lote.created_at,
+    atualizadoPor: lote.atualizado_por_nome || lote.atualizado_por_email
+      ? { id: lote.atualizado_por_id ?? null, nome: lote.atualizado_por_nome ?? null, email: lote.atualizado_por_email ?? null }
+      : null,
+  };
+}
+
+/** Auditoria do LOTE (criado/editado/excluído) — nunca derruba a operação se falhar (mesmo espírito de `registrarAuditoria`). */
+async function registrarAuditoriaMensal({ distribuicaoMensalId, organizacaoId, unidadeId, ano, mes, acao, camposAlterados, usuario }) {
+  const { error } = await supabase.from(TABELA_MENSAL_AUDITORIA).insert({
+    distribuicao_mensal_id: distribuicaoMensalId,
+    organizacao_id: organizacaoId, unidade_id: unidadeId, ano, mes, acao,
+    campos_alterados: camposAlterados ?? null,
+    usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+  });
+  if (error) console.error("[dashboard-executivo] falha ao registrar auditoria do lançamento mensal:", error.message);
+}
+
+// ---------------------------------------------------------------------------
+// GET /dashboard-executivo/lancamentos-mensais — item 1 do pedido: ver o
+// lançamento mensal ORIGINAL (não os valores diários que ele gerou).
+// ---------------------------------------------------------------------------
+export async function obterLancamentoMensal({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, mes: mesRaw, ano: anoRaw }) {
+  const mes = v.numero(mesRaw, "Mês", { min: 1, max: 12 });
+  const ano = v.numero(anoRaw, "Ano", { min: 2000, max: 2100 });
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, exigirEspecifica: true });
+
+  const lote = await buscarLoteMensalDoMes({ unidadeId, ano, mes });
+  if (!lote) return { existe: false, mes, ano, unidadeId };
+
+  const { data: linhasDoLote, error } = await supabase
+    .from(TABELA).select("*").eq("distribuicao_mensal_id", lote.id).order("data_lancamento");
+  if (error) throw ApiError.internal(error.message);
+
+  return { existe: true, ...montarResumoLoteMensal(lote, linhasDoLote ?? []) };
+}
+
 export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, dados: body, confirmar }) {
   const b = v.corpo(body);
   const { mes, ano, valorTotalMensal, extras } = validarEntradaLancamentoMensal({
@@ -949,13 +1058,24 @@ export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidade
   const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado: b.unidadeId, exigirEspecifica: true });
   const hojeIso = hojeIsoBrasil();
 
+  // Item 8 do pedido: um mês já lançado NUNCA bloqueia sem saída — em vez de
+  // tentar (e falhar por falta de dia elegível) criar um SEGUNDO lote para o
+  // mesmo mês, aponta direto para o gerenciamento do lote existente
+  // (visualizar/editar/excluir, ver obterLancamentoMensal/atualizarLancamentoMensal).
+  const loteExistente = await buscarLoteMensalDoMes({ unidadeId, ano, mes });
+  if (loteExistente) {
+    throw new ApiError(409,
+      "Este mês já possui um lançamento de faturamento mensal. Abra o lançamento existente para visualizar, complementar ou excluir.",
+      { lancamentoMensalId: loteExistente.id, existente: true });
+  }
+
   const { diasDoMesTodos, diasComLancamento, diasElegiveisParaDistribuir } =
     await localizarDiasParaDistribuicao({ unidadeId, ano, mes, hojeIso });
 
   if (!diasElegiveisParaDistribuir.length) {
     throw ApiError.badRequest(
       diasComLancamento.length
-        ? "Todos os dias já decorridos deste mês já têm lançamento — não há dia disponível para a distribuição."
+        ? "Todos os dias já decorridos deste mês já têm lançamento individual — não há dia disponível para a distribuição."
         : "Este mês ainda não tem nenhum dia decorrido para receber a distribuição.",
     );
   }
@@ -1023,7 +1143,166 @@ export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidade
     throw ApiError.badRequest(eIns.message);
   }
 
+  await registrarAuditoriaMensal({
+    distribuicaoMensalId: lote.id, organizacaoId, unidadeId, ano, mes, acao: "criado",
+    camposAlterados: { valorTotalMensal, diasDistribuidos: n, ...Object.fromEntries(Object.entries(extras).filter(([, valor]) => valor != null)) },
+    usuario,
+  });
+
   return { ...preview, confirmado: true, distribuicaoId: lote.id, diasCriados: diasElegiveisParaDistribuir };
+}
+
+// ---------------------------------------------------------------------------
+// PUT /dashboard-executivo/lancamentos-mensais/:id — item 2/3 do pedido:
+// editar/complementar SEM apagar o que já tinha, e recalcular a distribuição
+// diária quando o faturamento muda (mantendo a soma exata em centavos).
+// Os dias que pertencem ao lote são sempre os mesmos de quando ele foi
+// criado — editar nunca muda QUAIS dias, só os valores desses dias (ver
+// dashboardExecutivo.calc.js#recalcularDistribuicaoMensal).
+// ---------------------------------------------------------------------------
+export async function atualizarLancamentoMensal({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, id, dados: body }) {
+  const loteId = v.uuid(id, "Lançamento mensal");
+  const b = v.corpo(body);
+
+  const { data: lote, error: eLote } = await supabase.from(TABELA_MENSAL).select("*").eq("id", loteId).eq("organizacao_id", organizacaoId).maybeSingle();
+  if (eLote) throw ApiError.internal(eLote.message);
+  if (!lote) throw ApiError.notFound("Lançamento mensal não encontrado.");
+
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado: unidadeIdSolicitado ?? lote.unidade_id, exigirEspecifica: true });
+  if (lote.unidade_id !== unidadeId) throw ApiError.forbidden("Você não tem acesso a este lançamento.");
+
+  const { data: linhas, error: eLinhas } = await supabase
+    .from(TABELA).select("*").eq("distribuicao_mensal_id", loteId).order("data_lancamento");
+  if (eLinhas) throw ApiError.internal(eLinhas.message);
+  if (!linhas?.length) {
+    throw ApiError.badRequest("Este lançamento mensal não tem mais dias vinculados a ele (podem ter sido removidos individualmente). Exclua o lote e lance novamente.");
+  }
+  const n = linhas.length;
+
+  // Só valida/entra no patch o que o corpo realmente trouxe — chave ausente
+  // preserva o valor salvo (regra "não apagar em silêncio" do item 2).
+  const valorAtual = lote.valor_total_centavos / 100;
+  const patch = {};
+  if (campoInformado(b, "valorTotalMensal")) {
+    patch.valorTotalMensal = v.numero(b.valorTotalMensal, "Faturamento total do mês", { min: 0.01 });
+  }
+  const extrasAtuais = {};
+  for (const [campo] of CAMPOS_EXTRAS_MENSAL) {
+    const valores = linhas.map((r) => r[COLUNA_DIARIA_EXTRA[campo]]).filter((x) => x != null);
+    extrasAtuais[campo] = valores.length ? valores.reduce((s, x) => s + Number(x), 0) : null;
+  }
+  const patchExtras = {};
+  for (const [campo, rotulo] of CAMPOS_EXTRAS_MENSAL) {
+    if (campoInformado(b, campo)) patchExtras[campo] = v.numeroOpcionalNulo(b[campo], rotulo, { min: 0 });
+  }
+  if (Object.keys(patchExtras).length) patch.extras = patchExtras;
+
+  // Nada foi de fato enviado (PUT vazio) — devolve o estado atual sem tocar no banco.
+  if (!campoInformado(b, "valorTotalMensal") && !Object.keys(patchExtras).length) {
+    return { existe: true, ...montarResumoLoteMensal(lote, linhas) };
+  }
+
+  const { valorTotalMensal: valorNovo, extras: extrasNovos, fatiasPorCampo } =
+    recalcularDistribuicaoMensal({ valorAtual, extrasAtuais, patch, quantidadeDias: n });
+
+  // Diff pra auditoria — só entra o que realmente mudou de valor.
+  const camposAlterados = {};
+  if (valorNovo !== valorAtual) camposAlterados.valorTotalMensal = { de: valorAtual, para: valorNovo };
+  for (const [campo] of CAMPOS_EXTRAS_MENSAL) {
+    if (extrasNovos[campo] !== extrasAtuais[campo]) camposAlterados[campo] = { de: extrasAtuais[campo], para: extrasNovos[campo] };
+  }
+  if (!Object.keys(camposAlterados).length) {
+    // Reenviou os mesmos valores já salvos — nada mudou de fato.
+    return { existe: true, ...montarResumoLoteMensal(lote, linhas) };
+  }
+
+  const temQtdVendas = fatiasPorCampo.qtdVendasTotal != null;
+  const resultados = await Promise.all(linhas.map((linha, i) => {
+    const patchLinha = {
+      valor_vendas_ifood: fatiasPorCampo.valorVendasIfood[i],
+      // Mesma regra da criação: valor_vendas_bruto só existe quando a
+      // quantidade de pedidos também foi informada (ver lancamentoMensal acima).
+      valor_vendas_bruto: temQtdVendas ? fatiasPorCampo.valorVendasIfood[i] : null,
+      qtd_vendas: fatiasPorCampo.qtdVendasTotal ? fatiasPorCampo.qtdVendasTotal[i] : null,
+      novos_clientes: fatiasPorCampo.novosClientesTotal ? fatiasPorCampo.novosClientesTotal[i] : null,
+      taxas_comissoes: fatiasPorCampo.taxasComissoesTotal ? fatiasPorCampo.taxasComissoesTotal[i] : null,
+      servicos_promocoes: fatiasPorCampo.servicosPromocoesTotal ? fatiasPorCampo.servicosPromocoesTotal[i] : null,
+      taxas_entregadores: fatiasPorCampo.taxasEntregadoresTotal ? fatiasPorCampo.taxasEntregadoresTotal[i] : null,
+      outras_deducoes: fatiasPorCampo.outrasDeducoesTotal ? fatiasPorCampo.outrasDeducoesTotal[i] : null,
+    };
+    return supabase.from(TABELA).update(patchLinha).eq("id", linha.id);
+  }));
+  const eFalha = resultados.find((r) => r.error);
+  if (eFalha) throw ApiError.badRequest(eFalha.error.message);
+
+  const { data: loteAtualizado, error: eUpd } = await supabase.from(TABELA_MENSAL).update({
+    valor_total_centavos: Math.round(valorNovo * 100),
+    updated_at: new Date().toISOString(),
+    atualizado_por_id: usuario?.id ?? null, atualizado_por_nome: usuario?.nome ?? null, atualizado_por_email: usuario?.email ?? null,
+  }).eq("id", loteId).select("*").single();
+  if (eUpd) throw ApiError.badRequest(eUpd.message);
+
+  await registrarAuditoriaMensal({
+    distribuicaoMensalId: loteId, organizacaoId, unidadeId, ano: lote.ano, mes: lote.mes, acao: "editado", camposAlterados, usuario,
+  });
+
+  const { data: linhasFinal, error: eFinal } = await supabase
+    .from(TABELA).select("*").eq("distribuicao_mensal_id", loteId).order("data_lancamento");
+  if (eFinal) throw ApiError.internal(eFinal.message);
+
+  return { existe: true, ...montarResumoLoteMensal(loteAtualizado, linhasFinal ?? []) };
+}
+
+// ---------------------------------------------------------------------------
+// POST /dashboard-executivo/lancamentos-mensais/:id/excluir — item 4/5 do
+// pedido: remove SÓ os dias que este lote gerou (origem_lancamento =
+// 'distribuicao_mensal' vinculados a `distribuicao_mensal_id = id`) — nunca
+// um lançamento manual, mesmo que esteja no mesmo mês, porque manual nunca
+// carrega esse vínculo. Snapshot de cada dia ANTES de apagar, no mesmo log
+// universal de exclusões usado pela exclusão de um dia avulso (migration 027).
+// ---------------------------------------------------------------------------
+export async function excluirLancamentoMensal({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado, usuario, id, motivo: motivoRaw }) {
+  const loteId = v.uuid(id, "Lançamento mensal");
+  const motivo = v.texto(motivoRaw, "Motivo da exclusão", { min: 3, max: 500 });
+
+  const { data: lote, error: eLote } = await supabase.from(TABELA_MENSAL).select("*").eq("id", loteId).eq("organizacao_id", organizacaoId).maybeSingle();
+  if (eLote) throw ApiError.internal(eLote.message);
+  if (!lote) throw ApiError.notFound("Lançamento mensal não encontrado.");
+
+  const unidadeId = await resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unidadeIdSolicitado: unidadeIdSolicitado ?? lote.unidade_id, exigirEspecifica: true });
+  if (lote.unidade_id !== unidadeId) throw ApiError.forbidden("Você não tem acesso a este lançamento.");
+
+  const { data: linhas, error: eLinhas } = await supabase.from(TABELA).select("*").eq("distribuicao_mensal_id", loteId);
+  if (eLinhas) throw ApiError.internal(eLinhas.message);
+
+  if (linhas?.length) {
+    const { error: eLog } = await supabase.from("lancamentos_financeiros_exclusoes").insert(
+      linhas.map((linha) => ({
+        organizacao_id: organizacaoId, unidade_id: linha.unidade_id, data_lancamento: linha.data_lancamento,
+        lancamento_snapshot: linha, motivo: `Exclusão de lançamento mensal (${lote.mes}/${lote.ano}): ${motivo}`,
+        usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
+      })),
+    );
+    if (eLog) console.error("[dashboard-executivo] falha ao registrar log de exclusão (mensal):", eLog.message);
+  }
+
+  // Auditoria ANTES de apagar o lote — a FK de distribuicao_mensal_id é ON
+  // DELETE SET NULL (não CASCADE), então este registro sobrevive à exclusão
+  // do lote que ele descreve (ver migration 033).
+  await registrarAuditoriaMensal({
+    distribuicaoMensalId: loteId, organizacaoId, unidadeId, ano: lote.ano, mes: lote.mes, acao: "excluido",
+    camposAlterados: { valorTotalMensal: lote.valor_total_centavos / 100, diasRemovidos: linhas?.length ?? 0 },
+    usuario,
+  });
+
+  if (linhas?.length) {
+    const { error: eDel } = await supabase.from(TABELA).delete().eq("distribuicao_mensal_id", loteId);
+    if (eDel) throw ApiError.badRequest(eDel.message);
+  }
+  const { error: eDelLote } = await supabase.from(TABELA_MENSAL).delete().eq("id", loteId);
+  if (eDelLote) throw ApiError.badRequest(eDelLote.message);
+
+  return { excluido: true, mes: lote.mes, ano: lote.ano, diasRemovidos: linhas?.length ?? 0 };
 }
 
 // ---------------------------------------------------------------------------

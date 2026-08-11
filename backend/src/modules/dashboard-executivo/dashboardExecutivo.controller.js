@@ -138,6 +138,48 @@ export const lancamentoMensal = asyncHandler(async (req, res) => {
   res.status(b.confirmar === true ? 201 : 200).json({ data: { confirmado: b.confirmar === true, ...data } });
 });
 
+// Ver o lançamento mensal ORIGINAL do mês (não os dias distribuídos) — item 1.
+export const obterLancamentoMensal = asyncHandler(async (req, res) => {
+  const data = await service.obterLancamentoMensal({
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeIdSessao: req.tenant.unidadeId,
+    unidadeIdSolicitado: req.query.unidadeId,
+    mes: req.query.mes,
+    ano: req.query.ano,
+  });
+  res.json({ data });
+});
+
+// Editar/complementar um lançamento mensal já existente — item 2/3. Exige
+// DASHBOARD_EXECUTIVO_CORRIGIR (mesma régua de "editar dado já finalizado"
+// usada em atualizarLancamento por dia — os dias de um lote nascem finalizados).
+export const atualizarLancamentoMensal = asyncHandler(async (req, res) => {
+  const data = await service.atualizarLancamentoMensal({
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeIdSessao: req.tenant.unidadeId,
+    unidadeIdSolicitado: (req.body ?? {}).unidadeId,
+    usuario: req.user,
+    id: req.params.id,
+    dados: req.body ?? {},
+  });
+  res.json({ data });
+});
+
+// Excluir um lançamento mensal (e só os dias que ele gerou) — item 4/5.
+// Mesma permissão da exclusão universal de um dia (organization_admin).
+export const excluirLancamentoMensal = asyncHandler(async (req, res) => {
+  const b = req.body ?? {};
+  const data = await service.excluirLancamentoMensal({
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeIdSessao: req.tenant.unidadeId,
+    unidadeIdSolicitado: b.unidadeId,
+    usuario: req.user,
+    id: req.params.id,
+    motivo: b.motivo,
+  });
+  res.json({ data });
+});
+
 // Simulação de preço Balcão/iFood + tabela (card "Simulação de preço" da Visão Geral).
 export const simuladorPreco = asyncHandler(async (req, res) => {
   const data = await simularPrecoProduto({
