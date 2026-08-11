@@ -40,6 +40,20 @@ plataformaRouter.get("/modulos", c.catalogoModulos);   // antes de /empresas/:id
 plataformaRouter.get("/empresas/:id/modulos", c.modulosDaEmpresa);
 plataformaRouter.put("/empresas/:id/modulos", c.definirModulosEmpresa);
 
+// ---- Unidades — gerenciamento completo (item 1 do pedido). Módulos de
+// unidade sempre respeitam a herança da empresa (ver plataforma.unidades.service.js).
+plataformaRouter.get("/unidades", c.listarUnidades);
+plataformaRouter.post("/unidades", c.criarUnidade);
+plataformaRouter.get("/unidades/:id", c.obterUnidade);
+plataformaRouter.patch("/unidades/:id", c.atualizarUnidade);
+plataformaRouter.patch("/unidades/:id/status", c.alterarStatusUnidade);
+plataformaRouter.get("/unidades/:id/impacto-exclusao", c.impactoExclusaoUnidade);
+plataformaRouter.delete("/unidades/:id", c.excluirUnidade);
+plataformaRouter.get("/unidades/:id/usuarios", c.usuariosDaUnidade);
+plataformaRouter.get("/unidades/:id/logs", c.logsDaUnidade);
+plataformaRouter.get("/unidades/:id/modulos", c.modulosDaUnidade);
+plataformaRouter.put("/unidades/:id/modulos", c.definirModulosUnidade);
+
 // ---- Usuários globais
 plataformaRouter.get("/usuarios", c.listarUsuarios);
 plataformaRouter.post("/usuarios", c.criarUsuario);
@@ -57,6 +71,7 @@ plataformaRouter.post("/usuarios/:id/empresas", c.associarEmpresa);
 plataformaRouter.patch("/usuarios/:id/empresas/:organizacaoId", c.atualizarVinculo);
 plataformaRouter.delete("/usuarios/:id/empresas/:organizacaoId", c.removerVinculo);
 plataformaRouter.post("/usuarios/:id/unidades", c.associarUnidade);
+plataformaRouter.patch("/usuarios/:id/unidades/:unidadeId", c.atualizarVinculoUnidade);
 plataformaRouter.delete("/usuarios/:id/unidades/:unidadeId", c.removerVinculoUnidade);
 
 // ---- Financeiro do SaaS

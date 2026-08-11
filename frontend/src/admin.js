@@ -109,10 +109,26 @@ function ligarEventos() {
   // empresa" dentro do modal "⋯" — o clique nem borbulhava até o listener.
   // `document` cobre os dois; o filtro por `[data-adm-acao]` já isola isto do
   // resto do app (o shell do tenant usa outro mecanismo de ação).
+  //
+  // `<select data-adm-acao>` (ex.: trocar o cargo de um vínculo) é tratado à
+  // parte: o clique que ABRE o dropdown não carrega o valor novo (o SO ainda
+  // não deixou escolher nada), só o "change" tem o valor certo. Um único
+  // listener de "click" pra tudo disparava a ação com o valor VELHO a cada
+  // abertura do dropdown — por isso os dois tipos de elemento têm listener
+  // próprio, cada um no evento em que o valor de fato está pronto.
   document.addEventListener("click", (e) => {
     const alvo = e.target.closest("[data-adm-acao]");
-    if (!alvo) return;
-    const { admAcao, ...dados } = alvo.dataset;
-    document.dispatchEvent(new CustomEvent("admin:acao", { detail: { acao: admAcao, dados, alvo } }));
+    if (!alvo || alvo.tagName === "SELECT") return;
+    dispararAcaoAdmin(alvo);
   });
+  document.addEventListener("change", (e) => {
+    const alvo = e.target.closest("select[data-adm-acao]");
+    if (!alvo) return;
+    dispararAcaoAdmin(alvo);
+  });
+}
+
+function dispararAcaoAdmin(alvo) {
+  const { admAcao, ...dados } = alvo.dataset;
+  document.dispatchEvent(new CustomEvent("admin:acao", { detail: { acao: admAcao, dados, alvo } }));
 }

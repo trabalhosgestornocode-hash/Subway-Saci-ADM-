@@ -153,3 +153,119 @@ export async function provisionarModulosEmpresa(organizacaoId, moduloIds, habili
   );
   if (error) throw ApiError.internal(error.message);
 }
+
+// ---------------------------------------------------------------------------
+// MÓDULOS POR UNIDADE — HERANÇA EMPRESA -> UNIDADE
+//
+// Uma unidade nunca pode ter acesso a um módulo que a própria empresa não
+// tem. A regra é imposta em DOIS pontos, nunca só um:
+//   * na ESCRITA (definirModulosUnidade/provisionarModulosUnidade): grava
+//     só o que a empresa também tem, mesmo que o chamador peça mais;
+//   * na LEITURA efetiva (modulosEfetivosDaUnidade): interseção sempre,
+//     mesmo que `unidade_modulos` tenha uma linha "órfã" (ex.: a empresa
+//     perdeu o módulo DEPOIS de a unidade já tê-lo — ver definirModulosEmpresa,
+//     que não mexe em unidade_modulos ao remover um módulo da empresa: a
+//     preferência da unidade fica registrada e volta a valer sozinha se a
+//     empresa reganhar o módulo depois, sem o SuperAdmin precisar reconfigurar).
+//
+// `modulosEfetivosDaUnidade` é a ÚNICA função que qualquer parte do sistema
+// deve chamar para saber o que uma unidade pode de fato usar — é o que
+// `sessao.service.js#selecionarContexto` grava na sessão, e é o mesmo cálculo
+// que a tela "Acessos" da unidade usa para desenhar o checklist.
+// ---------------------------------------------------------------------------
+
+/**
+ * Módulos que a UNIDADE tem habilitados (antes de cruzar com a empresa).
+ * @param {string} unidadeId
+ * @returns {Promise<string[]>}
+ */
+export async function modulosDaUnidade(unidadeId) {
+  const { data, error } = await supabase
+    .from("unidade_modulos").select("modulo_id").eq("unidade_id", unidadeId);
+  if (error) throw ApiError.internal(error.message);
+  return (data ?? []).map((r) => r.modulo_id);
+}
+
+/**
+ * Acesso EFETIVO de uma unidade = módulos da empresa ∩ módulos da unidade
+ * (item 4 do pedido). Fonte única — usada tanto pela sessão quanto pelo
+ * painel SuperAdmin, para nunca haver dois lugares calculando isso de jeitos
+ * diferentes.
+ * @param {string} organizacaoId
+ * @param {string} unidadeId
+ * @returns {Promise<string[]>}
+ */
+export async function modulosEfetivosDaUnidade(organizacaoId, unidadeId) {
+  const [daEmpresa, daUnidade] = await Promise.all([
+    modulosDaEmpresa(organizacaoId),
+    modulosDaUnidade(unidadeId),
+  ]);
+  return interseccaoModulos(daEmpresa, daUnidade);
+}
+
+/**
+ * Interseção pura entre dois conjuntos de ids de módulo — separada de
+ * `modulosEfetivosDaUnidade` (que faz I/O) para poder ser testada sem banco,
+ * mesmo espírito de `calcularDiffModulos`.
+ * @param {string[]} modulosEmpresa
+ * @param {string[]} modulosUnidade
+ * @returns {string[]}
+ */
+export function interseccaoModulos(modulosEmpresa, modulosUnidade) {
+  const daEmpresaSet = new Set(modulosEmpresa);
+  return modulosUnidade.filter((id) => daEmpresaSet.has(id));
+}
+
+/**
+ * Insere de uma vez os módulos escolhidos na criação de uma unidade. Filtra
+ * silenciosamente para dentro do que a empresa tem — nunca lança por causa
+ * disso: o chamador já deveria ter oferecido só esses no formulário, isto é
+ * a última linha de defesa, não a validação principal.
+ * @param {string} unidadeId
+ * @param {string[]} moduloIds já validados (ver `validarModulos`)
+ * @param {string[]} modulosDaEmpresaAtual
+ * @param {string|null} [habilitadoPor]
+ * @returns {Promise<string[]>} os que de fato entraram
+ */
+export async function provisionarModulosUnidade(unidadeId, moduloIds, modulosDaEmpresaAtual, habilitadoPor = null) {
+  const permitidos = interseccaoModulos(modulosDaEmpresaAtual, moduloIds);
+  if (!permitidos.length) return [];
+  const { error } = await supabase.from("unidade_modulos").insert(
+    permitidos.map((modulo_id) => ({ unidade_id: unidadeId, modulo_id, habilitado_por: habilitadoPor }))
+  );
+  if (error) throw ApiError.internal(error.message);
+  return permitidos;
+}
+
+/**
+ * Substitui os módulos habilitados de uma unidade pelo conjunto desejado,
+ * recusando qualquer módulo fora do que a empresa possui (a chamada
+ * simplesmente não os grava — quem chama já valida e avisa o usuário antes
+ * disso, ver plataforma.unidades.service.js).
+ * @param {string} unidadeId
+ * @param {string[]} moduloIdsDesejados já validados contra o catálogo geral
+ * @param {string[]} modulosDaEmpresaAtual
+ * @param {string|null} [habilitadoPor]
+ * @returns {Promise<{habilitados: string[], desabilitados: string[], recusados: string[]}>}
+ */
+export async function definirModulosUnidade(unidadeId, moduloIdsDesejados, modulosDaEmpresaAtual, habilitadoPor = null) {
+  const permitidos = interseccaoModulos(modulosDaEmpresaAtual, moduloIdsDesejados);
+  const recusados = moduloIdsDesejados.filter((id) => !permitidos.includes(id));
+
+  const atuais = await modulosDaUnidade(unidadeId);
+  const { habilitados, desabilitados } = calcularDiffModulos(atuais, permitidos);
+
+  if (habilitados.length) {
+    const { error } = await supabase.from("unidade_modulos").insert(
+      habilitados.map((modulo_id) => ({ unidade_id: unidadeId, modulo_id, habilitado_por: habilitadoPor }))
+    );
+    if (error) throw ApiError.internal(error.message);
+  }
+  if (desabilitados.length) {
+    const { error } = await supabase.from("unidade_modulos")
+      .delete().eq("unidade_id", unidadeId).in("modulo_id", desabilitados);
+    if (error) throw ApiError.internal(error.message);
+  }
+
+  return { habilitados, desabilitados, recusados };
+}

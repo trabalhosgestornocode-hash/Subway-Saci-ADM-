@@ -58,6 +58,21 @@ export const adminApi = {
   modulosDaEmpresa: (id) => get(`/empresas/${id}/modulos`),
   definirModulosEmpresa: (id, modulos) => put(`/empresas/${id}/modulos`, { modulos }),
 
+  // Unidades
+  unidades: (f) => get(`/unidades${qs(f)}`),
+  unidade: (id) => get(`/unidades/${id}`),
+  criarUnidade: (dados) => post("/unidades", dados),
+  atualizarUnidade: (id, dados) => patch(`/unidades/${id}`, dados),
+  alterarStatusUnidade: (id, ativo, motivo) => patch(`/unidades/${id}/status`, { ativo, motivo }),
+  impactoExclusaoUnidade: (id) => get(`/unidades/${id}/impacto-exclusao`),
+  // A exclusão exige o nome exato da unidade como confirmação — o backend
+  // recusa sem isso (e recusa de vez se houver histórico operacional).
+  excluirUnidade: (id, confirmacao) => del(`/unidades/${id}`, { confirmacao }),
+  usuariosDaUnidade: (id) => get(`/unidades/${id}/usuarios`),
+  logsDaUnidade: (id, limite) => get(`/unidades/${id}/logs${qs({ limite })}`),
+  modulosDaUnidade: (id) => get(`/unidades/${id}/modulos`),
+  definirModulosUnidade: (id, modulos) => put(`/unidades/${id}/modulos`, { modulos }),
+
   // Usuários globais
   usuarios: (f) => get(`/usuarios${qs(f)}`),
   usuario: (id) => get(`/usuarios/${id}`),
@@ -75,6 +90,7 @@ export const adminApi = {
   atualizarVinculo: (id, organizacaoId, dados) => patch(`/usuarios/${id}/empresas/${organizacaoId}`, dados),
   removerVinculo: (id, organizacaoId) => del(`/usuarios/${id}/empresas/${organizacaoId}`),
   associarUnidade: (id, unidadeId, papel) => post(`/usuarios/${id}/unidades`, { unidadeId, papel }),
+  atualizarVinculoUnidade: (id, unidadeId, dados) => patch(`/usuarios/${id}/unidades/${unidadeId}`, dados),
   removerVinculoUnidade: (id, unidadeId) => del(`/usuarios/${id}/unidades/${unidadeId}`),
 
   // Financeiro

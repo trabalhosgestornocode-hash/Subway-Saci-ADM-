@@ -14,6 +14,8 @@ import { adminApi } from "./adminApi.js";
 import { entrarComoEmpresa, recarregarAdmin, irParaAdmin } from "./admin.js";
 import { abrirAssistenteNovaEmpresa } from "./adminEmpresaWizard.js";
 import { abrirPaginaEmpresa } from "./adminEmpresaDetalhe.js";
+import { abrirAssistenteNovaUnidade } from "./adminUnidadeWizard.js";
+import { abrirPaginaUnidade } from "./adminUnidadeDetalhe.js";
 import {
   num, pct, escapeHtml, fmtMoeda, fmtDataHora, fmtRelativo,
   STATUS_EMPRESA, STATUS_ASSINATURA, STATUS_COBRANCA, SITUACAO, pill,
@@ -25,6 +27,7 @@ import {
 export const TELAS_ADMIN = [
   { id: "dashboard",     label: "Dashboard Global",       icone: "📊", secao: "VISÃO GERAL" },
   { id: "empresas",      label: "Empresas",               icone: "🏢", secao: "GESTÃO" },
+  { id: "unidades",      label: "Unidades",               icone: "🏬", secao: "GESTÃO" },
   { id: "usuarios",      label: "Usuários",               icone: "👥", secao: "GESTÃO" },
   { id: "financeiro",    label: "Financeiro do SaaS",     icone: "💰", secao: "GESTÃO" },
   { id: "monitoramento", label: "Monitoramento",          icone: "📡", secao: "OPERAÇÃO" },
@@ -173,6 +176,72 @@ function acoesEmpresa(e) {
 // daqui (assistente de 4 passos, ver adminEmpresaWizard.js).
 
 // ===========================================================================
+// 2b. UNIDADES — gerenciamento completo (item 1 do pedido). Antes, uma
+// unidade era só um registro filho mostrado numa lista morta dentro da
+// página da empresa; agora tem área própria, com o mesmo nível de
+// gerenciamento que Empresa já tinha (ver adminUnidadeWizard.js/
+// adminUnidadeDetalhe.js).
+// ===========================================================================
+
+let filtrosUnidades = { busca: "", status: "", organizacaoId: "" };
+
+async function viewUnidades() {
+  const [unidades, empresas] = await Promise.all([
+    adminApi.unidades(filtrosUnidades), adminApi.empresas(),
+  ]);
+  cache.empresas = empresas;
+
+  const barraFiltros = `
+    <div class="adm-filtros">
+      ${campo({ id: "un-busca", label: "Buscar", valor: filtrosUnidades.busca, ph: "nome, CNPJ, cidade…" })}
+      ${selecao({ id: "un-empresa", label: "Empresa", valor: filtrosUnidades.organizacaoId, vazio: "Todas",
+        opcoes: empresas.map((e) => ({ valor: e.id, rotulo: e.nome })) })}
+      ${selecao({ id: "un-status", label: "Status", valor: filtrosUnidades.status, vazio: "Todos",
+        opcoes: [{ valor: "ativa", rotulo: "Ativa" }, { valor: "inativa", rotulo: "Inativa" }] })}
+      <div class="adm-filtros-acoes">
+        <button class="btn btn-primary btn-sm" data-adm-acao="unidades-filtrar">Filtrar</button>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="unidades-limpar">Limpar</button>
+      </div>
+    </div>`;
+
+  const linhas = unidades.map((u) => [
+    `<div class="adm-cel-empresa">
+       <span class="adm-logo adm-logo--txt">${escapeHtml((u.nome[0] || "?").toUpperCase())}</span>
+       <span><b>${escapeHtml(u.nome)}</b><small>${escapeHtml([u.cidade, u.estado].filter(Boolean).join("/") || u.cnpj || "—")}</small></span>
+     </div>`,
+    escapeHtml(u.empresa?.nome ?? "—"),
+    u.ativo ? '<span class="pill ok">Ativa</span>' : '<span class="pill muted">Inativa</span>',
+    num(u.modulosAtivos),
+    num(u.usuarios),
+    u.ultimaAtividade
+      ? `<span title="${escapeHtml(fmtDataHora(u.ultimaAtividade))}">${escapeHtml(fmtRelativo(u.ultimaAtividade))}</span>`
+      : '<span class="estado-mini">sem registro</span>',
+    acoesUnidade(u),
+  ]);
+
+  view().innerHTML = secao({
+    titulo: `Unidades (${unidades.length})`,
+    acoes: `<button class="btn btn-primary btn-sm" data-adm-acao="unidade-nova">+ Nova unidade</button>`,
+    corpo: barraFiltros + tabela({
+      colunas: ["Unidade", "Empresa", "Status", "Módulos ativos", "Usuários", "Última atividade", "Ações"],
+      linhas,
+      vazio: "Nenhuma unidade encontrada para os filtros escolhidos.",
+    }),
+  });
+}
+
+/** @param {object} u */
+function acoesUnidade(u) {
+  const d = `data-id="${escapeHtml(u.id)}" data-nome="${escapeHtml(u.nome)}"`;
+  return `<div class="adm-acoes-cel">
+    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-ver" ${d}>Visualizar</button>
+    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-editar" ${d} data-cnpj="${escapeHtml(u.cnpj ?? "")}" data-cidade="${escapeHtml(u.cidade ?? "")}" data-estado="${escapeHtml(u.estado ?? "")}" data-endereco="${escapeHtml(u.endereco ?? "")}" data-telefone="${escapeHtml(u.telefone ?? "")}">Editar</button>
+    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-acessos" ${d}>Acessos</button>
+    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-status" ${d} data-ativo="${u.ativo ? "1" : ""}">${u.ativo ? "Desativar" : "Ativar"}</button>
+  </div>`;
+}
+
+// ===========================================================================
 // 3. USUÁRIOS GLOBAIS + ASSOCIAÇÃO
 // ===========================================================================
 
@@ -274,6 +343,23 @@ async function abrirDetalheUsuario(id) {
       </div>`).join("")
     : '<div class="estado-mini">Nenhuma empresa associada.</div>';
 
+  const vinculosUnidade = u.unidades.length
+    ? u.unidades.map((x) => `
+      <div class="adm-vinculo">
+        <span class="adm-vinculo-nome"><b>${escapeHtml(x.unidadeNome)}</b>${x.ativo ? "" : '<span class="pill bad">bloqueado</span>'}</span>
+        <select class="adm-vinculo-papel" data-adm-acao="vinculo-unidade-papel" data-usuario="${escapeHtml(u.id)}" data-unidade="${escapeHtml(x.unidadeId)}">
+          <option value="">Herdar da empresa</option>
+          ${papeis.map((p) => `<option value="${escapeHtml(p.valor)}" ${p.valor === x.papel ? "selected" : ""}>${escapeHtml(p.rotulo)}</option>`).join("")}
+        </select>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="vinculo-unidade-toggle"
+                data-usuario="${escapeHtml(u.id)}" data-unidade="${escapeHtml(x.unidadeId)}" data-ativo="${x.ativo}">
+          ${x.ativo ? "Bloquear" : "Liberar"}
+        </button>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="vinculo-unidade-remover"
+                data-usuario="${escapeHtml(u.id)}" data-unidade="${escapeHtml(x.unidadeId)}" data-nome="${escapeHtml(x.unidadeNome)}">Remover</button>
+      </div>`).join("")
+    : '<div class="estado-mini">Nenhuma unidade associada — sem isso, o usuário só entra na visão agregada "todas as unidades" da empresa, nunca numa unidade específica.</div>';
+
   const sessoes = tabela({
     colunas: ["Empresa", "Cargo", "Início", "Último uso", "Situação"],
     linhas: u.sessoes.map((s) => [
@@ -313,6 +399,7 @@ async function abrirDetalheUsuario(id) {
 
       <div class="adm-det-acoes">
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-associar" ${dId}>+ Associar empresa</button>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-associar-unidade" ${dId}>+ Associar unidade</button>
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-senha" ${dId}>Redefinir senha</button>
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-email" ${dId} data-email="${escapeHtml(u.emailLogin ?? u.email ?? "")}">Alterar e-mail</button>
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-logout" ${dId}>Forçar logout</button>
@@ -323,6 +410,9 @@ async function abrirDetalheUsuario(id) {
 
       <h3 class="adm-det-tit">Empresas associadas</h3>
       <div class="adm-vinculos">${vinculos}</div>
+
+      <h3 class="adm-det-tit">Unidades associadas</h3>
+      <div class="adm-vinculos">${vinculosUnidade}</div>
 
       <h3 class="adm-det-tit">Sessões</h3>${sessoes}
       <h3 class="adm-det-tit">Histórico</h3>${historico}`,
@@ -690,6 +780,7 @@ function itemConfig(i) {
 const VIEWS = {
   dashboard: viewDashboard,
   empresas: viewEmpresas,
+  unidades: viewUnidades,
   usuarios: viewUsuarios,
   financeiro: viewFinanceiro,
   monitoramento: viewMonitoramento,
@@ -786,6 +877,56 @@ const ACOES = {
     },
   }),
 
+  // ---- Unidades
+  "unidade-nova": () => abrirAssistenteNovaUnidade(cache.empresas),
+
+  // Detalhe também virou página própria (Informações/Acessos/Usuários/
+  // Dados-Configurações/Auditoria) — ver adminUnidadeDetalhe.js.
+  "unidade-ver": ({ id }) => abrirPaginaUnidade(id),
+  "unidade-acessos": ({ id }) => abrirPaginaUnidade(id, "acessos"),
+
+  // Edição rápida sem sair da lista — os mesmos campos da aba Informações da
+  // página da unidade, pra quando só um detalhe pequeno precisa mudar.
+  "unidade-editar": (d) => abrirModal({
+    titulo: `Editar ${d.nome}`,
+    corpo: grade(
+      campo({ id: "ue-nome", label: "Nome da unidade", valor: d.nome, obrigatorio: true }) +
+      campo({ id: "ue-cnpj", label: "CNPJ", valor: d.cnpj, ph: "somente números" }) +
+      campo({ id: "ue-cidade", label: "Cidade", valor: d.cidade }) +
+      campo({ id: "ue-estado", label: "Estado (UF)", valor: d.estado, ph: "ex: MA" }) +
+      campo({ id: "ue-endereco", label: "Endereço", valor: d.endereco }) +
+      campo({ id: "ue-tel", label: "Telefone", valor: d.telefone, ph: "DDD + número" })
+    ),
+    confirmar: "Salvar",
+    aoConfirmar: async () => {
+      await adminApi.atualizarUnidade(d.id, {
+        nome: valor("ue-nome"), cnpj: valor("ue-cnpj"), cidade: valor("ue-cidade"),
+        estado: valor("ue-estado"), endereco: valor("ue-endereco"), telefone: valor("ue-tel"),
+      });
+      toast("Unidade atualizada.");
+      recarregarAdmin();
+    },
+  }),
+
+  "unidade-status": ({ id, nome, ativo }) => {
+    const estaAtiva = !!ativo;
+    if (estaAtiva && !confirm(`Desativar "${nome}"? Isso encerra na hora todas as sessões abertas desta unidade.`)) return;
+    return agir(
+      () => adminApi.alterarStatusUnidade(id, !estaAtiva),
+      estaAtiva ? "Unidade desativada." : "Unidade ativada."
+    );
+  },
+
+  "unidades-filtrar": () => {
+    filtrosUnidades = { busca: valor("un-busca"), organizacaoId: valor("un-empresa"), status: valor("un-status") };
+    recarregarAdmin();
+  },
+
+  "unidades-limpar": () => {
+    filtrosUnidades = { busca: "", status: "", organizacaoId: "" };
+    recarregarAdmin();
+  },
+
   // ---- Usuários
   "usuario-novo": () => abrirModal({
     titulo: "Novo usuário",
@@ -820,6 +961,59 @@ const ACOES = {
         toast("Acesso concedido.");
         recarregarAdmin();
       },
+    });
+  },
+
+  // Associar uma UNIDADE específica — só oferece empresas às quais o usuário
+  // já tem acesso (associarUnidade recusa no backend se não tiver). Cargo em
+  // branco = herda o da empresa (mesma regra de usuarios_unidades.papel null).
+  "usuario-associar-unidade": async ({ id, nome }) => {
+    if (!cache.papeis.length) cache.papeis = await adminApi.papeis();
+    const detalhe = await adminApi.usuario(id);
+    const empresasDoUsuario = detalhe.empresas.filter((e) => e.ativo);
+    if (!empresasDoUsuario.length) {
+      toast(`Associe "${nome}" a uma empresa primeiro.`);
+      return;
+    }
+    const primeiraEmpresa = empresasDoUsuario[0].organizacaoId;
+    const unidadesIniciais = await adminApi.unidadesDaEmpresa(primeiraEmpresa);
+
+    abrirModal({
+      titulo: `Associar unidade — ${nome}`,
+      corpo: grade(
+        selecao({
+          id: "ua-empresa", label: "Empresa", valor: primeiraEmpresa,
+          opcoes: empresasDoUsuario.map((e) => ({ valor: e.organizacaoId, rotulo: e.empresaNome })),
+        }) +
+        selecao({
+          id: "ua-unidade", label: "Unidade",
+          opcoes: unidadesIniciais.map((un) => ({ valor: un.id, rotulo: un.nome + (un.ativo ? "" : " (inativa)") })),
+          vazio: unidadesIniciais.length ? "" : "Nenhuma unidade nesta empresa",
+        }) +
+        selecao({
+          id: "ua-papel", label: "Cargo nesta unidade", vazio: "Herdar o cargo da empresa",
+          opcoes: cache.papeis.map((p) => ({ valor: p.valor, rotulo: p.rotulo })),
+          dica: "Deixe em branco pra usar o mesmo cargo que o usuário já tem na empresa.",
+        })
+      ),
+      confirmar: "Associar",
+      aoConfirmar: async () => {
+        const unidadeId = valor("ua-unidade");
+        if (!unidadeId) throw new Error("Selecione uma unidade.");
+        await adminApi.associarUnidade(id, unidadeId, valor("ua-papel") || undefined);
+        toast("Unidade associada.");
+        recarregarAdmin();
+      },
+    });
+
+    // Trocar de empresa recarrega as unidades — nunca deixa marcado um id de
+    // unidade de outra empresa (o que causaria o 404 "Unidade não encontrada"
+    // ou, pior, associar a unidade errada).
+    el("#ua-empresa").addEventListener("change", async (e) => {
+      const unidades = await adminApi.unidadesDaEmpresa(e.target.value);
+      el("#ua-unidade").innerHTML = unidades.length
+        ? unidades.map((un) => `<option value="${escapeHtml(un.id)}">${escapeHtml(un.nome)}${un.ativo ? "" : " (inativa)"}</option>`).join("")
+        : `<option value="">Nenhuma unidade nesta empresa</option>`;
     });
   },
 
@@ -880,6 +1074,18 @@ const ACOES = {
   "vinculo-remover": ({ usuario, org, nome }) => {
     if (!confirm(`Remover o acesso a "${nome}"?\n\nA conta continua existindo e mantém o acesso às outras empresas.`)) return;
     return agir(() => adminApi.removerVinculo(usuario, org), "Acesso removido.");
+  },
+
+  "vinculo-unidade-papel": ({ usuario, unidade }, alvo) =>
+    agir(() => adminApi.atualizarVinculoUnidade(usuario, unidade, { papel: alvo.value || null }), "Cargo atualizado."),
+
+  "vinculo-unidade-toggle": ({ usuario, unidade, ativo }) =>
+    agir(() => adminApi.atualizarVinculoUnidade(usuario, unidade, { ativo: ativo !== "true" }),
+      ativo === "true" ? "Acesso bloqueado nesta unidade." : "Acesso liberado."),
+
+  "vinculo-unidade-remover": ({ usuario, unidade, nome }) => {
+    if (!confirm(`Remover o acesso à unidade "${nome}"?\n\nA conta continua existindo e mantém o acesso ao resto da empresa.`)) return;
+    return agir(() => adminApi.removerVinculoUnidade(usuario, unidade), "Acesso à unidade removido.");
   },
 
   // ---- Financeiro

@@ -14,6 +14,8 @@
 import { el, escapeHtml, toast } from "./utils.js";
 import { adminApi } from "./adminApi.js";
 import { irParaAdmin } from "./admin.js";
+import { abrirAssistenteNovaUnidade } from "./adminUnidadeWizard.js";
+import { abrirPaginaUnidade } from "./adminUnidadeDetalhe.js";
 import {
   campo, area, grade, valor,
   STATUS_EMPRESA, fmtDataHora, fmtMoeda, num, carregando, erro, reservado, pill, tabela,
@@ -111,6 +113,13 @@ function ligarAba(aba) {
   } else if (aba === "modelo") {
     el("#ed-clonar-modelo")?.addEventListener("click", () =>
       salvar(() => adminApi.clonarModeloEmpresa(empresaId), "Catálogo do modelo clonado."));
+  } else if (aba === "unidades") {
+    el("#ed-nova-unidade")?.addEventListener("click", async () => {
+      const empresas = await adminApi.empresas();
+      abrirAssistenteNovaUnidade(empresas, empresaId);
+    });
+    document.querySelectorAll("[data-un-ver]").forEach((btn) =>
+      btn.addEventListener("click", () => abrirPaginaUnidade(btn.dataset.unVer)));
   }
 }
 
@@ -171,9 +180,21 @@ const CORPOS = {
   },
 
   unidades: async () => {
-    const lista = empresaCache.unidades.map((u) =>
-      `<li>${escapeHtml(u.nome)} ${u.ativo ? "" : '<span class="pill muted">inativa</span>'}</li>`).join("");
-    return `<ul class="adm-det-lista">${lista || "<li>Nenhuma unidade.</li>"}</ul>`;
+    const linhas = empresaCache.unidades.map((u) => [
+      `<b>${escapeHtml(u.nome)}</b>`,
+      u.ativo ? '<span class="pill ok">Ativa</span>' : '<span class="pill muted">Inativa</span>',
+      `<button class="btn btn-ghost btn-sm" data-un-ver="${escapeHtml(u.id)}" type="button">Abrir</button>`,
+    ]);
+    return tabela({
+      colunas: ["Unidade", "Status", ""],
+      linhas,
+      vazio: "Nenhuma unidade cadastrada ainda.",
+    }) + `
+      <div class="adm-secao-acoes adm-secao-acoes--fim">
+        <button class="btn btn-primary btn-sm" id="ed-nova-unidade" type="button">+ Nova unidade</button>
+      </div>
+      <p class="adm-nota">Gerenciamento completo (acessos, usuários, exclusão) fica na página própria da unidade —
+      esta aba é só um atalho. Ver também a área <b>Unidades</b> no menu lateral.</p>`;
   },
 
   usuarios: async () => {

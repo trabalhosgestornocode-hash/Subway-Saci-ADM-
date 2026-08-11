@@ -34,6 +34,14 @@ export const ACOES = {
   EMPRESA_MODULO_DESABILITADO: "empresa.modulo_desabilitado",
   EMPRESA_MODELO_CLONADO: "empresa.modelo_clonado",
 
+  // unidades
+  UNIDADE_CRIADA: "unidade.criada",
+  UNIDADE_EDITADA: "unidade.editada",
+  UNIDADE_STATUS: "unidade.status_alterado",
+  UNIDADE_MODULO_HABILITADO: "unidade.modulo_habilitado",
+  UNIDADE_MODULO_DESABILITADO: "unidade.modulo_desabilitado",
+  UNIDADE_EXCLUIDA: "unidade.excluida",
+
   // usuários e vínculos
   USUARIO_CRIADO: "usuario.criado",
   USUARIO_EDITADO: "usuario.editado",

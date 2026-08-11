@@ -9,6 +9,7 @@ import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
 import * as dashboard from "./plataforma.dashboard.service.js";
 import * as empresas from "./plataforma.empresas.service.js";
+import * as unidades from "./plataforma.unidades.service.js";
 import * as usuarios from "./plataforma.usuarios.service.js";
 import * as financeiro from "./plataforma.financeiro.service.js";
 import * as monitoramento from "./plataforma.monitoramento.service.js";
@@ -79,6 +80,42 @@ export const modulosDaEmpresa = asyncHandler(async (req, res) =>
 export const definirModulosEmpresa = asyncHandler(async (req, res) =>
   ok(res, await empresas.definirModulosEmpresaAdmin(req, req.params.id, v.corpo(req.body))));
 
+// ------------------------------------------------------------------ Unidades
+export const listarUnidades = asyncHandler(async (req, res) =>
+  ok(res, await unidades.listarUnidades({
+    busca: req.query.busca, status: req.query.status,
+    organizacaoId: req.query.organizacaoId, limite: req.query.limite,
+  })));
+
+export const obterUnidade = asyncHandler(async (req, res) => ok(res, await unidades.obterUnidade(req.params.id)));
+
+export const criarUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.criarUnidade(req, v.corpo(req.body)), 201));
+
+export const atualizarUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.atualizarUnidade(req, req.params.id, v.corpo(req.body))));
+
+export const alterarStatusUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.alterarStatusUnidade(req, req.params.id, v.corpo(req.body))));
+
+export const impactoExclusaoUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.impactoExclusaoUnidade(req.params.id)));
+
+export const excluirUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.excluirUnidade(req, req.params.id, req.body ?? {})));
+
+export const usuariosDaUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.listarUsuariosDaUnidade(req.params.id)));
+
+export const logsDaUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.listarLogsDaUnidade(req.params.id, req.query.limite)));
+
+export const modulosDaUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.modulosDaUnidadeAdmin(req.params.id)));
+
+export const definirModulosUnidade = asyncHandler(async (req, res) =>
+  ok(res, await unidades.definirModulosUnidadeAdmin(req, req.params.id, v.corpo(req.body))));
+
 // ------------------------------------------------------------------ Usuários
 export const listarUsuarios = asyncHandler(async (req, res) =>
   ok(res, await usuarios.listarUsuarios({
@@ -121,6 +158,9 @@ export const removerVinculo = asyncHandler(async (req, res) =>
 
 export const associarUnidade = asyncHandler(async (req, res) =>
   ok(res, await usuarios.associarUnidade(req, req.params.id, v.corpo(req.body)), 201));
+
+export const atualizarVinculoUnidade = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.atualizarVinculoUnidade(req, req.params.id, req.params.unidadeId, v.corpo(req.body))));
 
 export const removerVinculoUnidade = asyncHandler(async (req, res) =>
   ok(res, await usuarios.removerVinculoUnidade(req, req.params.id, req.params.unidadeId)));

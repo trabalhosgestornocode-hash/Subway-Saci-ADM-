@@ -464,6 +464,44 @@ export async function removerVinculoUnidade(req, idBruto, unidadeIdBruto) {
 }
 
 /**
+ * Edita o vínculo usuário<->UNIDADE: o cargo que SOBREPÕE o da empresa
+ * (`papel: null`/vazio volta a herdar) e/ou bloqueia/libera o acesso a essa
+ * unidade especificamente — mesmo padrão de `atualizarVinculo`, mas revoga só
+ * as sessões PRESAS àquela unidade (não a empresa inteira).
+ * @param {import('express').Request} req
+ */
+export async function atualizarVinculoUnidade(req, idBruto, unidadeIdBruto, body) {
+  const usuarioId = v.uuid(idBruto, "Usuário");
+  const unidadeId = v.uuid(unidadeIdBruto, "Unidade");
+
+  const patch = {};
+  if (body.papel !== undefined) patch.papel = body.papel == null || body.papel === "" ? null : v.umDe(body.papel, "Cargo", PAPEIS);
+  if (body.ativo !== undefined) patch.ativo = v.booleano(body.ativo, true);
+  if (!Object.keys(patch).length) throw ApiError.badRequest("Informe o cargo ou o status do acesso.");
+
+  const { data, error } = await supabase.from("usuarios_unidades")
+    .update(patch).eq("usuario_id", usuarioId).eq("unidade_id", unidadeId)
+    .select("id, papel, ativo").single();
+  if (error || !data) throw ApiError.notFound("Associação não encontrada.");
+
+  const sessoesRevogadas = await revogarSessoes({
+    usuarioId, unidadeId, motivo: patch.ativo === false ? "acesso_bloqueado" : "papel_alterado",
+  });
+
+  await auditar({
+    atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
+    acao: ACOES.VINCULO_EDITADO, entidade: "vinculo_unidade", entidadeId: `${usuarioId}:${unidadeId}`,
+    detalhes: { ...patch, sessoesRevogadas }, ...origemDe(req),
+  });
+
+  return {
+    usuarioId, unidadeId, papel: data.papel,
+    papelRotulo: data.papel ? rotuloPapel(data.papel) : "herda da empresa",
+    ativo: data.ativo, sessoesRevogadas,
+  };
+}
+
+/**
  * Concede ou revoga o papel GLOBAL de SuperAdmin da plataforma.
  * Nunca sobre si mesmo — remover o próprio superadmin deixaria a plataforma
  * potencialmente sem nenhum administrador, sem caminho de volta pela UI.

@@ -146,20 +146,35 @@ function anosDisponiveis() {
   return lista;
 }
 
+// `contextoMudou` só cobre troca de EMPRESA/UNIDADE (Context Token) — troca
+// de MÊS/ANO no mesmo contexto não mexe nele. Sem uma guarda própria pra
+// isso, duas chamadas de carregarConteudo() em voo ao mesmo tempo (usuário
+// troca de mês rápido, ou a rede entrega fora de ordem) corriam risco real:
+// se a resposta do mês ANTERIOR chegasse DEPOIS da resposta do mês atual,
+// ela sobrescrevia `dex.dadosMes` com o mês errado — e a faixa "Faturamento
+// mensal lançado" (que lê `dadosMes.lancamentoMensal`) acabava mostrando o
+// lançamento de um mês enquanto a tela mostrava outro. `geracaoConteudo` é
+// um contador simples: só a chamada mais recente pode gravar o resultado.
+let geracaoConteudo = 0;
+
 async function carregarConteudo() {
   const box = el("#dex-conteudo");
   if (!box) return;
   box.innerHTML = carregando();
   destruirGraficosDashboardExecutivo();
   const g = geracaoContexto();
+  const minhaGeracao = ++geracaoConteudo;
+  const mesPedido = dex.mes, anoPedido = dex.ano;
   try {
-    const { data } = await dashExecMes({ unidadeId: dex.unidadeId || undefined, mes: dex.mes, ano: dex.ano });
-    if (contextoMudou(g)) return; // resposta da unidade anterior — descarta
+    const { data } = await dashExecMes({ unidadeId: dex.unidadeId || undefined, mes: mesPedido, ano: anoPedido });
+    if (contextoMudou(g)) return; // resposta da unidade/empresa anterior — descarta
+    if (minhaGeracao !== geracaoConteudo) return; // resposta de um mês/ano que já não é mais o selecionado — descarta
     dex.dadosMes = data;
     renderModeloBox();
     renderAbaAtual();
   } catch (e) {
     if (contextoMudou(g)) return;
+    if (minhaGeracao !== geracaoConteudo) return;
     box.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry-mes">Tentar novamente</button>`);
     el("#dex-retry-mes")?.addEventListener("click", carregarConteudo);
   }

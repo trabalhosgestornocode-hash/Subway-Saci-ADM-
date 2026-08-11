@@ -9,7 +9,7 @@ import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { emitirContextToken, VALIDADE_PADRAO_S } from "../../shared/contextToken.js";
 import { permissoesDoPapel, rotuloPapel } from "../../shared/permissoes.js";
-import { modulosDaEmpresa } from "../../shared/modulos.js";
+import { modulosDaEmpresa, modulosEfetivosDaUnidade } from "../../shared/modulos.js";
 import { auditar, ACOES } from "../../shared/auditoria.js";
 import * as v from "../../shared/validar.js";
 
@@ -171,7 +171,13 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
   }
 
   const permissoes = permissoesDoPapel(papel);
-  const modulos = await modulosDaEmpresa(orgId);
+  // Acesso efetivo = módulos da empresa ∩ módulos da unidade (item 4 do
+  // pedido de gerenciamento de Unidades) — só faz sentido cruzar quando uma
+  // unidade específica foi selecionada; "todas as unidades"/contexto de
+  // empresa continua valendo o que a empresa tem, igual sempre foi.
+  const modulos = unidade
+    ? await modulosEfetivosDaUnidade(orgId, unidade.id)
+    : await modulosDaEmpresa(orgId);
 
   const sessao = await criarSessao({
     usuarioId: usuario.id, organizacaoId: orgId, unidadeId: unidade?.id ?? null,
@@ -257,12 +263,14 @@ export async function criarSessao({
 /**
  * Revoga as sessões vivas de um usuário (ou uma específica).
  * É o mecanismo por trás de: trocar unidade, sair, forçar logout, bloquear
- * usuário e trocar o papel de um vínculo.
- * @param {{usuarioId?: string, sessionId?: string, organizacaoId?: string, motivo?: string}} filtro
+ * usuário, trocar o papel de um vínculo e alterar módulos/status de uma
+ * unidade (`unidadeId` — revoga só as sessões PRESAS àquela unidade, sem
+ * derrubar o resto da empresa).
+ * @param {{usuarioId?: string, sessionId?: string, organizacaoId?: string, unidadeId?: string, motivo?: string}} filtro
  * @returns {Promise<number>} quantas sessões foram revogadas
  */
-export async function revogarSessoes({ usuarioId, sessionId, organizacaoId, motivo = "revogada" }) {
-  if (!usuarioId && !sessionId && !organizacaoId) return 0;
+export async function revogarSessoes({ usuarioId, sessionId, organizacaoId, unidadeId, motivo = "revogada" }) {
+  if (!usuarioId && !sessionId && !organizacaoId && !unidadeId) return 0;
 
   let q = supabase.from("sessoes_contexto")
     .update({ revogada_em: new Date().toISOString(), motivo_revogacao: motivo })
@@ -271,6 +279,7 @@ export async function revogarSessoes({ usuarioId, sessionId, organizacaoId, moti
   if (sessionId) q = q.eq("id", sessionId);
   if (usuarioId) q = q.eq("usuario_id", usuarioId);
   if (organizacaoId) q = q.eq("organizacao_id", organizacaoId);
+  if (unidadeId) q = q.eq("unidade_id", unidadeId);
 
   const { data, error } = await q.select("id");
   if (error) throw ApiError.internal(error.message);
