@@ -354,7 +354,16 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   const diasNoSnapshot = snapshot ? Number(snapshot.data_lancamento.slice(8, 10)) : 0;
   const media = snapshot && diasNoSnapshot > 0 ? Number(snapshot.valor_vendas_ifood) / diasNoSnapshot : null;
   const projecao = projecaoMensal(media, diasComStatus.length);
-  const diasVencidos = diasComStatus.filter((d) => d.status !== STATUS_DIA.FUTURO).length;
+  // "Vencido" = até ONTEM, nunca hoje — hoje é sempre "em andamento", não
+  // "atrasado" (mesma regra de elegibilidade do Financeiro: só se sabe o
+  // fechamento completo de um dia no dia seguinte). Sem isso, o dia atual
+  // sem lançamento contava como pendência todo santo dia, mesmo o mês
+  // inteiro regularizado até ontem — derrubando a confiabilidade da
+  // projeção pra "baixa" permanentemente e mandando "regularizar hoje" no
+  // Plano de Ação, um alvo que muda de dia em dia e nunca se resolve de
+  // verdade (ver mesmo raciocínio em diasPendentesDatas, abaixo).
+  const dataLimiteVencido = diaAnterior(hojeIso);
+  const diasVencidos = diasComStatus.filter((d) => d.data <= dataLimiteVencido).length;
   const confiabilidade = confiabilidadeProjecao({
     diasVencidos, diasResolvidos: resumo.diasPreenchidos, diasComDados: linhasComDados.length,
   });
@@ -367,8 +376,13 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   });
 
   const diasEstimados = linhas.filter((r) => r.origem_lancamento === "distribuicao_mensal").length;
+  // O Plano de Ação nunca manda "regularizar hoje" — hoje ainda está em
+  // andamento (mesma regra de dataLimiteVencido acima). Sem isso, todo dia
+  // 12 pedia pra regularizar o dia 12, e no dia 13 pediria pra regularizar
+  // o dia 13, um alvo que nunca fecha (é exatamente o ciclo descrito no
+  // pedido). Dias ANTERIORES de verdade continuam cobrados normalmente.
   const diasPendentesDatas = diasComStatus
-    .filter((d) => d.status === STATUS_DIA.PENDENTE || d.status === STATUS_DIA.BLOQUEADO)
+    .filter((d) => (d.status === STATUS_DIA.PENDENTE || d.status === STATUS_DIA.BLOQUEADO) && d.data <= dataLimiteVencido)
     .map((d) => d.data);
 
   const indicadoresParaDiagnostico = {
@@ -385,7 +399,10 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     indicadores: indicadoresParaDiagnostico,
     faturamentoBase: base,
     diasComDados: linhasComDados.length,
-    diasPendentes: resumo.diasPendentes,
+    // Deriva do MESMO array filtrado (nunca de resumo.diasPendentes, que
+    // inclui hoje) — a contagem no texto do achado precisa bater exatamente
+    // com as datas listadas.
+    diasPendentes: diasPendentesDatas.length,
     diasPendentesDatas,
     diasEstimados,
     comparativo,
