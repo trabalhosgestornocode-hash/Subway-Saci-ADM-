@@ -47,13 +47,20 @@ export const STATUS_DIA = {
   PENDENTE: "PENDENTE",
   BLOQUEADO: "BLOQUEADO",
   RASCUNHO: "RASCUNHO",
+  // Dia "normal" com Situação/Desempenho preenchidos mas Financeiro ainda
+  // indisponível (a data só vira "ontem" amanhã) — ver
+  // dashboardExecutivo.service.js#normalizarDadosLancamento. É o estado
+  // ESPERADO de quase todo dia até o dia seguinte, não um esquecimento —
+  // por isso é RESOLVIDO (não bloqueia a sequência), diferente de um
+  // RASCUNHO "de verdade" deixado pra trás.
+  FINANCEIRO_PENDENTE: "FINANCEIRO_PENDENTE",
   SEM_OPERACAO: "SEM_OPERACAO",
   ZERO_VENDAS: "ZERO_VENDAS",
   FUTURO: "FUTURO",
 };
 
 /** Status que "resolvem" o dia (contam para a sequência e para o % de conclusão). */
-const RESOLVIDOS = new Set([STATUS_DIA.PREENCHIDO, STATUS_DIA.SEM_OPERACAO, STATUS_DIA.ZERO_VENDAS]);
+const RESOLVIDOS = new Set([STATUS_DIA.PREENCHIDO, STATUS_DIA.SEM_OPERACAO, STATUS_DIA.ZERO_VENDAS, STATUS_DIA.FINANCEIRO_PENDENTE]);
 
 // ---------------------------------------------------------------------------
 // FÓRMULAS FINANCEIRAS
@@ -285,12 +292,20 @@ export function confiabilidadeProjecao({ diasVencidos, diasResolvidos, diasComDa
  * Status "de dados" de um dia, a partir do lançamento (se existir).
  * Devolve null quando NÃO há lançamento — o chamador (statusMes) decide entre
  * PENDENTE/BLOQUEADO/FUTURO a partir do contexto.
- * @param {{lancamento: {status: string, situacao: string}|null}} p
+ * @param {{lancamento: {status: string, situacao: string, valor_vendas_ifood?: number|null}|null}} p
  * @returns {string|null}
  */
 export function statusDiaBase({ lancamento }) {
   if (!lancamento) return null;
-  if (lancamento.status === "rascunho") return STATUS_DIA.RASCUNHO;
+  if (lancamento.status === "rascunho") {
+    // Rascunho "normal" sem financeiro ainda (dia ≠ ontem quando foi salvo)
+    // é o estado esperado — não pode ser tratado como um rascunho comum
+    // esquecido pra trás (ver comentário de FINANCEIRO_PENDENTE em STATUS_DIA).
+    // `lancamento` aqui é a linha CRUA do banco (snake_case), nunca o
+    // objeto já convertido pela API — ver carregarCalendarioMes.
+    if (lancamento.situacao === "normal" && lancamento.valor_vendas_ifood == null) return STATUS_DIA.FINANCEIRO_PENDENTE;
+    return STATUS_DIA.RASCUNHO;
+  }
   if (lancamento.situacao === "sem_operacao") return STATUS_DIA.SEM_OPERACAO;
   if (lancamento.situacao === "zero_vendas") return STATUS_DIA.ZERO_VENDAS;
   return STATUS_DIA.PREENCHIDO;

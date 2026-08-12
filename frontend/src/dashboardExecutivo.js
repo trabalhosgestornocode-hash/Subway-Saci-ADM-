@@ -30,6 +30,9 @@ const ABAS = [
 const STATUS_LEGENDA = [
   { chave: "PREENCHIDO", label: "Preenchido", classe: "ok" },
   { chave: "RASCUNHO", label: "Rascunho", classe: "warn" },
+  // Situação/Desempenho preenchidos, financeiro ainda indisponível (o iFood
+  // só libera no dia seguinte) — não é "esquecido", é esperado até amanhã.
+  { chave: "FINANCEIRO_PENDENTE", label: "Financeiro pendente", classe: "info" },
   { chave: "PENDENTE", label: "Pendente", classe: "bad" },
   { chave: "BLOQUEADO", label: "Bloqueado", classe: "muted" },
   { chave: "SEM_OPERACAO", label: "Sem operação", classe: "info" },
@@ -549,7 +552,9 @@ function lancamentoMensalBanner(lote) {
 function diaHtml(dia) {
   const s = STATUS_ROTULO[dia.status] ?? { label: dia.status, classe: "muted" };
   const numero = Number(dia.data.slice(8, 10));
-  const clicavel = dia.status === "PENDENTE" || dia.status === "RASCUNHO"
+  // FINANCEIRO_PENDENTE é clicável igual RASCUNHO — precisa continuar
+  // aberto pra completar o Financeiro assim que a data virar "ontem".
+  const clicavel = dia.status === "PENDENTE" || dia.status === "RASCUNHO" || dia.status === "FINANCEIRO_PENDENTE"
     || ((dia.status === "PREENCHIDO" || dia.status === "SEM_OPERACAO" || dia.status === "ZERO_VENDAS") && pode("dashboard_executivo.corrigir"));
   // Dia originado de "Lançar faturamento mensal": mesma cor de status (é um
   // dado financeiro válido), mas com um sinal discreto (~) de que o valor é

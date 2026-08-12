@@ -92,8 +92,16 @@ describe("confiabilidade da projeção", () => {
 // ---------------------------------------------------------------------------
 describe("status de um dia (base, a partir do lançamento)", () => {
   test("sem lançamento => null", () => assert.equal(statusDiaBase({ lancamento: null }), null));
-  test("rascunho => RASCUNHO, mesmo com situação normal", () => {
-    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal" } }), STATUS_DIA.RASCUNHO);
+  test("rascunho + situação normal + financeiro já preenchido => RASCUNHO", () => {
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: 500 } }), STATUS_DIA.RASCUNHO);
+  });
+  test("rascunho + sem_operacao/zero_vendas => RASCUNHO (financeiro não se aplica a essas situações)", () => {
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "sem_operacao" } }), STATUS_DIA.RASCUNHO);
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "zero_vendas" } }), STATUS_DIA.RASCUNHO);
+  });
+  test("rascunho + situação normal + SEM financeiro ainda => FINANCEIRO_PENDENTE (dia ≠ ontem, esperado até amanhã)", () => {
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null } }), STATUS_DIA.FINANCEIRO_PENDENTE);
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal" } }), STATUS_DIA.FINANCEIRO_PENDENTE);
   });
   test("finalizado + sem_operacao => SEM_OPERACAO", () => {
     assert.equal(statusDiaBase({ lancamento: { status: "finalizado", situacao: "sem_operacao" } }), STATUS_DIA.SEM_OPERACAO);
@@ -138,14 +146,24 @@ describe("statusMes — trava sequencial dentro do mês", () => {
     assert.equal(r[1].status, STATUS_DIA.PENDENTE);
   });
 
-  test("dia 1 em rascunho NÃO libera o dia 2 (rascunho não resolve)", () => {
+  test("dia 1 em rascunho de VERDADE (financeiro já preenchido, deixado assim de propósito) NÃO libera o dia 2", () => {
     const dias = [
-      { data: "2026-08-01", lancamento: { status: "rascunho", situacao: "normal" } },
+      { data: "2026-08-01", lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: 1000 } },
       { data: "2026-08-02", lancamento: null },
     ];
     const r = statusMes({ dias, hojeIso: "2026-08-03" });
     assert.equal(r[0].status, STATUS_DIA.RASCUNHO);
     assert.equal(r[1].status, STATUS_DIA.BLOQUEADO);
+  });
+
+  test("dia 1 rascunho AGUARDANDO FINANCEIRO (situação normal, dia ≠ ontem) RESOLVE e libera o dia 2 — bug real corrigido: sem isso, o mês inteiro travava toda vez que o financeiro de um dia ainda não estava disponível", () => {
+    const dias = [
+      { data: "2026-08-01", lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null } },
+      { data: "2026-08-02", lancamento: null },
+    ];
+    const r = statusMes({ dias, hojeIso: "2026-08-03" });
+    assert.equal(r[0].status, STATUS_DIA.FINANCEIRO_PENDENTE);
+    assert.equal(r[1].status, STATUS_DIA.PENDENTE);
   });
 
   test("dia sem operação e dia zero vendas TAMBÉM resolvem e liberam o próximo", () => {
