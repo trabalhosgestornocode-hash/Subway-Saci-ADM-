@@ -434,6 +434,88 @@ export function listaSnapshotsFinanceiros(dias, linhas) {
   });
 }
 
+// Campos de Desempenho que passaram a ser ACUMULADOS (item do pedido: "pra
+// tanto o desempenho e o financeiro terem a mesma lógica") — cada dia
+// guarda o total do mês até ali, nunca o valor isolado daquele dia. O
+// valor isolado ("quanto aquele dia fez sozinho") é sempre DERIVADO por
+// subtração (hoje - o último acumulado conhecido), nunca a fonte.
+const CAMPOS_DESEMPENHO_ACUMULADO = [
+  ["qtdVendas", "qtd_vendas"], ["valorVendasBruto", "valor_vendas_bruto"], ["novosClientes", "novos_clientes"],
+];
+
+/**
+ * Série do mês (um ponto por dia) com o ACUMULADO e o DELTA (o dia
+ * sozinho) de cada campo de Desempenho. Delta de um dia = esse acumulado
+ * menos o último acumulado conhecido ANTES dele — nunca o dia de calendário
+ * anterior direto, porque Desempenho é opcional e pode ter buracos (dias
+ * "não informado" no meio do mês). No dia 1 do mês (ou no primeiro dia com
+ * dado, se dia 1 não tiver), o delta é o próprio acumulado — não existe
+ * "dia 0" pra subtrair.
+ *
+ * Ignora `origem_lancamento === 'distribuicao_mensal'` — fatia estimada de
+ * "Lançamento Mensal" (valor fixo repetido pelos dias sem lançamento, ver
+ * `distribuirValorMensal`), não um acumulado real; não participa da série
+ * nem quebra a continuidade dela (mesmo critério de `listaSnapshotsFinanceiros`).
+ * @param {string[]} dias — ISO AAAA-MM-DD de todos os dias do mês (diasDoMes)
+ * @param {Array<{data_lancamento: string, origem_lancamento?: string|null, qtd_vendas?: number|null, valor_vendas_bruto?: number|null, novos_clientes?: number|null}>} linhas — linhas CRUAS do banco
+ * @returns {Array<{data: string, qtdVendas: number|null, valorVendasBruto: number|null, novosClientes: number|null, deltaQtdVendas: number|null, deltaValorVendasBruto: number|null, deltaNovosClientes: number|null}>}
+ */
+export function listaDesempenhoDiario(dias, linhas) {
+  const porData = new Map();
+  for (const r of linhas ?? []) {
+    if (r.origem_lancamento === "distribuicao_mensal") continue;
+    porData.set(r.data_lancamento, r);
+  }
+  const primeiroDia = dias?.[0] ?? null;
+  const anterior = { qtdVendas: null, valorVendasBruto: null, novosClientes: null };
+  return (dias ?? []).map((data) => {
+    const r = porData.get(data);
+    const ponto = { data };
+    for (const [chave, coluna] of CAMPOS_DESEMPENHO_ACUMULADO) {
+      const bruto = r?.[coluna];
+      const valor = bruto != null ? Number(bruto) : null;
+      const deltaChave = `delta${chave[0].toUpperCase()}${chave.slice(1)}`;
+      if (valor == null) {
+        ponto[chave] = null;
+        ponto[deltaChave] = null;
+      } else {
+        ponto[chave] = valor;
+        ponto[deltaChave] = anterior[chave] != null ? valor - anterior[chave] : (data === primeiroDia ? valor : null);
+        anterior[chave] = valor;
+      }
+    }
+    return ponto;
+  });
+}
+
+/**
+ * Últimos valores ACUMULADOS conhecidos (não-null) de cada campo de
+ * Desempenho antes de uma data — usado quando "Sem operação"/"Zero vendas"
+ * precisam REPETIR o acumulado do dia anterior (não zerar a série; ver
+ * normalizarDadosLancamento). Só olha dentro do MESMO MÊS de `antesDeDataIso`
+ * — Desempenho reseta todo mês, igual o Financeiro (nunca herda do mês
+ * anterior). Sem nenhum dia anterior com dado (ex.: é o dia 1 do mês), volta
+ * zero — o acumulado começa do zero mesmo.
+ * @param {Array<{data_lancamento: string, origem_lancamento?: string|null, qtd_vendas?: number|null, valor_vendas_bruto?: number|null, novos_clientes?: number|null}>} linhas
+ * @param {string} antesDeDataIso
+ * @returns {{qtdVendas: number, valorVendasBruto: number, novosClientes: number}}
+ */
+export function ultimoDesempenhoConhecido(linhas, antesDeDataIso) {
+  const mesAlvo = antesDeDataIso.slice(0, 7);
+  const candidatas = (linhas ?? [])
+    .filter((r) => r.origem_lancamento !== "distribuicao_mensal"
+      && r.data_lancamento < antesDeDataIso && r.data_lancamento.slice(0, 7) === mesAlvo)
+    .slice()
+    .sort((a, b) => (a.data_lancamento < b.data_lancamento ? -1 : a.data_lancamento > b.data_lancamento ? 1 : 0));
+  const resultado = { qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0 };
+  for (const r of candidatas) {
+    for (const [chave, coluna] of CAMPOS_DESEMPENHO_ACUMULADO) {
+      if (r[coluna] != null) resultado[chave] = Number(r[coluna]);
+    }
+  }
+  return resultado;
+}
+
 /**
  * Resumo do preenchimento do mês (para o card "resumo" + barra de progresso).
  * @param {Array<{data: string, status: string, lancamento: object|null}>} diasComStatus

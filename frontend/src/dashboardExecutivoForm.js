@@ -312,13 +312,14 @@ function passoDesempenho() {
     return `<p class="dex-form-info">Situação "${c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas"}" — os campos de desempenho e financeiro ficam zerados automaticamente.</p>`;
   }
   const ticket = ticketMedioPreview(c);
+  const inicioMes = `${fm.data.slice(0, 8)}01`;
   return `
-    <p class="dex-form-info">📎 Dados complementares — preencha caso tenha acesso às informações. Nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
+    <p class="dex-form-info">📊 Desempenho acumulado do mês até aqui — informe o TOTAL desde ${fmtDataBr(inicioMes)} até ${fmtDataBr(fm.data)} (não só o que esse dia fez sozinho). O sistema calcula automaticamente quanto cada dia rendeu por conta própria, pela diferença com o acumulado do dia anterior. Preencha caso tenha acesso às informações — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
     <div class="cfg-form-grid">
-      <label class="cfg-campo"><span>Quantidade total de vendas</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}" placeholder="Não informado"></label>
-      <label class="cfg-campo"><span>Valor bruto total das vendas (R$)</span><input type="number" min="0" step="0.01" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="Não informado"></label>
-      <label class="cfg-campo"><span>Novos clientes</span><input type="number" min="0" step="1" id="dex-novos" value="${c.novosClientes}" placeholder="Não informado"></label>
-      <label class="cfg-campo"><span>Ticket médio (calculado)</span><input type="text" value="${ticket == null ? "—" : fmtMoeda(ticket)}" disabled></label>
+      <label class="cfg-campo"><span>Quantidade de vendas acumulada no mês</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}" placeholder="Não informado"></label>
+      <label class="cfg-campo"><span>Valor bruto acumulado no mês (R$)</span><input type="number" min="0" step="0.01" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="Não informado"></label>
+      <label class="cfg-campo"><span>Novos clientes acumulados no mês</span><input type="number" min="0" step="1" id="dex-novos" value="${c.novosClientes}" placeholder="Não informado"></label>
+      <label class="cfg-campo"><span>Ticket médio (mês até aqui, calculado)</span><input type="text" value="${ticket == null ? "—" : fmtMoeda(ticket)}" disabled></label>
     </div>`;
 }
 
@@ -403,10 +404,10 @@ function passoConferencia() {
     fm.avisos = [];
     return `
       <div class="dex-conf-grid">
-        ${linha("Quantidade de vendas", c.qtdVendas === "" ? "—" : c.qtdVendas)}
-        ${linha("Novos clientes", c.novosClientes === "" ? "—" : c.novosClientes)}
-        ${linha("Vendas brutas", fmtMoeda(c.valorVendasBruto))}
-        ${linha("Ticket médio", fmtMoeda(ticketMedioPreview(c)))}
+        ${linha("Quantidade de vendas (acumulado no mês)", c.qtdVendas === "" ? "—" : c.qtdVendas)}
+        ${linha("Novos clientes (acumulado no mês)", c.novosClientes === "" ? "—" : c.novosClientes)}
+        ${linha("Vendas brutas (acumulado no mês)", fmtMoeda(c.valorVendasBruto))}
+        ${linha("Ticket médio (mês até aqui)", fmtMoeda(ticketMedioPreview(c)))}
       </div>
       <p class="dex-form-info">💰 Financeiro ainda não disponível para esta data — o iFood só consolida com 1 dia
       de atraso. Você pode finalizar este dia normalmente com os dados acima; quando esta data virar "ontem", volte

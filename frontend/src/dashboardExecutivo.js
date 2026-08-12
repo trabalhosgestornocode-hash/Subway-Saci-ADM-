@@ -441,16 +441,16 @@ function graficoBox(chave, titulo, canvasId) {
   return `<section class="dex-painel"><h3>${titulo}</h3><div class="dex-chart-wrap"><canvas id="${canvasId}"></canvas></div></section>`;
 }
 
-// Desempenho tem granularidade diária REAL (ao contrário do Financeiro, que
-// é snapshot acumulado — ver cards.faturamento) — por isso é o único que
-// ganha um gráfico dia-a-dia aqui. Nunca é a fonte oficial de faturamento;
-// o aviso deixa isso explícito, e o "acumulado" some visualmente do card de
-// Financeiro oficial (cardsPrincipais) pra nunca competir com ele.
+// Desempenho também é acumulado do mês agora (mesma lógica do Financeiro),
+// mas continua um dado OPERACIONAL, nunca a fonte oficial de faturamento —
+// o card oficial é `cards.faturamento` (cardsPrincipais). O gráfico plota
+// o delta ("dia sozinho", calculado pelo backend — ver linhaEvolucao),
+// nunca o acumulado bruto.
 function desempenhoBox(op) {
   if (!op) return "";
   const stats = [
     op.mediaDiaria != null ? `Média do período: <b>${fmtMoeda(op.mediaDiaria)}</b>` : "Sem dados suficientes para média",
-    op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>` : null,
+    op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>${op.dataAtualizacao ? ` (até ${fmtDataBr(op.dataAtualizacao)})` : ""}` : null,
   ].filter(Boolean).join(" · ");
   return `<section class="dex-painel dex-desempenho">
     <h3>📊 Evolução diária do Desempenho</h3>
@@ -579,7 +579,7 @@ function renderLancamentos(box) {
 // regra nova, só reapresentação compacta pra quem está na aba Lançamentos.
 function resumoFinanceiroBanner(d) {
   const fin = d.cards.faturamento;
-  const ultimoDesempenho = [...d.desempenhoOperacional.evolucaoDiaria].reverse().find((p) => p.valor != null)?.data ?? null;
+  const desemp = d.desempenhoOperacional;
   const diaElegivel = d.calendario.find((x) => x.elegivelFinanceiro);
   const temSnapshotElegivel = diaElegivel?.lancamento?.situacao === "normal"
     && diaElegivel?.lancamento?.origem_lancamento !== "distribuicao_mensal"
@@ -595,8 +595,8 @@ function resumoFinanceiroBanner(d) {
   return `<section class="dex-resumo-fin">
     ${item("💰 Último Financeiro oficial", fin.valor != null ? fmtMoeda(fin.valor) : "—",
       fin.periodoFim ? `Consolidado de ${fmtDataBr(fin.periodoInicio)} até ${fmtDataBr(fin.periodoFim)}` : "Nenhum snapshot financeiro informado ainda.")}
-    ${item("📊 Último Desempenho", ultimoDesempenho ? fmtDataBr(ultimoDesempenho) : "—",
-      ultimoDesempenho ? "Dado operacional mais recente" : "Nenhum dado de Desempenho lançado neste mês.")}
+    ${item("📊 Desempenho acumulado", desemp.acumulado != null ? fmtMoeda(desemp.acumulado) : "—",
+      desemp.dataAtualizacao ? `Acumulado até ${fmtDataBr(desemp.dataAtualizacao)} · dado operacional, não oficial` : "Nenhum dado de Desempenho lançado neste mês.")}
     ${item("🔔 Próximo snapshot financeiro", diaElegivel ? (temSnapshotElegivel ? "Atualizado" : "Disponível") : "—",
       diaElegivel
         ? (temSnapshotElegivel ? `Financeiro atualizado até ${fmtDataBr(diaElegivel.data)}` : `Disponível para ${fmtDataBr(diaElegivel.data)}`)
@@ -621,12 +621,15 @@ function painelIndicador(titulo, valor, sub) {
 }
 
 function desempenhoDiarioBox(op) {
-  if (!op.evolucaoDiaria.some((p) => p.valor != null)) {
+  // Checa `acumuladoValorVendasBruto` (o dado bruto salvo), não `valor` (o
+  // delta) — o primeiro dia real do mês pode ter acumulado sem ter delta
+  // calculável (ver listaDesempenhoDiario), e isso não é "sem dado".
+  if (!op.evolucaoDiaria.some((p) => p.acumuladoValorVendasBruto != null)) {
     return painelVazio("📊 Evolução diária do Desempenho", "Nenhum dado de Desempenho lançado neste mês.");
   }
   const stats = [
     op.mediaDiaria != null ? `Média do período: <b>${fmtMoeda(op.mediaDiaria)}</b>` : null,
-    op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>` : null,
+    op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>${op.dataAtualizacao ? ` (até ${fmtDataBr(op.dataAtualizacao)})` : ""}` : null,
   ].filter(Boolean).join(" · ");
   return `<section class="dex-painel">
     <h3>📊 Evolução diária do Desempenho</h3>

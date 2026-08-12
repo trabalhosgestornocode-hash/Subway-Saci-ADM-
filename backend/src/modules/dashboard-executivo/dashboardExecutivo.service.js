@@ -6,8 +6,8 @@ import { resolverMetas, obterModeloLogistico, definirModeloLogistico, historicoM
 import {
   hojeIsoBrasil, diasDoMes, mesAnterior, diaAnterior, statusMes, resumoPreenchimento,
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
-  totalDeducoes, receitaAposDeducoes, saldoPercentual, projecaoMensal, mediaDiaria,
-  snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros,
+  totalDeducoes, receitaAposDeducoes, saldoPercentual, projecaoMensal,
+  snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros, listaDesempenhoDiario, ultimoDesempenhoConhecido,
   confiabilidadeProjecao, validarOutrasDeducoes,
   inconsistencias, STATUS_DIA, indicadorAplicavel, statusIndicador, saldoMeta,
   distribuirValorMensal, distribuirQuantidadeMensal, recalcularDistribuicaoMensal,
@@ -440,27 +440,38 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
         { indicador: "outras_deducoes", valor: cardValores.outrasDeducoes },
       ],
     },
-    // Desempenho é acompanhamento OPERACIONAL — granularidade diária real
-    // (ao contrário do Financeiro, que é um snapshot acumulado só disponível
-    // no dia elegível). NUNCA é fonte de verdade financeira: nenhum card,
-    // meta, projeção ou diagnóstico usa isto — só o Financeiro
-    // (`cards.faturamento`) faz isso. `acumulado` existe apenas como
-    // referência operacional e não deve ser tratado como faturamento oficial.
-    desempenhoOperacional: {
-      evolucaoDiaria: diasComStatus.map((d) => ({
+    // Desempenho é acompanhamento OPERACIONAL — e agora ACUMULADO do mês,
+    // mesma lógica do Financeiro (cada dia guarda o total até ali; o
+    // "quanto esse dia fez sozinho" é sempre derivado por subtração, nunca
+    // a fonte — ver listaDesempenhoDiario em calc.js). NUNCA é fonte de
+    // verdade financeira: nenhum card, meta, projeção ou diagnóstico usa
+    // isto — só o Financeiro (`cards.faturamento`) faz isso.
+    desempenhoOperacional: (() => {
+      const serie = listaDesempenhoDiario(diasComStatus.map((d) => d.data), linhas);
+      // "valor" é o que o gráfico "Evolução diária" plota — o delta (dia
+      // sozinho), não o acumulado bruto (que sempre sobe e mentiria
+      // visualmente sobre o dia ter vendido mais que o mês inteiro).
+      const evolucaoDiaria = diasComStatus.map((d, i) => ({
         data: d.data, status: d.status,
-        // Não informado (Desempenho é opcional) precisa continuar null aqui,
-        // nunca virar R$0 no gráfico (Number(null) seria 0, que mentiria
-        // sobre "vendeu zero").
-        valor: d.lancamento?.valor_vendas_bruto != null ? Number(d.lancamento.valor_vendas_bruto) : null,
-      })),
-      mediaDiaria: mediaDiaria(diasComStatus.map((d) => (d.lancamento?.valor_vendas_bruto != null ? Number(d.lancamento.valor_vendas_bruto) : null))),
-      acumulado: (() => {
-        const valores = diasComStatus.map((d) => d.lancamento?.valor_vendas_bruto).filter((v) => v != null);
-        return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
-      })(),
-      aviso: "Acompanhamento operacional — não representa o faturamento financeiro oficial.",
-    },
+        valor: serie[i].deltaValorVendasBruto,
+        deltaQtdVendas: serie[i].deltaQtdVendas,
+        deltaNovosClientes: serie[i].deltaNovosClientes,
+        acumuladoValorVendasBruto: serie[i].valorVendasBruto,
+      }));
+      const ultimaComDado = [...serie].reverse().find((p) => p.valorVendasBruto != null) ?? null;
+      const diasNoAcumulado = ultimaComDado ? Number(ultimaComDado.data.slice(8, 10)) : 0;
+      return {
+        evolucaoDiaria,
+        // Acumulado = o valor mais recente conhecido, NUNCA soma entre dias
+        // (somaria acumulado sobre acumulado — mesmo raciocínio do Financeiro).
+        acumulado: ultimaComDado?.valorVendasBruto ?? null,
+        acumuladoQtdVendas: ultimaComDado?.qtdVendas ?? null,
+        acumuladoNovosClientes: ultimaComDado?.novosClientes ?? null,
+        dataAtualizacao: ultimaComDado?.data ?? null,
+        mediaDiaria: ultimaComDado != null && diasNoAcumulado > 0 ? ultimaComDado.valorVendasBruto / diasNoAcumulado : null,
+        aviso: "Acompanhamento operacional — não representa o faturamento financeiro oficial.",
+      };
+    })(),
     // Série do mês pra visualizar a evolução dos SNAPSHOTS reais do
     // Financeiro (não confundir com faturamento diário — cada ponto é o
     // acumulado até aquela data). `cards.faturamento` continua sendo a
@@ -526,20 +537,30 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   const dataAtualizacaoAgregada = snapshotsPorUnidade.length
     ? snapshotsPorUnidade.map((s) => s.data_lancamento).sort()[0] : null;
 
-  // Evolução diária = Desempenho (valor_vendas_bruto), somado entre
-  // unidades — dado operacional real por dia, ao contrário do Financeiro
-  // (acumulado, nunca somável). Pula dia sem Desempenho informado em
-  // nenhuma unidade (null, nunca R$0 inventado).
+  // Desempenho também é ACUMULADO do mês agora (mesma lógica do Financeiro
+  // — ver listaDesempenhoDiario). Somar o acumulado ENTRE UNIDADES no mesmo
+  // dia é válido (dois totais acumulados diferentes, mesmo instante); o
+  // delta (dia sozinho) só pode ser calculado DEPOIS dessa soma, nunca
+  // antes (senão dia 2 da unidade A + dia 5 da unidade B viraria um "dia"
+  // sem sentido). Pula fatia de distribuição mensal, mesmo critério de
+  // sempre.
   const porData = new Map();
   for (const r of linhas) {
-    if (r.valor_vendas_bruto == null) continue;
+    if (r.origem_lancamento === "distribuicao_mensal" || r.valor_vendas_bruto == null) continue;
     const acc = porData.get(r.data_lancamento) ?? 0;
     porData.set(r.data_lancamento, acc + Number(r.valor_vendas_bruto));
   }
-  const evolucaoDiariaDesempenho = dias.map((d) => ({
-    data: d, status: d > hojeIso ? STATUS_DIA.FUTURO : (porData.has(d) ? STATUS_DIA.PREENCHIDO : STATUS_DIA.PENDENTE),
-    valor: porData.get(d) ?? null,
-  }));
+  let anteriorAgregado = null;
+  const evolucaoDiariaDesempenho = dias.map((d) => {
+    const acumulado = porData.get(d) ?? null;
+    const delta = acumulado == null ? null : (anteriorAgregado != null ? acumulado - anteriorAgregado : (d === dias[0] ? acumulado : null));
+    if (acumulado != null) anteriorAgregado = acumulado;
+    return {
+      data: d, status: d > hojeIso ? STATUS_DIA.FUTURO : (acumulado != null ? STATUS_DIA.PREENCHIDO : STATUS_DIA.PENDENTE),
+      valor: delta,
+      acumuladoValorVendasBruto: acumulado,
+    };
+  });
 
   return {
     agregado: true,
@@ -576,18 +597,19 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
         { indicador: "outras_deducoes", valor: valores.outrasDeducoes },
       ],
     },
-    // Mesma forma de obterMesDeUmaUnidade — ver comentário lá. Aqui, somado
-    // entre unidades (Desempenho é dado real por dia, ao contrário do
-    // Financeiro).
-    desempenhoOperacional: {
-      evolucaoDiaria: evolucaoDiariaDesempenho,
-      mediaDiaria: mediaDiaria(evolucaoDiariaDesempenho.map((p) => p.valor)),
-      acumulado: (() => {
-        const valores = evolucaoDiariaDesempenho.map((p) => p.valor).filter((v) => v != null);
-        return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
-      })(),
-      aviso: "Acompanhamento operacional — os valores financeiros oficiais são provenientes do Financeiro iFood.",
-    },
+    // Mesma forma de obterMesDeUmaUnidade — ver comentário lá. Aqui, soma
+    // entre unidades de cada acumulado diário.
+    desempenhoOperacional: (() => {
+      const ultimoComDado = [...evolucaoDiariaDesempenho].reverse().find((p) => p.acumuladoValorVendasBruto != null) ?? null;
+      const diasNoAcumulado = ultimoComDado ? Number(ultimoComDado.data.slice(8, 10)) : 0;
+      return {
+        evolucaoDiaria: evolucaoDiariaDesempenho,
+        acumulado: ultimoComDado?.acumuladoValorVendasBruto ?? null,
+        dataAtualizacao: ultimoComDado?.data ?? null,
+        mediaDiaria: ultimoComDado != null && diasNoAcumulado > 0 ? ultimoComDado.acumuladoValorVendasBruto / diasNoAcumulado : null,
+        aviso: "Acompanhamento operacional — os valores financeiros oficiais são provenientes do Financeiro iFood.",
+      };
+    })(),
   };
 }
 
@@ -637,19 +659,25 @@ function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistent
 // ---------------------------------------------------------------------------
 // NORMALIZAÇÃO DOS DADOS DE ENTRADA DO FORMULÁRIO (etapas 1-3)
 // ---------------------------------------------------------------------------
-function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro }) {
+function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior }) {
   const b = v.corpo(body);
   const situacao = v.umDe(b.situacao, "Situação", ["normal", "sem_operacao", "zero_vendas"]);
   const statusAlvo = v.umDeOpcional(b.status, "Status", ["rascunho", "finalizado"], "rascunho");
 
-  // "Sem operação"/"Zero vendas" são ZEROS REAIS e conhecidos (a loja não
-  // funcionou, ou funcionou e não vendeu nada) — bem diferente de "não sei".
-  // Por isso continuam gravando 0, não null.
+  // Desempenho é ACUMULADO do mês (mesma lógica do Financeiro, ver
+  // listaDesempenhoDiario) — um dia sem venda real (Sem operação/Zero
+  // vendas) não pode gravar 0 literal, isso "zeraria" a série e inventaria
+  // um delta gigante negativo no dia seguinte. Em vez disso REPETE o
+  // acumulado do dia anterior (`desempenhoAnterior`, calculado por quem
+  // chama — ver ultimoDesempenhoConhecido): o delta desse dia dá 0
+  // corretamente, sem quebrar a continuidade da série.
+  const anterior = desempenhoAnterior ?? { qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0 };
+
   if (situacao === "sem_operacao") {
     const motivo = v.texto(b.motivoSemOperacao, "Motivo de não operação", { min: 1, max: 300 });
     return {
       situacao, statusAlvo, motivoSemOperacao: motivo, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
-      qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0, valorVendasIfood: 0,
+      qtdVendas: anterior.qtdVendas, valorVendasBruto: anterior.valorVendasBruto, novosClientes: anterior.novosClientes, valorVendasIfood: 0,
       taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, outrasDeducoes: 0, justificativaAjuste: null,
       avisos: [],
     };
@@ -658,7 +686,7 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro
   if (situacao === "zero_vendas") {
     return {
       situacao, statusAlvo, motivoSemOperacao: null, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
-      qtdVendas: 0, valorVendasBruto: 0, novosClientes: v.numeroOpcionalNulo(b.novosClientes, "Novos clientes", { min: 0 }),
+      qtdVendas: anterior.qtdVendas, valorVendasBruto: anterior.valorVendasBruto, novosClientes: anterior.novosClientes,
       valorVendasIfood: 0, taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, outrasDeducoes: 0, justificativaAjuste: null,
       avisos: [],
     };
@@ -666,7 +694,10 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro
 
   // situacao === "normal" — ETAPA DESEMPENHO (qtdVendas/valorVendasBruto/
   // novosClientes) é OPCIONAL: nada aqui bloqueia o lançamento, e o que não
-  // for informado vira null (nunca 0) — "não sei" ≠ "foi zero".
+  // for informado vira null (nunca 0) — "não sei" ≠ "foi zero". Os 3 campos
+  // são ACUMULADOS do mês (mesma lógica do Financeiro) — o valor isolado do
+  // dia é sempre derivado por subtração, nunca gravado diretamente (ver
+  // listaDesempenhoDiario em calc.js).
   //
   // ETAPA FINANCEIRO: o iFood só consolida o financeiro do dia com 1 dia de
   // atraso, então só é EXIGIDA quando a data lançada é ontem (`exigirFinanceiro`,
@@ -734,7 +765,7 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
   if (dataIso > hojeIso) throw ApiError.badRequest("Não é possível lançar uma data futura.");
 
   const [ano, mes] = dataIso.split("-").map(Number);
-  const { diasComStatus } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
+  const { diasComStatus, linhas } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
   const disponibilidade = verificarDisponibilidade(diasComStatus, dataIso);
   if (!disponibilidade.disponivel) throw new ApiError(409, disponibilidade.motivo, { statusDia: disponibilidade.status });
   if (disponibilidade.status !== STATUS_DIA.PENDENTE) {
@@ -744,7 +775,11 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
   const podeAjustarNegativo = temPermissao(acesso.permissoes, PERMISSOES.DASHBOARD_EXECUTIVO_CORRIGIR);
   // Criação nunca tem snapshot anterior — exigirFinanceiro depende só da data ser ontem.
   const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: null });
-  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro });
+  // `linhas` já veio de carregarCalendarioMes acima — nenhuma consulta extra
+  // pra achar o acumulado de Desempenho do dia anterior (usado só se a
+  // situação for Sem operação/Zero vendas, ver normalizarDadosLancamento).
+  const desempenhoAnterior = ultimoDesempenhoConhecido(linhas, dataIso);
+  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior });
 
   const linha = {
     organizacao_id: organizacaoId,
@@ -842,7 +877,13 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
   const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({
     dataIso: antes.data_lancamento, hojeIso, valorVendasIfoodExistente: antes.valor_vendas_ifood,
   });
-  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo: podeCorrigir, exigirFinanceiro });
+  // Mesmo raciocínio de criarLancamento: só usado se a edição virar Sem
+  // operação/Zero vendas (repete o acumulado de Desempenho do dia anterior
+  // em vez de zerar a série).
+  const [anoAntes, mesAntes] = antes.data_lancamento.split("-").map(Number);
+  const { linhas: linhasDoMes } = await carregarCalendarioMes({ unidadeId: antes.unidade_id, ano: anoAntes, mes: mesAntes, hojeIso });
+  const desempenhoAnterior = ultimoDesempenhoConhecido(linhasDoMes, antes.data_lancamento);
+  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo: podeCorrigir, exigirFinanceiro, desempenhoAnterior });
 
   const patch = {
     situacao: dados.situacao,
@@ -1002,14 +1043,18 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     const diasVencidosNoMes = dias.filter((d) => d <= hojeIso).length;
     const diasPendentes = Math.max(diasVencidosNoMes - diasFinalizados - diasRascunho, 0);
 
-    // Ticket médio: Desempenho, e só combina dias em que AMBOS (qtd e valor
-    // bruto) são conhecidos — nunca mistura a soma de um dia que tem só um
-    // dos dois. Um mês de puro lançamento mensal (sem Desempenho nenhum)
-    // resulta corretamente em `null`, não em "R$ 0,00".
-    const linhasComParDesempenho = linhasComDados.filter((r) => r.qtd_vendas != null && r.valor_vendas_bruto != null);
-    const qtdVendasPareado = linhasComParDesempenho.reduce((s, r) => s + Number(r.qtd_vendas), 0);
-    const valorVendasBrutoPareado = linhasComParDesempenho.reduce((s, r) => s + Number(r.valor_vendas_bruto), 0);
-    const qtdVendas = linhasComParDesempenho.length ? qtdVendasPareado : null;
+    // Ticket médio: Desempenho também é ACUMULADO do mês agora (mesma
+    // lógica do Financeiro) — nunca soma entre dias (somaria acumulado
+    // sobre acumulado, mesmo bug que o Financeiro já teve). Pega o par
+    // mais recente (qtd + valor bruto conhecidos NO MESMO dia) — a razão
+    // entre dois acumulados é o ticket médio válido do mês até ali. Um mês
+    // de puro lançamento mensal (sem Desempenho nenhum, campos sempre null
+    // nessas linhas) resulta corretamente em `null`, não em "R$ 0,00".
+    const parDesempenhoMaisRecente = linhasComDados
+      .filter((r) => r.qtd_vendas != null && r.valor_vendas_bruto != null)
+      .reduce((mais, r) => (!mais || r.data_lancamento > mais.data_lancamento ? r : mais), null);
+    const qtdVendas = parDesempenhoMaisRecente ? Number(parDesempenhoMaisRecente.qtd_vendas) : null;
+    const valorVendasBrutoPareado = parDesempenhoMaisRecente ? Number(parDesempenhoMaisRecente.valor_vendas_bruto) : null;
 
     // Média diária: o snapshot já é o acumulado de dia 1 até `data_lancamento`
     // — divide por quantos dias ele cobre, nunca por "dias com dados" (ver

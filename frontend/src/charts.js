@@ -122,10 +122,15 @@ export function roscaDeducoes(id, itens) {
 }
 
 /**
- * Gráfico 3 — evolução diária de um valor em R$ (diário ou acumulado).
- * Usado hoje para o Desempenho (valor_vendas_bruto) — dado operacional real
- * por dia, ao contrário do Financeiro (snapshot acumulado, não plotável
- * como série diária). `rotuloBase` nomeia o dataset/legenda.
+ * Gráfico 3 — evolução diária de um valor em R$. Usado hoje para o
+ * Desempenho: o backend grava o ACUMULADO do mês (mesma lógica do
+ * Financeiro), mas `p.valor` que chega aqui já é o DELTA — "quanto aquele
+ * dia fez sozinho" (hoje menos o último acumulado conhecido, ver
+ * listaDesempenhoDiario) — é isso que a linha plota. Quando o ponto também
+ * carrega `p.acumuladoValorVendasBruto`, o tooltip mostra os dois juntos:
+ * o dia isolado (o que o gráfico desenha) e o total acumulado até ali (o
+ * mesmo número que aparece no card "Desempenho acumulado"). `rotuloBase`
+ * nomeia o dataset/legenda.
  */
 export function linhaEvolucao(id, pontos, modo = "diario", rotuloBase = "Faturamento") {
   const el = document.getElementById(id);
@@ -153,7 +158,13 @@ export function linhaEvolucao(id, pontos, modo = "diario", rotuloBase = "Faturam
         tooltip: {
           callbacks: {
             title: (c) => { const p = pontos[c[0].dataIndex]; return `${p.data.split("-").reverse().join("/")} · ${p.status}`; },
-            label: (c) => c.raw == null ? "Sem lançamento" : "R$ " + Number(c.raw).toFixed(2),
+            label: (c) => {
+              if (c.raw == null) return "Sem lançamento";
+              const p = pontos[c.dataIndex];
+              const linhas = [`R$ ${Number(c.raw).toFixed(2)}`];
+              if (p.acumuladoValorVendasBruto != null) linhas.push(`Acumulado até aqui: R$ ${Number(p.acumuladoValorVendasBruto).toFixed(2)}`);
+              return linhas;
+            },
           },
         },
       },

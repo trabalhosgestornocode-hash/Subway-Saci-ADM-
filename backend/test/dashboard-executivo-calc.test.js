@@ -13,6 +13,7 @@ import {
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
   recalcularDistribuicaoMensal, snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros,
+  listaDesempenhoDiario, ultimoDesempenhoConhecido,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -420,6 +421,95 @@ describe("listaSnapshotsFinanceiros", () => {
     const r = listaSnapshotsFinanceiros(dias3, []);
     assert.equal(r.length, 3);
     assert.ok(r.every((p) => p.valor === null && p.delta === null && p.percentualTotalDeducoes === null));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listaDesempenhoDiario — Desempenho virou ACUMULADO do mês, mesma lógica
+// do Financeiro (pedido: "pra tanto o desempenho e o financeiro terem a
+// mesma lógica"). O delta ("quanto aquele dia fez sozinho") é sempre
+// derivado, nunca a fonte.
+// ---------------------------------------------------------------------------
+describe("listaDesempenhoDiario", () => {
+  const dias4 = ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04"];
+
+  test("dia 1 do mês: delta = o próprio acumulado (não existe dia 0 pra subtrair)", () => {
+    const linhas = [{ data_lancamento: "2026-08-01", qtd_vendas: 10, valor_vendas_bruto: 2000, novos_clientes: 3 }];
+    const r = listaDesempenhoDiario(dias4, linhas);
+    assert.equal(r[0].valorVendasBruto, 2000);
+    assert.equal(r[0].deltaValorVendasBruto, 2000);
+    assert.equal(r[0].deltaQtdVendas, 10);
+    assert.equal(r[0].deltaNovosClientes, 3);
+  });
+
+  test("dias consecutivos acumulados: delta é a diferença (exemplo do pedido: 2000 -> 2500, delta do dia 2 = 500)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", qtd_vendas: 10, valor_vendas_bruto: 2000, novos_clientes: 3 },
+      { data_lancamento: "2026-08-02", qtd_vendas: 13, valor_vendas_bruto: 2500, novos_clientes: 5 },
+    ];
+    const r = listaDesempenhoDiario(dias4, linhas);
+    assert.equal(r[1].valorVendasBruto, 2500);
+    assert.equal(r[1].deltaValorVendasBruto, 500);
+    assert.equal(r[1].deltaQtdVendas, 3);
+    assert.equal(r[1].deltaNovosClientes, 2);
+  });
+
+  test("buraco no meio (dia sem dado): o próximo dia com dado calcula o delta contra o ÚLTIMO acumulado conhecido, pulando o buraco", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", qtd_vendas: 10, valor_vendas_bruto: 2000, novos_clientes: 3 },
+      // dia 02 sem lançamento nenhum
+      { data_lancamento: "2026-08-03", qtd_vendas: 15, valor_vendas_bruto: 3200, novos_clientes: 4 },
+    ];
+    const r = listaDesempenhoDiario(dias4, linhas);
+    assert.equal(r[1].valorVendasBruto, null); // dia 02: sem dado
+    assert.equal(r[1].deltaValorVendasBruto, null);
+    assert.equal(r[2].deltaValorVendasBruto, 1200); // 3200 - 2000, não 3200 - null
+  });
+
+  test("primeiro dia com dado NÃO é o dia 1 do mês: delta desse primeiro ponto é null (não dá pra saber quanto foi antes)", () => {
+    const linhas = [{ data_lancamento: "2026-08-03", qtd_vendas: 20, valor_vendas_bruto: 5000, novos_clientes: 6 }];
+    const r = listaDesempenhoDiario(dias4, linhas);
+    assert.equal(r[2].valorVendasBruto, 5000);
+    assert.equal(r[2].deltaValorVendasBruto, null);
+  });
+
+  test("ignora fatia de distribuição mensal (não é acumulado real)", () => {
+    const linhas = dias4.map((d) => ({ data_lancamento: d, qtd_vendas: 5, valor_vendas_bruto: 1000, novos_clientes: 1, origem_lancamento: "distribuicao_mensal" }));
+    const r = listaDesempenhoDiario(dias4, linhas);
+    assert.ok(r.every((p) => p.valorVendasBruto === null && p.deltaValorVendasBruto === null));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ultimoDesempenhoConhecido — usado por "Sem operação"/"Zero vendas" pra
+// REPETIR o acumulado do dia anterior em vez de zerar a série (decisão do
+// pedido: gravar 0 literal quebraria o delta do dia seguinte).
+// ---------------------------------------------------------------------------
+describe("ultimoDesempenhoConhecido", () => {
+  test("sem nenhum dia anterior no mês: {0,0,0} — o acumulado começa do zero mesmo", () => {
+    const r = ultimoDesempenhoConhecido([], "2026-08-05");
+    assert.deepEqual(r, { qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0 });
+  });
+
+  test("pega o mais recente conhecido de cada campo — inclusive de dias diferentes, se um campo ficou null em algum meio-tempo", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", qtd_vendas: 10, valor_vendas_bruto: 2000, novos_clientes: 3 },
+      { data_lancamento: "2026-08-02", qtd_vendas: null, valor_vendas_bruto: 2500, novos_clientes: null }, // só valor informado
+    ];
+    const r = ultimoDesempenhoConhecido(linhas, "2026-08-03");
+    assert.deepEqual(r, { qtdVendas: 10, valorVendasBruto: 2500, novosClientes: 3 }); // qtd/novosClientes "herdam" do dia 01
+  });
+
+  test("nunca cruza a fronteira do mês — Desempenho reseta todo mês, igual o Financeiro", () => {
+    const linhas = [{ data_lancamento: "2026-07-31", qtd_vendas: 99, valor_vendas_bruto: 88888, novos_clientes: 20 }];
+    const r = ultimoDesempenhoConhecido(linhas, "2026-08-01");
+    assert.deepEqual(r, { qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0 });
+  });
+
+  test("ignora fatia de distribuição mensal", () => {
+    const linhas = [{ data_lancamento: "2026-08-01", qtd_vendas: 5, valor_vendas_bruto: 1000, novos_clientes: 1, origem_lancamento: "distribuicao_mensal" }];
+    const r = ultimoDesempenhoConhecido(linhas, "2026-08-05");
+    assert.deepEqual(r, { qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0 });
   });
 });
 
