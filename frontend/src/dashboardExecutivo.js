@@ -13,7 +13,7 @@ import {
 import { INTEGRACOES } from "./config.js";
 import {
   destruirGraficosDashboardExecutivo, barraComparativaMeta, roscaDeducoes,
-  linhaEvolucao, linhaEvolucaoDeducoes, barraComparativoMensal, visaoAnual,
+  linhaEvolucao, linhaFinanceiroAcumulado, linhaDeducoesAcumuladas, barraComparativoMensal, visaoAnual,
 } from "./charts.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { abrirLancamentoModal } from "./dashboardExecutivoForm.js";
@@ -27,12 +27,16 @@ const ABAS = [
   { id: "indicadores", icon: "🎯", label: "Indicadores" },
   { id: "historico", icon: "📚", label: "Histórico" },
 ];
+// FINANCEIRO_PENDENTE NÃO é mais um status visual à parte (item 9 do
+// pedido de UX): o dia continua "Preenchido" — Situação+Desempenho já
+// resolvem a sequência do calendário igual, e o Financeiro é acumulado do
+// mês, não pendência de cada dia (ver migration 036). A falta de snapshot
+// vira só um badge complementar dentro do dia (ver badgeFinanceiro) — o
+// STATUS_DIA em si e a regra que resolve a sequência não mudaram em nada,
+// só a cor/rótulo que esse status usa pra se apresentar.
 const STATUS_LEGENDA = [
   { chave: "PREENCHIDO", label: "Preenchido", classe: "ok" },
   { chave: "RASCUNHO", label: "Rascunho", classe: "warn" },
-  // Situação/Desempenho preenchidos, financeiro ainda indisponível (o iFood
-  // só libera no dia seguinte) — não é "esquecido", é esperado até amanhã.
-  { chave: "FINANCEIRO_PENDENTE", label: "Financeiro pendente", classe: "info" },
   { chave: "PENDENTE", label: "Pendente", classe: "bad" },
   { chave: "BLOQUEADO", label: "Bloqueado", classe: "muted" },
   { chave: "SEM_OPERACAO", label: "Sem operação", classe: "info" },
@@ -40,6 +44,9 @@ const STATUS_LEGENDA = [
   { chave: "FUTURO", label: "Futuro", classe: "muted" },
 ];
 const STATUS_ROTULO = Object.fromEntries(STATUS_LEGENDA.map((s) => [s.chave, s]));
+/** Status "de verdade" que cada status VISUAL usa pra pintar o dia — só o
+ * mapeamento acima descrito. */
+const statusVisual = (status) => (status === "FINANCEIRO_PENDENTE" ? "PREENCHIDO" : status);
 
 const hoje = new Date();
 const dex = {
@@ -250,9 +257,11 @@ function renderVisaoGeral(box) {
       <div class="dex-graficos">
         ${graficoBox("comparativo", "📈 Comparativo de percentuais", "dex-chart-comp")}
         ${graficoBox("composicao", "🍩 Composição das deduções (R$)", "dex-chart-comp2")}
-      </div>`;
+      </div>
+      ${desempenhoBox(d.desempenhoOperacional)}`;
     barraComparativaMeta("dex-chart-comp", d.graficos.comparativoPercentuais);
     roscaDeducoes("dex-chart-comp2", d.graficos.composicaoDeducoes);
+    linhaEvolucao("dex-chart-desemp", d.desempenhoOperacional.evolucaoDiaria, "diario", "Desempenho");
     return;
   }
 
@@ -302,6 +311,9 @@ function renderVisaoGeral(box) {
 
   barraComparativaMeta("dex-chart-comp", d.graficos.comparativoPercentuais);
   roscaDeducoes("dex-chart-comp2", d.graficos.composicaoDeducoes);
+  // Evolução diária do Desempenho, do Financeiro acumulado e das deduções
+  // agora moram na aba Lançamentos (perto do calendário que elas explicam
+  // dia a dia) — ver renderLancamentos.
   montarSimuladorPreco("dex-sim-container", dex.unidadeId, d.periodo.mes, d.periodo.ano);
   el("#dex-preencher-primeiro")?.addEventListener("click", () => abrirLancamentoModal({
     data: r.primeiroDiaPendente, unidadeId: dex.unidadeId, modeloLogistico: d.modeloLogistico, ehTeste: d.ehTeste, onSalvo: carregarConteudo,
@@ -429,6 +441,25 @@ function graficoBox(chave, titulo, canvasId) {
   return `<section class="dex-painel"><h3>${titulo}</h3><div class="dex-chart-wrap"><canvas id="${canvasId}"></canvas></div></section>`;
 }
 
+// Desempenho tem granularidade diária REAL (ao contrário do Financeiro, que
+// é snapshot acumulado — ver cards.faturamento) — por isso é o único que
+// ganha um gráfico dia-a-dia aqui. Nunca é a fonte oficial de faturamento;
+// o aviso deixa isso explícito, e o "acumulado" some visualmente do card de
+// Financeiro oficial (cardsPrincipais) pra nunca competir com ele.
+function desempenhoBox(op) {
+  if (!op) return "";
+  const stats = [
+    op.mediaDiaria != null ? `Média do período: <b>${fmtMoeda(op.mediaDiaria)}</b>` : "Sem dados suficientes para média",
+    op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>` : null,
+  ].filter(Boolean).join(" · ");
+  return `<section class="dex-painel dex-desempenho">
+    <h3>📊 Evolução diária do Desempenho</h3>
+    <div class="dex-chart-wrap"><canvas id="dex-chart-desemp"></canvas></div>
+    <p class="dex-desemp-stats">${stats}</p>
+    <p class="dex-resumo-sub">ℹ️ ${escapeHtml(op.aviso)}</p>
+  </section>`;
+}
+
 const cardDef = (icone, label, valor, sub, tip, cls = "", extra = "") => `
   <div class="card ${cls}">
     <div class="dex-card-topo"><span>${icone}</span> ${label}${tip ? `<span class="vd-tip" data-tip="${escapeHtml(tip)}" tabindex="0">i</span>` : ""}</div>
@@ -472,7 +503,9 @@ function cardsPrincipais(cards) {
   const s2 = cards.servicosPromocoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   const s3 = cards.totalDeducoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   return [
-    cardDef("💰", "Faturamento (iFood)", fmtMoeda(cards.faturamento.valor), `${cards.faturamento.diasComDados} dia(s) com lançamento financeiro`, "Soma do valor das vendas no Financeiro do iFood — a fonte oficial de faturamento (não o Desempenho)."),
+    cardDef("💰", "Financeiro oficial (iFood)", fmtMoeda(cards.faturamento.valor),
+      cards.faturamento.periodoFim ? `Consolidado pelo iFood até ${fmtDataBr(cards.faturamento.periodoFim)}` : "Nenhum financeiro consolidado ainda neste mês",
+      "Snapshot acumulado do extrato do iFood (dia 1 até a data mais recente informada) — a fonte oficial de faturamento (não o Desempenho)."),
     cardDef("📊", "Taxas e Comissões", fmtMoeda(cards.taxasComissoes.valor), `${fmtPct(cards.taxasComissoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s1.chave]}">${s1.label}</span>`, "Comissão iFood + taxa de transação de pagamento online.", "", metaBarraHtml(cards.taxasComissoes)),
     cardDef("🏷️", "Serviços e Promoções", fmtMoeda(cards.servicosPromocoes.valor), `${fmtPct(cards.servicosPromocoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s2.chave]}">${s2.label}</span>`, "Custo de campanhas e promoções ativas no iFood.", "", metaBarraHtml(cards.servicosPromocoes)),
     cardDef("⛔", "Total de Deduções", fmtMoeda(cards.totalDeducoes.valor), `${fmtPct(cards.totalDeducoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s3.chave]}">${s3.label}</span>`, "Taxas e comissões + serviços e promoções + taxas de entregadores + outras deduções.", "", metaBarraHtml(cards.totalDeducoes)),
@@ -493,18 +526,29 @@ function renderLancamentos(box) {
   box.innerHTML = `
     ${lancamentoMensalBanner(d.lancamentoMensal)}
     ${alertaPendencias(d)}
+    ${resumoFinanceiroBanner(d)}
     <section class="dex-cal-wrap">
       <div class="dex-cal">${d.calendario.map((dia) => diaHtml(dia)).join("")}</div>
-      <div class="dex-legenda">${STATUS_LEGENDA.map((s) => `<span class="dex-leg-item"><span class="pill ${s.classe}">${s.label}</span></span>`).join("")}
-        <span class="dex-leg-item"><span class="pill ok estimado">12 ~</span> Estimado (distribuição mensal)</span></div>
+      <div class="dex-legenda">
+        ${STATUS_LEGENDA.map((s) => `<span class="dex-leg-item"><span class="pill ${s.classe}">${s.label}</span></span>`).join("")}
+        <span class="dex-leg-item"><span class="pill ok estimado">12 ~</span> Estimado (distribuição mensal)</span>
+        <span class="dex-leg-item"><span class="dex-cal-badge dex-cal-badge-fin-ok">Financeiro ✓</span> Tem snapshot financeiro</span>
+        <span class="dex-leg-item"><span class="dex-cal-badge dex-cal-badge-fin-disp">Financeiro disponível</span> Dia elegível, snapshot ainda não lançado</span>
+      </div>
     </section>
     <div class="dex-graficos">
-      ${graficoBox("evolucao", "📈 Evolução diária do faturamento", "dex-chart-evo")}
-      ${graficoBox("evolucao-ded", "📉 Evolução do percentual de deduções", "dex-chart-evoded")}
+      ${desempenhoDiarioBox(d.desempenhoOperacional)}
+      ${financeiroAcumuladoBox(d.snapshotsFinanceiros)}
+      ${deducoesAcumuladasBox(d)}
     </div>`;
 
-  linhaEvolucao("dex-chart-evo", d.graficos.evolucaoDiaria, "diario");
-  linhaEvolucaoDeducoes("dex-chart-evoded", d.graficos.evolucaoDeducoes);
+  linhaEvolucao("dex-chart-desemp-lanc", d.desempenhoOperacional.evolucaoDiaria, "diario", "Desempenho");
+  const pontosFinReais = d.snapshotsFinanceiros.filter((p) => p.valor != null);
+  if (pontosFinReais.length >= 2) linhaFinanceiroAcumulado("dex-chart-fin-acum", d.snapshotsFinanceiros);
+  const pontosDedReais = d.snapshotsFinanceiros.filter((p) => p.percentualTotalDeducoes != null);
+  if (pontosDedReais.length >= 2) {
+    linhaDeducoesAcumuladas("dex-chart-ded-acum", d.snapshotsFinanceiros, d.cards.totalDeducoes?.meta?.metaIdeal ?? null, d.cards.totalDeducoes?.meta?.limite ?? null);
+  }
 
   el("#dex-lote-ver")?.addEventListener("click", () => abrirLancamentoMensalModal({
     unidadeId: dex.unidadeId, mes: dex.mes, ano: dex.ano, modeloLogistico: d.modeloLogistico, onSalvo: carregarConteudo, modoInicial: "ver",
@@ -528,6 +572,103 @@ function renderLancamentos(box) {
   }));
 }
 
+// Faixa compacta acima do calendário (item 4 do pedido de UX) — 3 números,
+// nunca um card gigante: até onde o Financeiro oficial está consolidado, a
+// data do último dado de Desempenho, e se o dia elegível de hoje já recebeu
+// o próximo snapshot. Tudo derivado do que a Visão Geral já usa — nenhuma
+// regra nova, só reapresentação compacta pra quem está na aba Lançamentos.
+function resumoFinanceiroBanner(d) {
+  const fin = d.cards.faturamento;
+  const ultimoDesempenho = [...d.desempenhoOperacional.evolucaoDiaria].reverse().find((p) => p.valor != null)?.data ?? null;
+  const diaElegivel = d.calendario.find((x) => x.elegivelFinanceiro);
+  const temSnapshotElegivel = diaElegivel?.lancamento?.situacao === "normal"
+    && diaElegivel?.lancamento?.origem_lancamento !== "distribuicao_mensal"
+    && diaElegivel?.lancamento?.valor_vendas_ifood != null;
+
+  const item = (label, valor, sub) => `
+    <div class="dex-resumo-fin-item">
+      <span class="dex-resumo-fin-label">${label}</span>
+      <b>${valor}</b>
+      <span class="dex-resumo-fin-sub">${sub}</span>
+    </div>`;
+
+  return `<section class="dex-resumo-fin">
+    ${item("💰 Último Financeiro oficial", fin.valor != null ? fmtMoeda(fin.valor) : "—",
+      fin.periodoFim ? `Consolidado de ${fmtDataBr(fin.periodoInicio)} até ${fmtDataBr(fin.periodoFim)}` : "Nenhum snapshot financeiro informado ainda.")}
+    ${item("📊 Último Desempenho", ultimoDesempenho ? fmtDataBr(ultimoDesempenho) : "—",
+      ultimoDesempenho ? "Dado operacional mais recente" : "Nenhum dado de Desempenho lançado neste mês.")}
+    ${item("🔔 Próximo snapshot financeiro", diaElegivel ? (temSnapshotElegivel ? "Atualizado" : "Disponível") : "—",
+      diaElegivel
+        ? (temSnapshotElegivel ? `Financeiro atualizado até ${fmtDataBr(diaElegivel.data)}` : `Disponível para ${fmtDataBr(diaElegivel.data)}`)
+        : "O dia elegível deste recorte é de outro mês")}
+  </section>`;
+}
+
+// Estado vazio compacto (item 8 do pedido) — nunca um gráfico grande em
+// branco.
+function painelVazio(titulo, texto) {
+  return `<section class="dex-painel dex-painel-vazio"><h3>${titulo}</h3><p class="dex-vazio-texto">${escapeHtml(texto)}</p></section>`;
+}
+
+// Indicador compacto pra quando só existe 1 ponto real — um gráfico de
+// linha com um ponto só não mostra evolução nenhuma (item 8).
+function painelIndicador(titulo, valor, sub) {
+  return `<section class="dex-painel dex-painel-indicador">
+    <h3>${titulo}</h3>
+    <p class="dex-indicador-valor">${valor}</p>
+    <p class="dex-resumo-sub">${sub}</p>
+  </section>`;
+}
+
+function desempenhoDiarioBox(op) {
+  if (!op.evolucaoDiaria.some((p) => p.valor != null)) {
+    return painelVazio("📊 Evolução diária do Desempenho", "Nenhum dado de Desempenho lançado neste mês.");
+  }
+  const stats = [
+    op.mediaDiaria != null ? `Média do período: <b>${fmtMoeda(op.mediaDiaria)}</b>` : null,
+    op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>` : null,
+  ].filter(Boolean).join(" · ");
+  return `<section class="dex-painel">
+    <h3>📊 Evolução diária do Desempenho</h3>
+    <div class="dex-chart-wrap"><canvas id="dex-chart-desemp-lanc"></canvas></div>
+    ${stats ? `<p class="dex-desemp-stats">${stats}</p>` : ""}
+    <p class="dex-resumo-sub">ℹ️ ${escapeHtml(op.aviso)}</p>
+  </section>`;
+}
+
+// Financeiro é sempre snapshot acumulado — NUNCA chamado de "faturamento
+// diário" (item 5 do pedido). Com 0 pontos reais, estado vazio; com 1,
+// indicador (gráfico de 1 ponto não mostra evolução); com 2+, o gráfico de
+// linha sem interpolar entre dias sem snapshot.
+function financeiroAcumuladoBox(snapshots) {
+  const reais = snapshots.filter((p) => p.valor != null);
+  if (!reais.length) return painelVazio("💰 Evolução do Financeiro acumulado", "Nenhum snapshot financeiro informado ainda.");
+  if (reais.length === 1) {
+    const p = reais[0];
+    return painelIndicador("💰 Evolução do Financeiro acumulado", fmtMoeda(p.valor),
+      `Consolidado até ${fmtDataBr(p.data)} — a evolução aparece a partir do 2º snapshot do mês.`);
+  }
+  return `<section class="dex-painel">
+    <h3>💰 Evolução do Financeiro acumulado</h3>
+    <div class="dex-chart-wrap"><canvas id="dex-chart-fin-acum"></canvas></div>
+    <p class="dex-resumo-sub">Cada ponto é o snapshot acumulado daquele dia — nunca interpola dias sem lançamento.</p>
+  </section>`;
+}
+
+function deducoesAcumuladasBox(d) {
+  const reais = d.snapshotsFinanceiros.filter((p) => p.percentualTotalDeducoes != null);
+  if (!reais.length) return painelVazio("📉 Deduções acumuladas", "Nenhum snapshot financeiro informado ainda.");
+  if (reais.length === 1) {
+    const p = reais[0];
+    return painelIndicador("📉 Deduções acumuladas", fmtPct(p.percentualTotalDeducoes), `Consolidado até ${fmtDataBr(p.data)}`);
+  }
+  return `<section class="dex-painel">
+    <h3>📉 Deduções acumuladas</h3>
+    <div class="dex-chart-wrap"><canvas id="dex-chart-ded-acum"></canvas></div>
+    <p class="dex-resumo-sub">% do total de deduções em cada snapshot — nunca interpola dias sem lançamento.</p>
+  </section>`;
+}
+
 // Faixa discreta no topo da aba Lançamentos quando o mês já tem um
 // lançamento mensal (item 6 do pedido) — dá acesso direto a
 // visualizar/editar/excluir sem precisar clicar num dia estimado.
@@ -549,8 +690,25 @@ function lancamentoMensalBanner(lote) {
     </div>`;
 }
 
+/**
+ * Badge complementar do Financeiro dentro do dia — nunca muda a cor/status
+ * principal do dia (isso é papel do STATUS_DIA). "Financeiro ✓" quando o
+ * dia tem um snapshot real (nunca fatia de distribuição mensal — essa já
+ * tem seu próprio sinal "~"); "Financeiro disponível" só no dia elegível
+ * (`dia.elegivelFinanceiro`, vindo pronto do backend) que ainda não recebeu
+ * o snapshot.
+ */
+function badgeFinanceiro(dia) {
+  const temSnapshot = dia.lancamento?.situacao === "normal"
+    && dia.lancamento?.origem_lancamento !== "distribuicao_mensal"
+    && dia.lancamento?.valor_vendas_ifood != null;
+  if (temSnapshot) return { texto: "Financeiro ✓", classe: "fin-ok", titulo: "Este dia tem um snapshot financeiro do iFood" };
+  if (dia.elegivelFinanceiro) return { texto: "Financeiro disponível", classe: "fin-disp", titulo: "O Financeiro do iFood já pode ser lançado para este dia" };
+  return null;
+}
+
 function diaHtml(dia) {
-  const s = STATUS_ROTULO[dia.status] ?? { label: dia.status, classe: "muted" };
+  const s = STATUS_ROTULO[statusVisual(dia.status)] ?? { label: dia.status, classe: "muted" };
   const numero = Number(dia.data.slice(8, 10));
   // FINANCEIRO_PENDENTE é clicável igual RASCUNHO — precisa continuar
   // aberto pra completar o Financeiro assim que a data virar "ontem".
@@ -561,8 +719,11 @@ function diaHtml(dia) {
   // uma distribuição estimada, não um lançamento diário real.
   const estimado = dia.lancamento?.origem_lancamento === "distribuicao_mensal";
   const tituloEstimado = estimado ? " · Origem: distribuição mensal (clique para ver o lançamento mensal)" : "";
-  return `<div class="dex-cal-dia pill ${s.classe}${estimado ? " estimado" : ""}" ${clicavel ? `data-clicavel data-data="${dia.data}" role="button" tabindex="0"` : ""}${estimado ? " data-estimado=\"1\"" : ""} title="${fmtDataBr(dia.data)} · ${s.label}${tituloEstimado}">
+  const badge = badgeFinanceiro(dia);
+  const tituloBadge = badge ? ` · ${badge.titulo}` : "";
+  return `<div class="dex-cal-dia pill ${s.classe}${estimado ? " estimado" : ""}" ${clicavel ? `data-clicavel data-data="${dia.data}" role="button" tabindex="0"` : ""}${estimado ? " data-estimado=\"1\"" : ""} title="${fmtDataBr(dia.data)} · ${s.label}${tituloBadge}${tituloEstimado}">
     <span class="dex-cal-num">${numero}${estimado ? ' <span class="dex-cal-estimado" aria-label="Distribuição mensal estimada">~</span>' : ""}</span><span class="dex-cal-status">${s.label}</span>
+    ${badge ? `<span class="dex-cal-badge dex-cal-badge-${badge.classe}">${badge.texto}</span>` : ""}
   </div>`;
 }
 

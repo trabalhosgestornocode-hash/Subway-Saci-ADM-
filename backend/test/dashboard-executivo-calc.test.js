@@ -12,7 +12,7 @@ import {
   diasDoMes, mesAnterior, diaAnterior, STATUS_DIA,
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
-  recalcularDistribuicaoMensal,
+  recalcularDistribuicaoMensal, snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -99,9 +99,12 @@ describe("status de um dia (base, a partir do lançamento)", () => {
     assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "sem_operacao" } }), STATUS_DIA.RASCUNHO);
     assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "zero_vendas" } }), STATUS_DIA.RASCUNHO);
   });
-  test("rascunho + situação normal + SEM financeiro ainda => FINANCEIRO_PENDENTE (dia ≠ ontem, esperado até amanhã)", () => {
-    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null } }), STATUS_DIA.FINANCEIRO_PENDENTE);
-    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal" } }), STATUS_DIA.FINANCEIRO_PENDENTE);
+  test("rascunho + situação normal + SEM financeiro + dia ELEGÍVEL (data === ontem) => FINANCEIRO_PENDENTE", () => {
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null }, ehDataElegivel: true }), STATUS_DIA.FINANCEIRO_PENDENTE);
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal" }, ehDataElegivel: true }), STATUS_DIA.FINANCEIRO_PENDENTE);
+  });
+  test("rascunho + situação normal + SEM financeiro + dia NÃO elegível => RASCUNHO comum (financeiro nem é oferecido nesse dia, então não é 'esperando o iFood')", () => {
+    assert.equal(statusDiaBase({ lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null }, ehDataElegivel: false }), STATUS_DIA.RASCUNHO);
   });
   test("finalizado + sem_operacao => SEM_OPERACAO", () => {
     assert.equal(statusDiaBase({ lancamento: { status: "finalizado", situacao: "sem_operacao" } }), STATUS_DIA.SEM_OPERACAO);
@@ -156,14 +159,24 @@ describe("statusMes — trava sequencial dentro do mês", () => {
     assert.equal(r[1].status, STATUS_DIA.BLOQUEADO);
   });
 
-  test("dia 1 rascunho AGUARDANDO FINANCEIRO (situação normal, dia ≠ ontem) RESOLVE e libera o dia 2 — bug real corrigido: sem isso, o mês inteiro travava toda vez que o financeiro de um dia ainda não estava disponível", () => {
+  test("dia 1 rascunho AGUARDANDO FINANCEIRO no dia ELEGÍVEL (situação normal, data === ontem) RESOLVE e libera o dia 2 — bug real corrigido: sem isso, o mês inteiro travava toda vez que o financeiro de um dia ainda não estava disponível", () => {
     const dias = [
       { data: "2026-08-01", lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null } },
       { data: "2026-08-02", lancamento: null },
     ];
-    const r = statusMes({ dias, hojeIso: "2026-08-03" });
+    const r = statusMes({ dias, hojeIso: "2026-08-02" }); // hoje=02 -> ontem=01: dia 1 é o único elegível
     assert.equal(r[0].status, STATUS_DIA.FINANCEIRO_PENDENTE);
     assert.equal(r[1].status, STATUS_DIA.PENDENTE);
+  });
+
+  test("dia 1 rascunho sem financeiro FORA do dia elegível continua RASCUNHO comum e bloqueia o dia 2 (o financeiro acumulado do iFood é snapshot do mês, não pendência de cada dia — ver migration 036)", () => {
+    const dias = [
+      { data: "2026-08-01", lancamento: { status: "rascunho", situacao: "normal", valor_vendas_ifood: null } },
+      { data: "2026-08-02", lancamento: null },
+    ];
+    const r = statusMes({ dias, hojeIso: "2026-08-03" }); // hoje=03 -> ontem=02: dia 1 já não é mais elegível
+    assert.equal(r[0].status, STATUS_DIA.RASCUNHO);
+    assert.equal(r[1].status, STATUS_DIA.BLOQUEADO);
   });
 
   test("dia sem operação e dia zero vendas TAMBÉM resolvem e liberam o próximo", () => {
@@ -194,6 +207,18 @@ describe("statusMes — trava sequencial dentro do mês", () => {
     const diasSetembro = [{ data: "2026-09-01", lancamento: null }];
     const r = statusMes({ dias: diasSetembro, hojeIso: "2026-09-01" });
     assert.equal(r[0].status, STATUS_DIA.PENDENTE);
+  });
+
+  test("elegivelFinanceiro marca só o dia === hoje-1, exposto pro frontend decidir o badge (não recalcular no cliente)", () => {
+    const dias = [
+      { data: "2026-08-10", lancamento: null },
+      { data: "2026-08-11", lancamento: null },
+      { data: "2026-08-12", lancamento: null },
+    ];
+    const r = statusMes({ dias, hojeIso: "2026-08-12" }); // hoje=12 -> ontem=11
+    assert.equal(r[0].elegivelFinanceiro, false); // 10/08
+    assert.equal(r[1].elegivelFinanceiro, true); // 11/08
+    assert.equal(r[2].elegivelFinanceiro, false); // 12/08 (é hoje, não ontem)
   });
 });
 
@@ -280,6 +305,121 @@ describe("diaAnterior", () => {
 
   test("virada de ano: 01/01 -> 31/12 do ano anterior", () => {
     assert.equal(diaAnterior("2027-01-01"), "2026-12-31");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapshotFinanceiroMaisRecente — Financeiro é snapshot ACUMULADO do mês
+// (dia 1 até a data), nunca soma entre dias (migration 036 / correção do
+// pedido: "não implementar dia sem valor_vendas_ifood => rascunho
+// obrigatório"). A Visão Geral usa sempre o snapshot mais recente.
+// ---------------------------------------------------------------------------
+describe("snapshotFinanceiroMaisRecente", () => {
+  test("sem nenhum lançamento com financeiro => null (nunca R$0 inventado)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", situacao: "normal", valor_vendas_ifood: null },
+      { data_lancamento: "2026-08-10", situacao: "sem_operacao", valor_vendas_ifood: 0 },
+    ];
+    assert.equal(snapshotFinanceiroMaisRecente(linhas), null);
+  });
+
+  test("pega o MAIS RECENTE por data, não soma os dois (o acumulado de 11/08 já inclui 01-11/08)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", situacao: "normal", valor_vendas_ifood: 8000 },
+      { data_lancamento: "2026-08-11", situacao: "normal", valor_vendas_ifood: 15000 },
+    ];
+    const snap = snapshotFinanceiroMaisRecente(linhas);
+    assert.equal(snap.data_lancamento, "2026-08-11");
+    assert.equal(snap.valor_vendas_ifood, 15000); // NUNCA 23000 (8000+15000)
+  });
+
+  test("dia sem_operacao/zero_vendas mais recente NUNCA apaga o snapshot real (0 sintético, não extrato do iFood)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-11", situacao: "normal", valor_vendas_ifood: 15000 },
+      { data_lancamento: "2026-08-12", situacao: "sem_operacao", valor_vendas_ifood: 0 },
+    ];
+    const snap = snapshotFinanceiroMaisRecente(linhas);
+    assert.equal(snap.data_lancamento, "2026-08-11");
+    assert.equal(snap.valor_vendas_ifood, 15000);
+  });
+
+  test("corte de data (ateDataIso) ignora snapshots depois do corte", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", situacao: "normal", valor_vendas_ifood: 8000 },
+      { data_lancamento: "2026-08-20", situacao: "normal", valor_vendas_ifood: 30000 },
+    ];
+    const snap = snapshotFinanceiroMaisRecente(linhas, "2026-08-10");
+    assert.equal(snap.data_lancamento, "2026-08-05");
+    assert.equal(snap.valor_vendas_ifood, 8000);
+  });
+
+  test("sem entrada real, mas com dias de Lançamento Mensal (distribuição) => soma as fatias (são aditivas por design)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 1000, origem_lancamento: "distribuicao_mensal" },
+      { data_lancamento: "2026-08-02", situacao: "normal", valor_vendas_ifood: 1000, origem_lancamento: "distribuicao_mensal" },
+    ];
+    const snap = snapshotFinanceiroMaisRecente(linhas);
+    assert.equal(snap.valor_vendas_ifood, 2000);
+    assert.equal(snap.data_lancamento, "2026-08-02");
+  });
+
+  test("entrada real presente sempre vence a distribuição mensal, mesmo mais antiga", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 1000, origem_lancamento: "distribuicao_mensal" },
+      { data_lancamento: "2026-08-02", situacao: "normal", valor_vendas_ifood: 1000, origem_lancamento: "distribuicao_mensal" },
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 500 },
+    ];
+    const snap = snapshotFinanceiroMaisRecente(linhas);
+    assert.equal(snap.valor_vendas_ifood, 500);
+    assert.equal(snap.data_lancamento, "2026-08-01");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listaSnapshotsFinanceiros — série do mês pra plotar "Evolução do Financeiro
+// acumulado" sem interpolar entre pontos (item 6 do pedido de UX).
+// ---------------------------------------------------------------------------
+describe("listaSnapshotsFinanceiros", () => {
+  const dias3 = ["2026-08-01", "2026-08-02", "2026-08-03"];
+
+  test("um ponto por dia do mês; dias sem snapshot vêm null (nunca R$0)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-02", situacao: "normal", valor_vendas_ifood: 5000, taxas_comissoes: 500, servicos_promocoes: 100, taxas_entregadores: 200, outras_deducoes: 0 },
+    ];
+    const r = listaSnapshotsFinanceiros(dias3, linhas);
+    assert.equal(r.length, 3);
+    assert.deepEqual(r[0], { data: "2026-08-01", valor: null, delta: null, percentualTotalDeducoes: null });
+    assert.equal(r[1].valor, 5000);
+    assert.equal(r[1].delta, null); // primeiro snapshot do mês: sem "anterior" pra comparar
+    assert.ok(Math.abs(r[1].percentualTotalDeducoes - 16) < 0.01); // 800/5000
+    assert.deepEqual(r[2], { data: "2026-08-03", valor: null, delta: null, percentualTotalDeducoes: null });
+  });
+
+  test("delta é contra o snapshot anterior do MÊS, não o dia anterior do calendário", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 50000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
+      { data_lancamento: "2026-08-03", situacao: "normal", valor_vendas_ifood: 53000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
+    ];
+    const r = listaSnapshotsFinanceiros(dias3, linhas);
+    assert.equal(r[0].delta, null);
+    assert.equal(r[1].delta, null); // 02/08 não tem snapshot
+    assert.equal(r[2].delta, 3000); // 53000 - 50000, pulando o dia 02 sem dado
+  });
+
+  test("ignora sem_operacao/zero_vendas (financeiro sintético, não extrato real) e distribuição mensal (fatia, não snapshot)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", situacao: "sem_operacao", valor_vendas_ifood: 0 },
+      { data_lancamento: "2026-08-02", situacao: "normal", valor_vendas_ifood: 1000, origem_lancamento: "distribuicao_mensal" },
+      { data_lancamento: "2026-08-03", situacao: "zero_vendas", valor_vendas_ifood: 0 },
+    ];
+    const r = listaSnapshotsFinanceiros(dias3, linhas);
+    assert.ok(r.every((p) => p.valor === null));
+  });
+
+  test("mês sem nenhum snapshot: todos os pontos null", () => {
+    const r = listaSnapshotsFinanceiros(dias3, []);
+    assert.equal(r.length, 3);
+    assert.ok(r.every((p) => p.valor === null && p.delta === null && p.percentualTotalDeducoes === null));
   });
 });
 

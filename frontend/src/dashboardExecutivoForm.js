@@ -264,12 +264,18 @@ async function confirmarExclusao(m) {
 }
 
 function botoesFinalizacao() {
-  // Sem financeiro disponível (dia "normal" ≠ ontem, sem snapshot salvo), só
-  // dá pra salvar como rascunho — o backend recusa finalizar sem o valor das
-  // vendas do iFood (ver dashboardExecutivo.service.js#normalizarDadosLancamento).
-  // Numa correção (fm.modoCorrecao), o registro já É finalizado e portanto
-  // já TEM o financeiro pelo mesmo invariante — mostrarFinanceiro vem true.
-  const podeFinalizar = fm.campos.situacao !== "normal" || fm.mostrarFinanceiro;
+  // Financeiro só é OBRIGATÓRIO pra finalizar quando a etapa está disponível
+  // (`fm.mostrarFinanceiro` — dia elegível ou já com snapshot salvo, ver
+  // financeiroDisponivelNaData no backend). Nos demais dias, Situação (+
+  // Desempenho opcional) já é suficiente pra finalizar — bug real corrigido:
+  // antes o botão "Finalizar" nem aparecia fora do dia elegível, então TODO
+  // dia normal virava rascunho e travava a sequência em cascata (o backend
+  // já aceitava finalizar sem financeiro nesse caso; só o frontend nunca
+  // oferecia o botão). Quando o Financeiro é elegível, ainda exige o campo
+  // principal preenchido antes de habilitar — evita um round-trip óbvio; os
+  // demais campos ficam a cargo da validação do servidor (autoridade final).
+  const financeiroExigidoEPreenchido = !fm.mostrarFinanceiro || fm.campos.valorVendasIfood !== "";
+  const podeFinalizar = fm.campos.situacao !== "normal" || financeiroExigidoEPreenchido;
   return `
     ${!fm.modoCorrecao ? `<button class="btn btn-ghost" id="dex-f-rascunho">Salvar como rascunho</button>` : ""}
     ${podeFinalizar
@@ -389,8 +395,10 @@ function passoConferencia() {
   }
 
   // Financeiro não fez parte deste lançamento (dia ≠ ontem, sem snapshot
-  // salvo) — item "SE O DIA NÃO FOR ONTEM" do pedido: nunca mostra os
-  // campos financeiros vazios/zerados, só avisa que fica como rascunho.
+  // salvo) — nunca mostra os campos financeiros vazios/zerados. Isso NÃO
+  // impede finalizar: o Financeiro do iFood é um snapshot acumulado do mês,
+  // não uma pendência de cada dia (ver migration 036) — Situação + Desempenho
+  // já bastam pra este dia virar "Preenchido" e liberar o próximo.
   if (!fm.mostrarFinanceiro) {
     fm.avisos = [];
     return `
@@ -400,9 +408,9 @@ function passoConferencia() {
         ${linha("Vendas brutas", fmtMoeda(c.valorVendasBruto))}
         ${linha("Ticket médio", fmtMoeda(ticketMedioPreview(c)))}
       </div>
-      <p class="dex-form-info">💰 Financeiro ainda não disponível — o iFood só consolida com 1 dia de atraso.
-      Este lançamento fica como <b>rascunho</b>; reabra amanhã (quando esta data virar "ontem") para completar o
-      Financeiro e finalizar.</p>
+      <p class="dex-form-info">💰 Financeiro ainda não disponível para esta data — o iFood só consolida com 1 dia
+      de atraso. Você pode finalizar este dia normalmente com os dados acima; quando esta data virar "ontem", volte
+      aqui para completar o Financeiro (o registro atual não precisa ser desfeito).</p>
       ${fm.modoCorrecao ? campoMotivoCorrecao() : ""}`;
   }
 

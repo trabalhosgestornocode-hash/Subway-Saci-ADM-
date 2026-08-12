@@ -121,8 +121,13 @@ export function roscaDeducoes(id, itens) {
   }));
 }
 
-/** Gráfico 3 — evolução diária do faturamento (diário ou acumulado). */
-export function linhaEvolucao(id, pontos, modo = "diario") {
+/**
+ * Gráfico 3 — evolução diária de um valor em R$ (diário ou acumulado).
+ * Usado hoje para o Desempenho (valor_vendas_bruto) — dado operacional real
+ * por dia, ao contrário do Financeiro (snapshot acumulado, não plotável
+ * como série diária). `rotuloBase` nomeia o dataset/legenda.
+ */
+export function linhaEvolucao(id, pontos, modo = "diario", rotuloBase = "Faturamento") {
   const el = document.getElementById(id);
   if (!el || !window.Chart || !pontos?.length) return;
   let acumulado = 0;
@@ -136,7 +141,7 @@ export function linhaEvolucao(id, pontos, modo = "diario") {
     data: {
       labels: pontos.map((p) => p.data.slice(8, 10)),
       datasets: [{
-        label: modo === "acumulado" ? "Faturamento acumulado" : "Faturamento diário",
+        label: modo === "acumulado" ? `${rotuloBase} acumulado` : `${rotuloBase} diário`,
         data: dados, borderColor: C.verde, backgroundColor: "rgba(0,150,64,0.12)", fill: true, tension: 0.25,
         spanGaps: false, pointRadius: 2,
       }],
@@ -158,25 +163,81 @@ export function linhaEvolucao(id, pontos, modo = "diario") {
   }));
 }
 
-/** Gráfico 4 — evolução do percentual total de deduções, com meta e limite. */
-export function linhaEvolucaoDeducoes(id, pontos) {
+/**
+ * Gráfico — evolução do Financeiro ACUMULADO (snapshots reais do iFood).
+ * `pontos` é a série do mês inteiro (um item por dia, `valor: null` nos dias
+ * sem snapshot) — `spanGaps:false` garante que a linha NUNCA conecta dois
+ * snapshots através de um dia sem dado (nada de interpolar). Tooltip mostra
+ * o acumulado até aquela data e, quando existe, o delta contra o snapshot
+ * anterior do mês — mas o delta é só contexto, nunca substitui o valor
+ * acumulado oficial.
+ */
+export function linhaFinanceiroAcumulado(id, pontos) {
   const el = document.getElementById(id);
   if (!el || !window.Chart || !pontos?.length) return;
-  const metaIdeal = pontos.find((p) => p.metaIdeal != null)?.metaIdeal ?? null;
-  const limite = pontos.find((p) => p.limite != null)?.limite ?? null;
+  instanciasDex.push(new Chart(el, {
+    type: "line",
+    data: {
+      labels: pontos.map((p) => p.data.slice(8, 10)),
+      datasets: [{
+        label: "Financeiro acumulado", data: pontos.map((p) => p.valor),
+        borderColor: C.azul, backgroundColor: "rgba(59,130,196,0.12)", fill: true, tension: 0,
+        spanGaps: false, pointRadius: 4, pointHoverRadius: 6,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (c) => `Financeiro acumulado até ${pontos[c[0].dataIndex].data.split("-").reverse().join("/")}`,
+            label: (c) => {
+              const p = pontos[c.dataIndex];
+              const linhas = [`R$ ${Number(p.valor).toFixed(2)}`];
+              if (p.delta != null) linhas.push(`Movimento desde o snapshot anterior: ${p.delta >= 0 ? "+" : ""}R$ ${Number(p.delta).toFixed(2)}`);
+              return linhas;
+            },
+          },
+        },
+      },
+      scales: { y: { ticks: { callback: (v) => "R$" + v }, grid: { color: "#eef1f0" } } },
+      animation: { duration: 650 },
+    },
+  }));
+}
+
+/**
+ * Gráfico — evolução do % de deduções nos snapshots reais do Financeiro
+ * (nunca um percentual "diário" — o dado de origem já é acumulado). Mesmo
+ * cuidado de não interpolar do gráfico acima. Meta/limite (quando existem)
+ * entram como linhas de referência tracejadas, igual ao antigo gráfico de
+ * deduções diárias.
+ */
+export function linhaDeducoesAcumuladas(id, pontos, metaIdeal = null, limite = null) {
+  const el = document.getElementById(id);
+  if (!el || !window.Chart || !pontos?.length) return;
   instanciasDex.push(new Chart(el, {
     type: "line",
     data: {
       labels: pontos.map((p) => p.data.slice(8, 10)),
       datasets: [
-        { label: "% total de deduções", data: pontos.map((p) => p.percentualTotalDeducoes), borderColor: C.verde, backgroundColor: "rgba(0,150,64,0.1)", fill: true, tension: 0.25, spanGaps: false, pointRadius: 2 },
+        { label: "% deduções (acumulado)", data: pontos.map((p) => p.percentualTotalDeducoes), borderColor: C.verm, backgroundColor: "rgba(219,59,59,0.1)", fill: true, tension: 0, spanGaps: false, pointRadius: 4, pointHoverRadius: 6 },
         ...(metaIdeal != null ? [{ label: "Meta ideal", data: pontos.map(() => metaIdeal), borderColor: C.amarelo, borderDash: [6, 4], pointRadius: 0, fill: false }] : []),
-        ...(limite != null ? [{ label: "Limite", data: pontos.map(() => limite), borderColor: C.verm, borderDash: [3, 3], pointRadius: 0, fill: false }] : []),
+        ...(limite != null ? [{ label: "Limite", data: pontos.map(() => limite), borderColor: C.roxo, borderDash: [3, 3], pointRadius: 0, fill: false }] : []),
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom" }, tooltip: { callbacks: { label: (c) => c.raw == null ? "Sem lançamento" : `${c.dataset.label}: ${Number(c.raw).toFixed(1)}%` } } },
+      plugins: {
+        legend: { position: "bottom" },
+        tooltip: {
+          callbacks: {
+            title: (c) => `Deduções acumuladas até ${pontos[c[0].dataIndex].data.split("-").reverse().join("/")}`,
+            label: (c) => c.raw == null ? "Sem snapshot" : `${c.dataset.label}: ${Number(c.raw).toFixed(1)}%`,
+          },
+        },
+      },
       scales: { y: { ticks: { callback: (v) => v + "%" }, grid: { color: "#eef1f0" } } },
       animation: { duration: 650 },
     },

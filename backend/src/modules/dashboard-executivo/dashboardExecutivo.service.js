@@ -6,7 +6,8 @@ import { resolverMetas, obterModeloLogistico, definirModeloLogistico, historicoM
 import {
   hojeIsoBrasil, diasDoMes, mesAnterior, diaAnterior, statusMes, resumoPreenchimento,
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
-  totalDeducoes, receitaAposDeducoes, saldoPercentual, mediaDiaria, projecaoMensal,
+  totalDeducoes, receitaAposDeducoes, saldoPercentual, projecaoMensal, mediaDiaria,
+  snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros,
   confiabilidadeProjecao, validarOutrasDeducoes,
   inconsistencias, STATUS_DIA, indicadorAplicavel, statusIndicador, saldoMeta,
   distribuirValorMensal, distribuirQuantidadeMensal, recalcularDistribuicaoMensal,
@@ -181,55 +182,56 @@ async function calcularPendenciasMesAnterior({ unidadeId, ano, mes, hojeIso }) {
 async function calcularComparativoEPlanoRecuperacao({ unidadeId, ano, mes, hojeIso, diasComStatus, base, media }) {
   const anterior = mesAnterior(ano, mes);
   const { diasComStatus: diasAnterior } = await carregarCalendarioMes({ unidadeId, ano: anterior.ano, mes: anterior.mes, hojeIso });
-  // Só dias RESOLVIDOS_COM_DADOS entram na soma — um rascunho do mês
-  // anterior sem financeiro ainda (dia ≠ ontem quando foi lançado) não pode
-  // contar como "faturou R$0" no comparativo (mesmo filtro de `somarAteODia`).
-  const totalAnteriorCompleto = diasAnterior
-    .filter((d) => RESOLVIDOS_COM_DADOS.has(d.status))
-    .reduce((s, d) => s + Number(d.lancamento?.valor_vendas_ifood || 0), 0);
+  const linhasAnterior = diasAnterior.map((d) => d.lancamento).filter(Boolean);
+  // Financeiro é snapshot acumulado — o total do mês anterior é o snapshot
+  // mais recente DELE (nunca soma entre dias, mesmo raciocínio de
+  // obterMesDeUmaUnidade/obterHistorico).
+  const snapshotAnteriorCompleto = snapshotFinanceiroMaisRecente(linhasAnterior);
+  const totalAnteriorCompleto = snapshotAnteriorCompleto ? Number(snapshotAnteriorCompleto.valor_vendas_ifood) : null;
 
   const [anoAtualNum, mesAtualNum] = hojeIso.split("-").map(Number);
   const mesEmAndamento = ano === anoAtualNum && mes === mesAtualNum;
 
-  const somarAteODia = (dias, ateODia) => {
-    let soma = 0, temDado = false, temEstimativa = false;
-    for (const d of dias) {
-      if (Number(d.data.slice(8, 10)) > ateODia) continue;
-      if (!RESOLVIDOS_COM_DADOS.has(d.status)) continue;
-      temDado = true;
-      soma += Number(d.lancamento?.valor_vendas_ifood || 0);
-      if (d.lancamento?.origem_lancamento === "distribuicao_mensal") temEstimativa = true;
-    }
-    return { soma, temDado, temEstimativa };
+  // Snapshot ATÉ um dia de corte (mesmo recorte 1..diaAtual nos dois meses,
+  // "Estratégia A" do pedido) — troca a soma por "pega o snapshot mais
+  // recente dentro do corte", a mesma regra usada em qualquer outro recorte.
+  const snapshotAteODia = ({ diasComStatus: dias, anoDoMes, mesDoMes, ateODia }) => {
+    const cutoff = `${anoDoMes}-${String(mesDoMes).padStart(2, "0")}-${String(ateODia).padStart(2, "0")}`;
+    const linhas = dias.map((d) => d.lancamento).filter(Boolean);
+    const snap = snapshotFinanceiroMaisRecente(linhas, cutoff);
+    return {
+      valor: snap ? Number(snap.valor_vendas_ifood) : null,
+      temEstimativa: snap != null && linhas.some((r) => r.origem_lancamento === "distribuicao_mensal" && r.data_lancamento <= cutoff),
+    };
   };
 
   let comparativo;
   if (mesEmAndamento) {
     const diaAtual = Number(hojeIso.slice(8, 10));
-    const atualParcial = somarAteODia(diasComStatus, diaAtual);
-    const anteriorParcial = somarAteODia(diasAnterior, diaAtual);
-    comparativo = (atualParcial.temDado && anteriorParcial.temDado && anteriorParcial.soma > 0)
+    const atualParcial = snapshotAteODia({ diasComStatus, anoDoMes: ano, mesDoMes: mes, ateODia: diaAtual });
+    const anteriorParcial = snapshotAteODia({ diasComStatus: diasAnterior, anoDoMes: anterior.ano, mesDoMes: anterior.mes, ateODia: diaAtual });
+    comparativo = (atualParcial.valor != null && anteriorParcial.valor != null && anteriorParcial.valor > 0)
       ? {
           tipo: "mesmo_periodo", diaComparado: diaAtual,
-          atual: atualParcial.soma, anterior: anteriorParcial.soma,
-          diferenca: atualParcial.soma - anteriorParcial.soma,
-          pct: ((atualParcial.soma - anteriorParcial.soma) / anteriorParcial.soma) * 100,
+          atual: atualParcial.valor, anterior: anteriorParcial.valor,
+          diferenca: atualParcial.valor - anteriorParcial.valor,
+          pct: ((atualParcial.valor - anteriorParcial.valor) / anteriorParcial.valor) * 100,
           temEstimativa: atualParcial.temEstimativa || anteriorParcial.temEstimativa,
         }
-      : { tipo: "indisponivel", pct: null, atual: atualParcial.soma || null, anterior: null, diferenca: null, diaComparado: diaAtual, temEstimativa: false };
+      : { tipo: "indisponivel", pct: null, atual: atualParcial.valor, anterior: null, diferenca: null, diaComparado: diaAtual, temEstimativa: false };
   } else {
-    comparativo = totalAnteriorCompleto > 0
+    comparativo = totalAnteriorCompleto != null && totalAnteriorCompleto > 0 && base != null
       ? {
           tipo: "mes_fechado", diaComparado: null,
           atual: base, anterior: totalAnteriorCompleto, diferenca: base - totalAnteriorCompleto,
           pct: ((base - totalAnteriorCompleto) / totalAnteriorCompleto) * 100,
-          temEstimativa: diasAnterior.some((d) => d.lancamento?.origem_lancamento === "distribuicao_mensal"),
+          temEstimativa: linhasAnterior.some((r) => r.origem_lancamento === "distribuicao_mensal"),
         }
-      : { tipo: "indisponivel", pct: null, atual: base || null, anterior: null, diferenca: null, diaComparado: null, temEstimativa: false };
+      : { tipo: "indisponivel", pct: null, atual: base ?? null, anterior: null, diferenca: null, diaComparado: null, temEstimativa: false };
   }
 
   let recuperacao = null;
-  if (mesEmAndamento && totalAnteriorCompleto > 0 && base < totalAnteriorCompleto) {
+  if (mesEmAndamento && totalAnteriorCompleto != null && totalAnteriorCompleto > 0 && base != null && base < totalAnteriorCompleto) {
     const faltante = totalAnteriorCompleto - base;
     const diasRestantes = diasComStatus.filter((d) => d.status === STATUS_DIA.FUTURO).length;
     if (diasRestantes > 0) {
@@ -296,21 +298,18 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   // comparativo ou os cards de meta — só o próprio ticket médio, que é
   // conceitualmente dela (ver dashboardExecutivo.calc.js).
   //
-  // As 4 deduções usam soma NULA-CIENTE: se nenhum dia do mês tem aquele
-  // campo informado (ex.: mês só com lançamento mensal, sem detalhamento),
-  // o total fica `null` — nunca `0`, que faria o card parecer "dentro da
-  // meta" por falta de dado (ver totalDeducoes/percentual em calc.js).
-  const somaSimples = (campo) => linhasComDados.reduce((s, r) => s + Number(r[campo] || 0), 0);
-  const somaNulavel = (campo) => {
-    const valores = linhasComDados.map((r) => r[campo]).filter((v) => v != null);
-    return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
-  };
+  // Financeiro é SNAPSHOT ACUMULADO do mês (dia 1 até a data do lançamento),
+  // não um valor isolado por dia — nunca soma entre dias (somaria acumulado
+  // sobre acumulado). Pega sempre o snapshot mais recente do mês inteiro
+  // (`linhas`, não `linhasComDados` — nunca escondemos um snapshot já salvo
+  // mesmo que o dia em si não conte como "resolvido com dados").
+  const snapshot = snapshotFinanceiroMaisRecente(linhas);
   const cardValores = {
-    valorVendasIfood: somaSimples("valor_vendas_ifood"),
-    taxasComissoes: somaNulavel("taxas_comissoes"),
-    servicosPromocoes: somaNulavel("servicos_promocoes"),
-    taxasEntregadores: somaNulavel("taxas_entregadores"),
-    outrasDeducoes: somaNulavel("outras_deducoes"),
+    valorVendasIfood: snapshot ? Number(snapshot.valor_vendas_ifood) : null,
+    taxasComissoes: snapshot?.taxas_comissoes != null ? Number(snapshot.taxas_comissoes) : null,
+    servicosPromocoes: snapshot?.servicos_promocoes != null ? Number(snapshot.servicos_promocoes) : null,
+    taxasEntregadores: snapshot?.taxas_entregadores != null ? Number(snapshot.taxas_entregadores) : null,
+    outrasDeducoes: snapshot?.outras_deducoes != null ? Number(snapshot.outras_deducoes) : null,
   };
   const totalDed = totalDeducoes({
     taxasComissoes: cardValores.taxasComissoes, servicosPromocoes: cardValores.servicosPromocoes,
@@ -333,18 +332,27 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   const cards = {
     // Antes chamado "vendasBrutas" e alimentado pela etapa Desempenho — era
     // exatamente o bug relatado: o card financeiro principal usando o dado
-    // errado. Agora é o faturamento real do Financeiro.
-    faturamento: { valor: base, diasComDados: linhasComDados.length },
+    // errado. Agora é o faturamento real do Financeiro — o snapshot
+    // acumulado mais recente do mês, com o período que ele cobre.
+    faturamento: {
+      valor: base,
+      periodoInicio: snapshot ? `${ano}-${String(mes).padStart(2, "0")}-01` : null,
+      periodoFim: snapshot?.data_lancamento ?? null,
+      dataAtualizacao: snapshot?.data_lancamento ?? null,
+    },
     taxasComissoes: { valor: cardValores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null, saldo: saldos.taxas_comissoes, status: statusIndicador(indicadoresRentabilidade.taxas_comissoes, metas.taxas_comissoes) },
     servicosPromocoes: { valor: cardValores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, saldo: saldos.servicos_promocoes, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
     totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, saldo: saldos.total_deducoes, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
     receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
   };
 
-  // Projeção: média do FATURAMENTO (Financeiro) sobre os dias com dados;
-  // multiplicador = todos os dias do mês (sem calendário operacional
-  // configurável ainda — ver migration 023).
-  const media = mediaDiaria(linhasComDados.map((r) => (r.valor_vendas_ifood == null ? null : Number(r.valor_vendas_ifood))));
+  // Projeção: o snapshot já É o acumulado de dia 1 até `data_lancamento` —
+  // a média diária é esse total dividido pelos dias que ele cobre (não uma
+  // média dos "dias com dados", que hoje em dia normalmente é só 1).
+  // Multiplicador da projeção = todos os dias do mês (sem calendário
+  // operacional configurável ainda — ver migration 023).
+  const diasNoSnapshot = snapshot ? Number(snapshot.data_lancamento.slice(8, 10)) : 0;
+  const media = snapshot && diasNoSnapshot > 0 ? Number(snapshot.valor_vendas_ifood) / diasNoSnapshot : null;
   const projecao = projecaoMensal(media, diasComStatus.length);
   const diasVencidos = diasComStatus.filter((d) => d.status !== STATUS_DIA.FUTURO).length;
   const confiabilidade = confiabilidadeProjecao({
@@ -431,25 +439,34 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
         { indicador: "taxas_entregadores", valor: cardValores.taxasEntregadores },
         { indicador: "outras_deducoes", valor: cardValores.outrasDeducoes },
       ],
+    },
+    // Desempenho é acompanhamento OPERACIONAL — granularidade diária real
+    // (ao contrário do Financeiro, que é um snapshot acumulado só disponível
+    // no dia elegível). NUNCA é fonte de verdade financeira: nenhum card,
+    // meta, projeção ou diagnóstico usa isto — só o Financeiro
+    // (`cards.faturamento`) faz isso. `acumulado` existe apenas como
+    // referência operacional e não deve ser tratado como faturamento oficial.
+    desempenhoOperacional: {
       evolucaoDiaria: diasComStatus.map((d) => ({
         data: d.data, status: d.status,
-        // Um rascunho sem financeiro ainda (dia ≠ ontem) tem `valor_vendas_ifood`
-        // null — precisa continuar null aqui, nunca virar R$0 no gráfico
-        // (Number(null) seria 0, que mentiria sobre "faturou zero").
-        valor: d.lancamento?.valor_vendas_ifood != null ? Number(d.lancamento.valor_vendas_ifood) : null,
-        origemLancamento: d.lancamento?.origem_lancamento ?? null,
+        // Não informado (Desempenho é opcional) precisa continuar null aqui,
+        // nunca virar R$0 no gráfico (Number(null) seria 0, que mentiria
+        // sobre "vendeu zero").
+        valor: d.lancamento?.valor_vendas_bruto != null ? Number(d.lancamento.valor_vendas_bruto) : null,
       })),
-      evolucaoDeducoes: diasComStatus.map((d) => ({
-        data: d.data, status: d.status,
-        percentualTotalDeducoes: d.lancamento
-          ? percentual(totalDeducoes({
-              taxasComissoes: d.lancamento.taxas_comissoes, servicosPromocoes: d.lancamento.servicos_promocoes,
-              taxasEntregadores: d.lancamento.taxas_entregadores, outrasDeducoes: d.lancamento.outras_deducoes,
-            }), d.lancamento.valor_vendas_ifood)
-          : null,
-        metaIdeal: metas.total_deducoes?.metaIdeal ?? null, limite: metas.total_deducoes?.limite ?? null,
-      })),
+      mediaDiaria: mediaDiaria(diasComStatus.map((d) => (d.lancamento?.valor_vendas_bruto != null ? Number(d.lancamento.valor_vendas_bruto) : null))),
+      acumulado: (() => {
+        const valores = diasComStatus.map((d) => d.lancamento?.valor_vendas_bruto).filter((v) => v != null);
+        return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
+      })(),
+      aviso: "Acompanhamento operacional — não representa o faturamento financeiro oficial.",
     },
+    // Série do mês pra visualizar a evolução dos SNAPSHOTS reais do
+    // Financeiro (não confundir com faturamento diário — cada ponto é o
+    // acumulado até aquela data). `cards.faturamento` continua sendo a
+    // fonte oficial; isto é só a série pro gráfico "Evolução do Financeiro
+    // acumulado" (nunca interpola entre pontos — ver listaSnapshotsFinanceiros).
+    snapshotsFinanceiros: listaSnapshotsFinanceiros(diasComStatus.map((d) => d.data), linhas),
     projecao: {
       mediaDiaria: media, diasConsiderados: linhasComDados.length, diasResolvidos: resumo.diasPreenchidos,
       diasPendentes: resumo.diasPendentes, diasPrevistos: diasComStatus.length, projecaoMensal: projecao,
@@ -468,20 +485,30 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   if (error) throw ApiError.internal(error.message);
 
   const linhas = (data ?? []).filter((r) => r.status === "finalizado" || r.status === "rascunho"); // inclui rascunho na visão agregada (é leitura)
-  const somaNulavel = (campo) => {
-    const valoresCampo = linhas.map((r) => r[campo]).filter((v) => v != null);
+
+  // Financeiro é snapshot acumulado POR UNIDADE — nunca soma linhas cruas
+  // (mesmo bug que na visão por unidade, só que aqui multiplicado por
+  // unidade). A soma correta entre unidades é: snapshot mais recente DE
+  // CADA UNIDADE, somados entre si (unidades são independentes uma da
+  // outra — isso sim é aditivo).
+  const linhasPorUnidade = new Map();
+  for (const r of linhas) {
+    if (!linhasPorUnidade.has(r.unidade_id)) linhasPorUnidade.set(r.unidade_id, []);
+    linhasPorUnidade.get(r.unidade_id).push(r);
+  }
+  const snapshotsPorUnidade = [...linhasPorUnidade.values()]
+    .map((linhasDaUnidade) => snapshotFinanceiroMaisRecente(linhasDaUnidade))
+    .filter(Boolean);
+  const somaEntreUnidades = (campo) => {
+    const valoresCampo = snapshotsPorUnidade.map((s) => s[campo]).filter((v) => v != null);
     return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
   };
   const valores = {
-    // Financeiro é a fonte de verdade — mesma regra da visão por unidade.
-    // `somaNulavel`, não `somaSimples`: esta visão inclui rascunhos, e um
-    // rascunho sem financeiro ainda (dia ≠ ontem) tem valor_vendas_ifood
-    // null — não pode entrar como R$0 na soma.
-    valorVendasIfood: somaNulavel("valor_vendas_ifood"),
-    taxasComissoes: somaNulavel("taxas_comissoes"),
-    servicosPromocoes: somaNulavel("servicos_promocoes"),
-    taxasEntregadores: somaNulavel("taxas_entregadores"),
-    outrasDeducoes: somaNulavel("outras_deducoes"),
+    valorVendasIfood: somaEntreUnidades("valor_vendas_ifood"),
+    taxasComissoes: somaEntreUnidades("taxas_comissoes"),
+    servicosPromocoes: somaEntreUnidades("servicos_promocoes"),
+    taxasEntregadores: somaEntreUnidades("taxas_entregadores"),
+    outrasDeducoes: somaEntreUnidades("outras_deducoes"),
   };
   const totalDed = totalDeducoes({
     taxasComissoes: valores.taxasComissoes, servicosPromocoes: valores.servicosPromocoes,
@@ -494,17 +521,22 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
     taxas_entregadores: percentual(valores.taxasEntregadores, base),
     total_deducoes: percentual(totalDed, base),
   };
+  // O total agregado só é tão atual quanto a unidade MAIS ATRASADA — usa a
+  // data mais antiga entre os snapshots de cada unidade, não a mais recente.
+  const dataAtualizacaoAgregada = snapshotsPorUnidade.length
+    ? snapshotsPorUnidade.map((s) => s.data_lancamento).sort()[0] : null;
 
-  // Evolução diária somada de todas as unidades (Financeiro). Pula
-  // contribuição nula (rascunho sem financeiro ainda) em vez de somar
-  // Number(null || 0) — não inventa R$0 pra um dia que ainda não se sabe.
+  // Evolução diária = Desempenho (valor_vendas_bruto), somado entre
+  // unidades — dado operacional real por dia, ao contrário do Financeiro
+  // (acumulado, nunca somável). Pula dia sem Desempenho informado em
+  // nenhuma unidade (null, nunca R$0 inventado).
   const porData = new Map();
   for (const r of linhas) {
-    if (r.valor_vendas_ifood == null) continue;
+    if (r.valor_vendas_bruto == null) continue;
     const acc = porData.get(r.data_lancamento) ?? 0;
-    porData.set(r.data_lancamento, acc + Number(r.valor_vendas_ifood));
+    porData.set(r.data_lancamento, acc + Number(r.valor_vendas_bruto));
   }
-  const evolucaoDiaria = dias.map((d) => ({
+  const evolucaoDiariaDesempenho = dias.map((d) => ({
     data: d, status: d > hojeIso ? STATUS_DIA.FUTURO : (porData.has(d) ? STATUS_DIA.PREENCHIDO : STATUS_DIA.PENDENTE),
     valor: porData.get(d) ?? null,
   }));
@@ -516,11 +548,16 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
     periodo: { mes, ano },
     aviso: "Visão consolidada de todas as unidades — somente leitura. Selecione uma unidade específica para lançar ou corrigir dados. Como cada unidade pode estar em um modelo logístico diferente (Marketplace/Full Service), as metas não são exibidas nesta visão agregada.",
     cards: {
-      faturamento: { valor: base, diasComDados: linhas.length },
+      faturamento: {
+        valor: base,
+        periodoInicio: snapshotsPorUnidade.length ? `${ano}-${String(mes).padStart(2, "0")}-01` : null,
+        periodoFim: dataAtualizacaoAgregada,
+        dataAtualizacao: dataAtualizacaoAgregada,
+      },
       taxasComissoes: { valor: valores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_comissoes, metas.taxas_comissoes) },
       servicosPromocoes: { valor: valores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
       totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
-      receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
+      receitaAposDeducoes: { valor: base != null ? receitaAposDeducoes(base, totalDed) : null, percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
     },
     indicadoresRentabilidade: Object.fromEntries(
       Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, {
@@ -538,7 +575,18 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
         { indicador: "taxas_entregadores", valor: valores.taxasEntregadores },
         { indicador: "outras_deducoes", valor: valores.outrasDeducoes },
       ],
-      evolucaoDiaria,
+    },
+    // Mesma forma de obterMesDeUmaUnidade — ver comentário lá. Aqui, somado
+    // entre unidades (Desempenho é dado real por dia, ao contrário do
+    // Financeiro).
+    desempenhoOperacional: {
+      evolucaoDiaria: evolucaoDiariaDesempenho,
+      mediaDiaria: mediaDiaria(evolucaoDiariaDesempenho.map((p) => p.valor)),
+      acumulado: (() => {
+        const valores = evolucaoDiariaDesempenho.map((p) => p.valor).filter((v) => v != null);
+        return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
+      })(),
+      aviso: "Acompanhamento operacional — os valores financeiros oficiais são provenientes do Financeiro iFood.",
     },
   };
 }
@@ -655,15 +703,15 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro
     throw ApiError.badRequest(`Existem inconsistências que precisam de confirmação antes de finalizar: ${avisos.join(" ")}`, { avisos, confirmacaoNecessaria: true });
   }
 
-  // Invariante preservado mesmo com o financeiro agora opcional na coluna
-  // (migration 035): um dia "normal" só é FINALIZADO com o financeiro em
-  // mãos — sem ele, só pode ficar como rascunho (reforçado também por CHECK
-  // no banco). Sem essa trava, o cliente poderia forçar `status=finalizado`
-  // num dia sem financeiro simplesmente omitindo os campos no corpo.
-  if (statusAlvo === "finalizado" && valorVendasIfood == null) {
-    throw ApiError.badRequest(
-      "Não é possível finalizar este dia sem o valor das vendas do iFood — o financeiro só fica disponível a partir de amanhã. Salve como rascunho por enquanto.");
-  }
+  // Invariante: um dia "normal" só é FINALIZADO sem financeiro quando o
+  // financeiro nem é elegível ainda (`exigirFinanceiro=false` — a maioria
+  // dos dias do mês, ver financeiroDisponivelNaData). Quando é elegível,
+  // `numFinanceiro` acima já exige o valor via `v.numero` — chegar aqui com
+  // `exigirFinanceiro=true` e `valorVendasIfood == null` é impossível (já
+  // teria lançado badRequest lá em cima). Não há mais bloqueio de
+  // finalização por falta de financeiro em dias não elegíveis — é
+  // exatamente o "financeiro é snapshot acumulado, não pendência diária"
+  // (ver migration 036).
 
   return {
     situacao, statusAlvo, motivoSemOperacao: null, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
@@ -739,6 +787,35 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
   return { lancamento: paraApi(row), avisos: dados.avisos };
 }
 
+// Campos "de dado" de um lançamento — usados tanto pra decidir se uma edição
+// de um lançamento finalizado é uma CORREÇÃO de verdade (exige permissão +
+// motivo) quanto pra montar a trilha de auditoria.
+const CAMPOS_AUDITADOS = [
+  ["situacao", "situacao"], ["motivo_sem_operacao", "motivo_sem_operacao"], ["observacao", "observacao"],
+  ["qtd_vendas", "qtd_vendas"], ["valor_vendas_bruto", "valor_vendas_bruto"], ["novos_clientes", "novos_clientes"],
+  ["valor_vendas_ifood", "valor_vendas_ifood"], ["taxas_comissoes", "taxas_comissoes"],
+  ["servicos_promocoes", "servicos_promocoes"], ["taxas_entregadores", "taxas_entregadores"],
+  ["outras_deducoes", "outras_deducoes"],
+];
+
+/**
+ * Uma edição de um lançamento já finalizado só é uma "correção" (exige
+ * permissão + motivo) quando muda um valor que JÁ existia. Completar um
+ * campo que ainda estava `null` — o caso normal de "o financeiro de ontem
+ * acabou de ficar disponível" (ver financeiroDisponivelNaData) — não é
+ * correção de erro nenhum, é o fluxo esperado, e não deve travar atrás da
+ * permissão de correção.
+ * @param {object} antes — linha CRUA do banco antes da edição
+ * @param {object} patch — patch snake_case prestes a ser gravado
+ * @returns {boolean}
+ */
+function precisaCorrecao(antes, patch) {
+  return CAMPOS_AUDITADOS.some(([campoAntes, campoDepois]) => {
+    if (antes[campoAntes] == null) return false; // não havia valor antes: preenchimento, não correção
+    return String(antes[campoAntes]) !== String(patch[campoDepois]);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // PUT /dashboard-executivo/lancamentos/:id
 // ---------------------------------------------------------------------------
@@ -755,12 +832,6 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
 
   const eraFinalizado = antes.status === "finalizado";
   const podeCorrigir = temPermissao(acesso.permissoes, PERMISSOES.DASHBOARD_EXECUTIVO_CORRIGIR);
-
-  let motivoCorrecao = null;
-  if (eraFinalizado) {
-    if (!podeCorrigir) throw ApiError.forbidden("Editar um lançamento finalizado exige a permissão de correção.");
-    motivoCorrecao = v.texto(v.corpo(body).motivo, "Motivo da correção", { min: 3, max: 500 });
-  }
 
   // Edição posterior (item do pedido): nunca esconde/impede acesso a um
   // snapshot financeiro JÁ salvo — `antes.valor_vendas_ifood != null` cobre
@@ -787,6 +858,13 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
     outras_deducoes: dados.outrasDeducoes,
     justificativa_ajuste: dados.justificativaAjuste,
   };
+
+  let motivoCorrecao = null;
+  if (eraFinalizado && precisaCorrecao(antes, patch)) {
+    if (!podeCorrigir) throw ApiError.forbidden("Editar um lançamento finalizado exige a permissão de correção.");
+    motivoCorrecao = v.texto(v.corpo(body).motivo, "Motivo da correção", { min: 3, max: 500 });
+  }
+
   // Uma vez finalizado, permanece finalizado (correção não "desfinaliza").
   // A partir de rascunho, o próprio PUT pode finalizar.
   patch.status = eraFinalizado ? "finalizado" : dados.statusAlvo;
@@ -807,13 +885,6 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
   // Auditoria: um lançamento finalizado editado grava uma linha POR CAMPO
   // alterado, preservando o registro original (nunca se sobrescreve "em silêncio").
   if (eraFinalizado) {
-    const CAMPOS_AUDITADOS = [
-      ["situacao", "situacao"], ["motivo_sem_operacao", "motivo_sem_operacao"], ["observacao", "observacao"],
-      ["qtd_vendas", "qtd_vendas"], ["valor_vendas_bruto", "valor_vendas_bruto"], ["novos_clientes", "novos_clientes"],
-      ["valor_vendas_ifood", "valor_vendas_ifood"], ["taxas_comissoes", "taxas_comissoes"],
-      ["servicos_promocoes", "servicos_promocoes"], ["taxas_entregadores", "taxas_entregadores"],
-      ["outras_deducoes", "outras_deducoes"],
-    ];
     for (const [campoAntes, campoDepois] of CAMPOS_AUDITADOS) {
       const valorAntes = antes[campoAntes];
       const valorDepois = depois[campoDepois];
@@ -913,23 +984,18 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     const linhasMes = (data ?? []).filter((r) => r.data_lancamento >= dias[0] && r.data_lancamento <= dias[dias.length - 1]);
     const linhasComDados = linhasMes.filter((r) => r.status === "finalizado" && r.situacao !== "sem_operacao");
     const linhasFinalizadas = linhasMes.filter((r) => r.status === "finalizado");
-    // Faturamento = Financeiro (fonte de verdade). Simples (soma direta, sem
-    // filtrar null) porque só olha `linhasFinalizadas` — um dia FINALIZADO
-    // sempre tem valor_vendas_ifood (rascunho sem financeiro ainda nunca
-    // chega a finalizado, ver normalizarDadosLancamento).
-    const somaSimples = (campo) => linhasFinalizadas.reduce((s, r) => s + Number(r[campo] || 0), 0);
-    // Deduções: null quando NENHUM dia do mês tem aquele detalhamento — um
-    // mês só com lançamento mensal (sem taxas/comissões conhecidas) não
-    // pode aparecer como "0% de dedução".
-    const somaNulavel = (campo) => {
-      const valoresCampo = linhasFinalizadas.map((r) => r[campo]).filter((v) => v != null);
-      return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
-    };
-
-    const faturamento = somaSimples("valor_vendas_ifood");
+    // Faturamento = Financeiro (fonte de verdade) = snapshot acumulado mais
+    // recente do mês, nunca soma entre dias (um dia finalizado pode não ter
+    // financeiro nenhum agora — só é exigido no dia elegível, ver
+    // financeiroDisponivelNaData). `null` quando o mês inteiro não tem
+    // nenhum snapshot ainda — nunca "R$ 0,00" fingindo que se sabe o valor.
+    const snapshot = snapshotFinanceiroMaisRecente(linhasMes);
+    const faturamento = snapshot ? Number(snapshot.valor_vendas_ifood) : null;
     const totalDed = totalDeducoes({
-      taxasComissoes: somaNulavel("taxas_comissoes"), servicosPromocoes: somaNulavel("servicos_promocoes"),
-      taxasEntregadores: somaNulavel("taxas_entregadores"), outrasDeducoes: somaNulavel("outras_deducoes"),
+      taxasComissoes: snapshot?.taxas_comissoes != null ? Number(snapshot.taxas_comissoes) : null,
+      servicosPromocoes: snapshot?.servicos_promocoes != null ? Number(snapshot.servicos_promocoes) : null,
+      taxasEntregadores: snapshot?.taxas_entregadores != null ? Number(snapshot.taxas_entregadores) : null,
+      outrasDeducoes: snapshot?.outras_deducoes != null ? Number(snapshot.outras_deducoes) : null,
     });
     const diasFinalizados = linhasFinalizadas.length;
     const diasRascunho = linhasMes.filter((r) => r.status === "rascunho").length;
@@ -945,12 +1011,16 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     const valorVendasBrutoPareado = linhasComParDesempenho.reduce((s, r) => s + Number(r.valor_vendas_bruto), 0);
     const qtdVendas = linhasComParDesempenho.length ? qtdVendasPareado : null;
 
-    const media = mediaDiaria(linhasComDados.map((r) => (r.valor_vendas_ifood == null ? null : Number(r.valor_vendas_ifood))));
+    // Média diária: o snapshot já é o acumulado de dia 1 até `data_lancamento`
+    // — divide por quantos dias ele cobre, nunca por "dias com dados" (ver
+    // mesmo raciocínio em obterMesDeUmaUnidade).
+    const diasNoSnapshot = snapshot ? Number(snapshot.data_lancamento.slice(8, 10)) : 0;
+    const media = snapshot && diasNoSnapshot > 0 ? Number(snapshot.valor_vendas_ifood) / diasNoSnapshot : null;
     const statusMesRotulo = ano * 100 + mes > Number(hojeIso.slice(0, 7).replace("-", ""))
       ? "futuro"
       : (diasPendentes > 0 ? "incompleto" : (diasFinalizados > 0 ? "completo" : "sem_dados"));
 
-    const comparativoMesAnteriorPct = totalMesAnterior != null && totalMesAnterior > 0
+    const comparativoMesAnteriorPct = faturamento != null && totalMesAnterior != null && totalMesAnterior > 0
       ? ((faturamento - totalMesAnterior) / totalMesAnterior) * 100 : null;
 
     meses.push({
@@ -960,12 +1030,12 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
       ticketMedio: ticketMedio(qtdVendas != null ? valorVendasBrutoPareado : null, qtdVendas),
       totalDeducoes: totalDed,
       percentualDeducoes: percentual(totalDed, faturamento),
-      receitaAposDeducoes: receitaAposDeducoes(faturamento, totalDed),
+      receitaAposDeducoes: faturamento != null ? receitaAposDeducoes(faturamento, totalDed) : null,
       mediaDiaria: media,
       projecaoMensal: projecaoMensal(media, dias.length),
       comparativoMesAnteriorPct,
     });
-    totalMesAnterior = faturamento > 0 ? faturamento : totalMesAnterior;
+    totalMesAnterior = faturamento != null && faturamento > 0 ? faturamento : totalMesAnterior;
   }
 
   return { ano, unidadeId, meses };

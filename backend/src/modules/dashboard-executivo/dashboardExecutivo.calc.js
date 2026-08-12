@@ -292,18 +292,20 @@ export function confiabilidadeProjecao({ diasVencidos, diasResolvidos, diasComDa
  * Status "de dados" de um dia, a partir do lançamento (se existir).
  * Devolve null quando NÃO há lançamento — o chamador (statusMes) decide entre
  * PENDENTE/BLOQUEADO/FUTURO a partir do contexto.
- * @param {{lancamento: {status: string, situacao: string, valor_vendas_ifood?: number|null}|null}} p
+ * @param {{lancamento: {status: string, situacao: string, valor_vendas_ifood?: number|null}|null, ehDataElegivel: boolean}} p
  * @returns {string|null}
  */
-export function statusDiaBase({ lancamento }) {
+export function statusDiaBase({ lancamento, ehDataElegivel }) {
   if (!lancamento) return null;
   if (lancamento.status === "rascunho") {
-    // Rascunho "normal" sem financeiro ainda (dia ≠ ontem quando foi salvo)
-    // é o estado esperado — não pode ser tratado como um rascunho comum
-    // esquecido pra trás (ver comentário de FINANCEIRO_PENDENTE em STATUS_DIA).
+    // Rascunho "normal" sem financeiro ainda é o estado esperado SÓ no dia
+    // elegível (dataIso === diaAnterior(hojeIso) — ver
+    // dashboardExecutivo.service.js#financeiroDisponivelNaData). Fora desse
+    // dia, o financeiro nem é oferecido — um rascunho ali é incompleto por
+    // outro motivo de verdade, não "esperando o financeiro do iFood".
     // `lancamento` aqui é a linha CRUA do banco (snake_case), nunca o
     // objeto já convertido pela API — ver carregarCalendarioMes.
-    if (lancamento.situacao === "normal" && lancamento.valor_vendas_ifood == null) return STATUS_DIA.FINANCEIRO_PENDENTE;
+    if (ehDataElegivel && lancamento.situacao === "normal" && lancamento.valor_vendas_ifood == null) return STATUS_DIA.FINANCEIRO_PENDENTE;
     return STATUS_DIA.RASCUNHO;
   }
   if (lancamento.situacao === "sem_operacao") return STATUS_DIA.SEM_OPERACAO;
@@ -321,20 +323,115 @@ export function statusDiaBase({ lancamento }) {
 export function statusMes({ dias, hojeIso }) {
   const resultado = [];
   let anteriorResolvido = true; // dia 1 do mês nunca começa bloqueado
+  const dataElegivel = diaAnterior(hojeIso);
   for (const dia of dias ?? []) {
     let status;
     if (dia.data > hojeIso) {
       status = STATUS_DIA.FUTURO;
     } else {
-      const base = statusDiaBase({ lancamento: dia.lancamento });
+      const base = statusDiaBase({ lancamento: dia.lancamento, ehDataElegivel: dia.data === dataElegivel });
       if (base) status = base;
       else if (!anteriorResolvido) status = STATUS_DIA.BLOQUEADO;
       else status = STATUS_DIA.PENDENTE;
     }
-    resultado.push({ data: dia.data, status, lancamento: dia.lancamento ?? null });
+    // Exposto pro frontend decidir apresentação (badge "Financeiro
+    // disponível"/"Financeiro ✓" no dia, faixa-resumo) sem precisar
+    // recalcular "hoje - 1" no cliente — mesma autoridade única de sempre,
+    // só que agora visível fora desta função. Não muda NENHUMA regra: já
+    // era exatamente isto que decidia `ehDataElegivel` acima.
+    resultado.push({ data: dia.data, status, lancamento: dia.lancamento ?? null, elegivelFinanceiro: dia.data === dataElegivel });
     anteriorResolvido = RESOLVIDOS.has(status);
   }
   return resultado;
+}
+
+/**
+ * O Financeiro do iFood é um SNAPSHOT ACUMULADO do mês (do dia 1 até a data
+ * do lançamento), não um valor isolado daquele dia — é assim que o extrato
+ * do iFood é liberado (ver migration 036, que substitui a premissa contrária
+ * de `023_dashboard_executivo.sql`). Por isso a fonte de verdade financeira
+ * de um período NUNCA é a soma de `valor_vendas_ifood` entre vários dias
+ * (somaria acumulados sobre acumulados) — é sempre o snapshot mais recente
+ * dentro do recorte pedido.
+ * Só considera dias com `situacao === 'normal'` — "sem operação"/"zero
+ * vendas" gravam os 5 campos financeiros como 0 REAL (ver
+ * normalizarDadosLancamento), não como extrato do iFood; deixar esses dias
+ * entrarem na busca faria um dia sem operação "apagar" o último snapshot de
+ * verdade só por ser mais recente na data.
+ *
+ * Exceção deliberada: dias de "Lançamento Mensal" (`origem_lancamento ===
+ * 'distribuicao_mensal'`) NÃO são snapshot — são fatias que a própria
+ * distribuição desenhou pra SOMAR de volta o total que o usuário informou
+ * (ver `distribuirValorMensal`), o oposto do resto desta função. Entram só
+ * como último recurso (somadas entre si), quando não existe nenhuma entrada
+ * real no recorte — nunca competem com um snapshot de verdade, mesmo que
+ * este seja mais antigo.
+ * @param {Array<{data_lancamento: string, situacao: string, valor_vendas_ifood: number|null, origem_lancamento?: string|null}>} linhas — linhas CRUAS do banco
+ * @param {string|null} [ateDataIso] — corte opcional (inclusive); sem ele, considera o mês inteiro
+ * @returns {{data_lancamento: string, valor_vendas_ifood: number, taxas_comissoes: number|null, servicos_promocoes: number|null, taxas_entregadores: number|null, outras_deducoes: number|null}|null}
+ */
+export function snapshotFinanceiroMaisRecente(linhas, ateDataIso = null) {
+  const candidatas = (linhas ?? []).filter((r) =>
+    r.situacao === "normal" && (ateDataIso == null || r.data_lancamento <= ateDataIso));
+
+  let maisRecente = null;
+  for (const r of candidatas) {
+    if (r.origem_lancamento === "distribuicao_mensal" || r.valor_vendas_ifood == null) continue;
+    if (!maisRecente || r.data_lancamento > maisRecente.data_lancamento) maisRecente = r;
+  }
+  if (maisRecente) return maisRecente;
+
+  const distribuidas = candidatas.filter((r) => r.origem_lancamento === "distribuicao_mensal" && r.valor_vendas_ifood != null);
+  if (!distribuidas.length) return null;
+  const somar = (campo) => {
+    const valoresCampo = distribuidas.map((r) => r[campo]).filter((v) => v != null);
+    return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
+  };
+  return {
+    data_lancamento: distribuidas.reduce((max, r) => (r.data_lancamento > max ? r.data_lancamento : max), distribuidas[0].data_lancamento),
+    valor_vendas_ifood: somar("valor_vendas_ifood"),
+    taxas_comissoes: somar("taxas_comissoes"),
+    servicos_promocoes: somar("servicos_promocoes"),
+    taxas_entregadores: somar("taxas_entregadores"),
+    outras_deducoes: somar("outras_deducoes"),
+  };
+}
+
+/**
+ * Série do mês inteiro (um ponto por dia, mesmo formato de
+ * `desempenhoOperacional.evolucaoDiaria`) só com os dias que têm snapshot
+ * financeiro REAL — mesmo filtro de `snapshotFinanceiroMaisRecente`
+ * (situacao normal, nunca fatia de "Lançamento Mensal"); os demais dias vêm
+ * `null`. Pronta pra plotar SEM interpolar: Chart.js com `spanGaps:false` já
+ * não conecta a linha através de um `null`, então dois snapshots distantes
+ * no mês aparecem como pontos isolados, nunca uma reta inventada entre eles.
+ * Também calcula `delta` contra o snapshot anterior do mês (não contra o
+ * dia anterior — snapshots não são diários) e o percentual de deduções
+ * daquele snapshot — nunca a fonte oficial (`snapshotFinanceiroMaisRecente`
+ * continua sendo), só a série pra visualizar a evolução.
+ * @param {string[]} dias — ISO AAAA-MM-DD de todos os dias do mês (diasDoMes)
+ * @param {Array<{data_lancamento: string, situacao: string, valor_vendas_ifood: number|null, origem_lancamento?: string|null, taxas_comissoes?: number|null, servicos_promocoes?: number|null, taxas_entregadores?: number|null, outras_deducoes?: number|null}>} linhas — linhas CRUAS do banco
+ * @returns {Array<{data: string, valor: number|null, delta: number|null, percentualTotalDeducoes: number|null}>}
+ */
+export function listaSnapshotsFinanceiros(dias, linhas) {
+  const porData = new Map();
+  for (const r of linhas ?? []) {
+    if (r.situacao !== "normal" || r.origem_lancamento === "distribuicao_mensal" || r.valor_vendas_ifood == null) continue;
+    porData.set(r.data_lancamento, r);
+  }
+  let anterior = null;
+  return (dias ?? []).map((data) => {
+    const r = porData.get(data);
+    if (!r) return { data, valor: null, delta: null, percentualTotalDeducoes: null };
+    const valor = Number(r.valor_vendas_ifood);
+    const totalDed = totalDeducoes({
+      taxasComissoes: r.taxas_comissoes, servicosPromocoes: r.servicos_promocoes,
+      taxasEntregadores: r.taxas_entregadores, outrasDeducoes: r.outras_deducoes,
+    });
+    const delta = anterior != null ? valor - anterior : null;
+    anterior = valor;
+    return { data, valor, delta, percentualTotalDeducoes: percentual(totalDed, valor) };
+  });
 }
 
 /**

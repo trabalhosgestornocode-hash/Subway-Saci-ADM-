@@ -1,0 +1,44 @@
+-- =====================================================================
+-- MIGRATION 036 — Financeiro é snapshot acumulado, não pendência diária
+-- =====================================================================
+-- OBJETIVO
+--   Corrige uma premissa errada que ficou de pé desde a migration 023: o
+--   comentário original dizia "guardamos o valor REAL de cada dia — o
+--   acumulado é derivado em tempo real pelo backend". Na prática o iFood só
+--   libera o extrato ACUMULADO do mês (dia 1 até a data), nunca a fatia
+--   isolada de um dia — pedir pro usuário calcular esse delta manualmente
+--   nunca foi realista. `valor_vendas_ifood` de um lançamento "normal"
+--   SEMPRE guarda o acumulado do mês até aquela data (ver
+--   dashboardExecutivo.calc.js#snapshotFinanceiroMaisRecente); a fonte de
+--   verdade financeira de um período é sempre o SNAPSHOT MAIS RECENTE
+--   dentro do recorte, nunca a soma de vários dias.
+--
+--   Consequência direta: um dia "normal" pode ser FINALIZADO sem
+--   `valor_vendas_ifood` sempre que o financeiro ainda não é elegível
+--   naquele dia (a data não é "ontem" e o lançamento não tem snapshot
+--   salvo — ver financeiroDisponivelNaData no service). A CHECK
+--   `lfd_financeiro_exigido_ao_finalizar`, criada na migration 035,
+--   impedia exatamente isso: bloqueava no banco QUALQUER dia normal
+--   finalizado sem financeiro, sem noção de "elegibilidade" — que é
+--   relativa à DATA CORRENTE no momento do lançamento, algo que uma CHECK
+--   de tabela não tem como expressar (não é uma propriedade da linha).
+--
+--   A garantia "financeiro presente quando é preciso" passa a viver
+--   100% no service (normalizarDadosLancamento + numFinanceiro), como já é
+--   o padrão do projeto pra outras regras dependentes de tempo/contexto.
+--
+-- NÃO DESTRUTIVO / IDEMPOTENTE. Só remove uma CHECK — nenhuma linha muda.
+-- COMO USAR: Supabase -> SQL Editor -> cole e execute este arquivo inteiro.
+-- =====================================================================
+
+alter table lancamentos_financeiros_diarios drop constraint if exists lfd_financeiro_exigido_ao_finalizar;
+
+-- =====================================================================
+-- VERIFICAÇÃO (rode separadamente):
+--   select conname from pg_constraint
+--   where conrelid = 'lancamentos_financeiros_diarios'::regclass
+--     and conname = 'lfd_financeiro_exigido_ao_finalizar';
+--   -- Esperado: nenhuma linha.
+-- =====================================================================
+-- FIM
+-- =====================================================================
