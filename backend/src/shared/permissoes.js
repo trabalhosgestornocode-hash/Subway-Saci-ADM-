@@ -68,6 +68,20 @@ export const PERMISSOES = {
   // DASHBOARD_EXECUTIVO_EXCLUIR: uma exclusão de dado financeiro não é uma
   // ação de operação do dia a dia.
   BONIFICACAO_MENSAL_EXCLUIR: "bonificacao_mensal.excluir",
+
+  // Parser Food Delivery (importação + conciliação de taxas de entregador
+  // dos relatórios .xls/.xlsx do food delivery). Mesmo desenho de
+  // BONIFICACAO_MENSAL_*: ver/importar em quase todo papel operacional,
+  // excluir restrito a organization_admin.
+  PARSER_FD_VER: "parser_food_delivery.ver",
+  // Importar um arquivo (preview + confirmar) e editar a lista de códigos
+  // "cancelado sem taxa" de uma importação já salva.
+  PARSER_FD_IMPORTAR: "parser_food_delivery.importar",
+  // Excluir uma importação de verdade (DELETE, com motivo + snapshot).
+  // Deliberadamente NÃO listada em nenhum papel abaixo — só entra em
+  // organization_admin via Object.values(P), mesmo espírito de
+  // BONIFICACAO_MENSAL_EXCLUIR/DASHBOARD_EXECUTIVO_EXCLUIR.
+  PARSER_FD_EXCLUIR: "parser_food_delivery.excluir",
 };
 
 const P = PERMISSOES;
@@ -75,7 +89,7 @@ const P = PERMISSOES;
 /** Só leitura — a base de todos os papéis. */
 const LEITURA = [
   P.DASHBOARD_VER, P.PRODUTOS_VER, P.INSUMOS_VER, P.CMV_VER, P.VENDAS_VER,
-  P.INTEGRACOES_VER, P.DASHBOARD_EXECUTIVO_VER, P.BONIFICACAO_MENSAL_VER,
+  P.INTEGRACOES_VER, P.DASHBOARD_EXECUTIVO_VER, P.BONIFICACAO_MENSAL_VER, P.PARSER_FD_VER,
 ];
 
 /** @type {Record<string, string[]>} */
@@ -86,12 +100,12 @@ const POR_PAPEL = {
     ...LEITURA,
     P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.VENDAS_EDITAR,
     P.INTEGRACOES_GERENCIAR, P.USUARIOS_VER, P.CONFIG_VER,
-    P.DASHBOARD_EXECUTIVO_LANCAR, P.BONIFICACAO_MENSAL_LANCAR,
+    P.DASHBOARD_EXECUTIVO_LANCAR, P.BONIFICACAO_MENSAL_LANCAR, P.PARSER_FD_IMPORTAR,
   ],
 
-  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE, P.BONIFICACAO_MENSAL_LANCAR],
+  finance: [...LEITURA, P.FINANCEIRO_VER, P.CONFIG_VER, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE, P.BONIFICACAO_MENSAL_LANCAR, P.PARSER_FD_IMPORTAR],
 
-  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE, P.BONIFICACAO_MENSAL_LANCAR],
+  operations: [...LEITURA, P.PRODUTOS_EDITAR, P.INSUMOS_EDITAR, P.VENDAS_IMPORTAR, P.DASHBOARD_EXECUTIVO_LANCAR, P.DASHBOARD_EXECUTIVO_CORRIGIR, P.DASHBOARD_EXECUTIVO_CONFIGURAR, P.DASHBOARD_EXECUTIVO_RESETAR_TESTE, P.BONIFICACAO_MENSAL_LANCAR, P.PARSER_FD_IMPORTAR],
 
   viewer: [...LEITURA],
 };

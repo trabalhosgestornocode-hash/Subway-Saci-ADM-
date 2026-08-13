@@ -270,6 +270,17 @@ export const bonifArquivoImportacao = (id) => getJson(`${BM}/importacoes/${id}/a
 export const bonifImportarPreview = (payload) => postJson(`${BM}/importar/preview`, payload);
 export const bonifImportarConfirmar = (payload) => postJson(`${BM}/importar`, payload);
 
+// ---------- Parser Food Delivery (importação + conciliação de taxas de entregador) ----------
+const PFD = "/api/v1/parser-food-delivery";
+export const pfdImportacoes = () => getJson(`${PFD}/importacoes`);
+export const pfdImportacaoDetalhe = (id) => getJson(`${PFD}/importacoes/${id}`);
+export const pfdArquivoImportacao = (id) => getJson(`${PFD}/importacoes/${id}/arquivo`);
+export const pfdImportarPreview = (payload) => postJson(`${PFD}/importar/preview`, payload);
+export const pfdConciliarPreview = (payload) => postJson(`${PFD}/conciliar/preview`, payload);
+export const pfdConciliarConfirmar = (payload) => postJson(`${PFD}/conciliar/confirmar`, payload);
+export const pfdEditarCodigos = (id, codigosSemTaxa) => postJson(`${PFD}/importacoes/${id}/codigos-sem-taxa`, { codigosSemTaxa });
+export const pfdExcluirImportacao = (id, motivo) => postJson(`${PFD}/importacoes/${id}/excluir`, { motivo });
+
 // ---------- Martin Brower (integração com o portal da distribuidora) ----------
 // Nenhuma credencial trafega aqui na fase atual: a sincronização automatizada
 // depende de MB_PLAYWRIGHT_ENABLED no backend, e enquanto estiver desligada o

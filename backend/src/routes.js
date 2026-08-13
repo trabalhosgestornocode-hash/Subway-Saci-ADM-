@@ -13,6 +13,7 @@ import { contextoRouter } from "./modules/contexto/contexto.routes.js";
 import { sessaoRouter } from "./modules/sessao/sessao.routes.js";
 import { plataformaRouter } from "./modules/plataforma/plataforma.routes.js";
 import { martinBrowerRouter } from "./modules/martinbrower/martinbrower.routes.js";
+import { parserFoodDeliveryRouter } from "./modules/parser-food-delivery/parserFoodDelivery.routes.js";
 
 // Todas as rotas daqui já passaram por `requireAuth` (aplicado em app.js).
 // O que este arquivo decide é a SEGUNDA camada, e ela divide a API em três
@@ -60,6 +61,7 @@ tenant.use("/bonificacao-mensal", requireModulo(MODULOS.MONTHLY_BONUS), bonifica
 tenant.use("/usuarios", usuariosRouter);   // infraestrutura do tenant, não um módulo contratável
 tenant.use("/vendas", requireModulo(MODULOS.SALES), vendasRouter);
 tenant.use("/integracoes/martin-brower", requireModulo(MODULOS.MARTIN_BROWER), martinBrowerRouter);
+tenant.use("/parser-food-delivery", requireModulo(MODULOS.PARSER_FOOD_DELIVERY), parserFoodDeliveryRouter);
 router.use(tenant);
 
 // `contexto` é legado: existia para o seletor de organização antes do Context

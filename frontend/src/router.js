@@ -9,6 +9,7 @@ import { renderMartinBrower } from "./martinbrower.js";
 import { renderInsumos } from "./insumos.js";
 import { renderDashboardExecutivo } from "./dashboardExecutivo.js";
 import { renderBonificacaoMensal } from "./bonificacaoMensal.js";
+import { renderParserFoodDelivery } from "./parserFoodDelivery.js";
 
 /** Um item da sidebar está liberado para a empresa do contexto atual? */
 const acessivel = (item) => !item.modulo || temModulo(item.modulo);
@@ -74,6 +75,9 @@ export function renderRotaAtual() {
       break;
     case "bonificacao-mensal":
       renderBonificacaoMensal();
+      break;
+    case "parser-food-delivery":
+      renderParserFoodDelivery();
       break;
     case "martinbrower":
       renderMartinBrower();

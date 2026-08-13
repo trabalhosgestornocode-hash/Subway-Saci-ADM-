@@ -40,6 +40,7 @@ export const MENU = [
   { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO", modulo: "sales" },
   { id: "dashboard-executivo", label: "Dashboard iFood", icon: "📈", integ: "ifood", tipo: "dashboard-executivo", secao: "OPERAÇÃO", modulo: "ifood_dashboard" },
   { id: "bonificacao-mensal", label: "Bonificação Mensal", icon: "🏆", tipo: "bonificacao-mensal", secao: "OPERAÇÃO", modulo: "monthly_bonus" },
+  { id: "parser-food-delivery", label: "Parser Food Delivery", icon: "🛵", logo: "/assets/Logo-Foody-Delivery.png", tipo: "parser-food-delivery", secao: "OPERAÇÃO", modulo: "parser_food_delivery" },
   { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "distributors" },
   { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES", modulo: "martin_brower" },
   { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES", modulo: "swfast" },

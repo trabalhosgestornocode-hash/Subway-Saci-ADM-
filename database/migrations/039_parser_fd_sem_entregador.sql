@@ -1,0 +1,21 @@
+-- =====================================================================
+-- MIGRATION 039 — Parser Food Delivery: pedido sem entregador não entra na conta
+-- =====================================================================
+-- OBJETIVO
+--   Pedido sem nome de entregador atribuído (campo "Entregador" vazio na
+--   planilha) não entra em NENHUM valor financeiro nem no desempenho dos
+--   entregadores — nem sequer no total de pedidos considerados. É tratado
+--   como mais um motivo de "pedido ignorado" (ver
+--   parserFoodDelivery.service.js#paraApiPedidoIgnorado), ao lado de "outra
+--   operação" — a diferença é só o motivo mostrado na auditoria, os dois
+--   ficam de fora da conciliação/cálculos/ranking do mesmo jeito.
+--
+--   `pedidos_sem_entregador` guarda esse contador no resumo da importação,
+--   mesmo espírito de `pedidos_acai`/`pedidos_revisao` (migration 038).
+--
+-- PRÉ-REQUISITO: migrations 037 e 038 aplicadas.
+-- IDEMPOTENTE: pode ser reexecutada com segurança.
+-- COMO USAR: Supabase -> SQL Editor -> cole e execute este arquivo inteiro.
+-- =====================================================================
+
+alter table parser_fd_importacoes add column if not exists pedidos_sem_entregador int not null default 0;

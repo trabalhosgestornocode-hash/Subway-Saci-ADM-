@@ -39,7 +39,7 @@ function montarMenu() {
     const itens = MENU.filter((m) => m.secao === secao && (!m.modulo || temModulo(m.modulo)));
     if (!itens.length) return "";
     return `<li class="menu-secao">${secao}</li>` + itens.map((m) => {
-      const logo = m.integ && INTEGRACOES[m.integ]?.logo;
+      const logo = (m.integ && INTEGRACOES[m.integ]?.logo) || m.logo;
       const icone = logo ? `<img src="${logo}" alt="" class="m-logo" />` : m.icon;
       return `
       <li data-rota="${m.id}">

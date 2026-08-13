@@ -27,6 +27,7 @@ export const MODULOS = {
   IFOOD: "ifood",
   COCA_COLA: "coca_cola",
   HORTIFRUTI: "hortifruti",
+  PARSER_FOOD_DELIVERY: "parser_food_delivery",
 };
 
 /**
@@ -48,6 +49,7 @@ export const CATALOGO_MODULOS = [
   { id: MODULOS.IFOOD, nome: "iFood", categoria: "integracao", ordem: 11 },
   { id: MODULOS.COCA_COLA, nome: "Coca-Cola", categoria: "integracao", ordem: 12 },
   { id: MODULOS.HORTIFRUTI, nome: "Cláudia Hortifruti", categoria: "integracao", ordem: 13 },
+  { id: MODULOS.PARSER_FOOD_DELIVERY, nome: "Parser Food Delivery", categoria: "operacao", ordem: 14 },
 ];
 
 const IDS_VALIDOS = new Set(CATALOGO_MODULOS.map((m) => m.id));
