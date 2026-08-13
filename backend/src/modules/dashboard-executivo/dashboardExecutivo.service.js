@@ -676,7 +676,9 @@ function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistent
 // ---------------------------------------------------------------------------
 // NORMALIZAÇÃO DOS DADOS DE ENTRADA DO FORMULÁRIO (etapas 1-3)
 // ---------------------------------------------------------------------------
-function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior }) {
+// Exportada só pra teste unitário direto (função pura, sem I/O) — o resto
+// do módulo continua chamando-a internamente do mesmo jeito.
+export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior }) {
   const b = v.corpo(body);
   const situacao = v.umDe(b.situacao, "Situação", ["normal", "sem_operacao", "zero_vendas"]);
   const statusAlvo = v.umDeOpcional(b.status, "Status", ["rascunho", "finalizado"], "rascunho");
@@ -691,7 +693,13 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro
   const anterior = desempenhoAnterior ?? { qtdVendas: 0, valorVendasBruto: 0, novosClientes: 0 };
 
   if (situacao === "sem_operacao") {
-    const motivo = v.texto(b.motivoSemOperacao, "Motivo de não operação", { min: 1, max: 300 });
+    // Rascunho pode ficar incompleto (item novo — "Salvar como rascunho" em
+    // qualquer etapa): só exige o motivo de verdade quando o usuário está
+    // FINALIZANDO. Um rascunho que já marcou "não funcionou" mas ainda não
+    // escolheu o motivo continua salvável.
+    const motivo = statusAlvo === "finalizado"
+      ? v.texto(b.motivoSemOperacao, "Motivo de não operação", { min: 1, max: 300 })
+      : v.textoOpcional(b.motivoSemOperacao, "Motivo de não operação", { max: 300 });
     return {
       situacao, statusAlvo, motivoSemOperacao: motivo, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
       qtdVendas: anterior.qtdVendas, valorVendasBruto: anterior.valorVendasBruto, novosClientes: anterior.novosClientes, valorVendasIfood: 0,
@@ -718,25 +726,30 @@ function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro
   //
   // ETAPA FINANCEIRO: o iFood só consolida o financeiro do dia com 1 dia de
   // atraso, então só é EXIGIDA quando a data lançada é ontem (`exigirFinanceiro`,
-  // calculado por quem chama — ver `financeiroDisponivelNaData`). Nos demais
-  // dias os 5 campos usam a MESMA função opcional do Desempenho — não
-  // inventa zero pro que ainda não existe no iFood. Isso não desfinaliza um
-  // dia antigo: quando `exigirFinanceiro` é true (inclusive por já ter
-  // snapshot salvo — ver `atualizarLancamento`), o comportamento é
-  // idêntico ao de sempre, campo obrigatório de verdade.
+  // calculado por quem chama — ver `financeiroDisponivelNaData`) E o usuário
+  // está FINALIZANDO (item novo — rascunho pode estar incompleto mesmo num
+  // dia elegível pro Financeiro: "Salvar como rascunho" com Desempenho
+  // parcial, sem nunca ter aberto a etapa Financeiro, precisa continuar
+  // funcionando). Nos demais casos os 5 campos usam a MESMA função opcional
+  // do Desempenho — não inventa zero pro que ainda não existe no iFood nem
+  // pro que o usuário ainda não chegou a preencher. Isso não desfinaliza um
+  // dia antigo: ao FINALIZAR com `exigirFinanceiro` true (inclusive por já
+  // ter snapshot salvo — ver `atualizarLancamento`), o comportamento
+  // continua idêntico ao de sempre, campo obrigatório de verdade.
+  const exigirFinanceiroDeVerdade = exigirFinanceiro && statusAlvo === "finalizado";
   const qtdVendasRaw = v.numeroOpcionalNulo(b.qtdVendas, "Quantidade de vendas", { min: 0 });
   const qtdVendas = qtdVendasRaw == null ? null : Math.trunc(qtdVendasRaw);
   const valorVendasBruto = v.numeroOpcionalNulo(b.valorVendasBruto, "Valor bruto das vendas", { min: 0 });
   const novosClientesRaw = v.numeroOpcionalNulo(b.novosClientes, "Novos clientes", { min: 0 });
   const novosClientes = novosClientesRaw == null ? null : Math.trunc(novosClientesRaw);
-  const numFinanceiro = (valor, campo) => exigirFinanceiro
+  const numFinanceiro = (valor, campo) => exigirFinanceiroDeVerdade
     ? v.numero(valor, campo, { min: 0 })
     : v.numeroOpcionalNulo(valor, campo, { min: 0 });
   const valorVendasIfood = numFinanceiro(b.valorVendasIfood, "Valor das vendas (iFood)");
   const taxasComissoes = numFinanceiro(b.taxasComissoes, "Taxas e comissões");
   const servicosPromocoes = numFinanceiro(b.servicosPromocoes, "Serviços e promoções");
   const taxasEntregadores = numFinanceiro(b.taxasEntregadores, "Taxas de entregadores");
-  const outrasDeducoes = exigirFinanceiro
+  const outrasDeducoes = exigirFinanceiroDeVerdade
     ? v.numero(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 })
     : v.numeroOpcionalNulo(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 });
   const justificativaAjuste = v.textoOpcional(b.justificativaAjuste, "Justificativa do ajuste", { max: 500 });
@@ -828,6 +841,17 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
     }
     throw ApiError.badRequest(error.message);
   }
+
+  // Auditoria do ciclo de vida do rascunho (item novo — "criação do
+  // rascunho; atualizações posteriores; finalização", só nas ações de
+  // salvar, nunca por campo/tecla). Reaproveita a MESMA tabela/helper da
+  // correção de lançamento finalizado — não é uma trilha paralela, é o
+  // mesmo `lancamentos_financeiros_auditoria` com `campo: "status"`.
+  await registrarAuditoria({
+    lancamentoId: row.id, organizacaoId, unidadeId, campo: "status",
+    valorAnterior: null, valorNovo: dados.statusAlvo, usuario,
+    motivo: dados.statusAlvo === "finalizado" ? "Lançamento criado já finalizado" : "Rascunho criado",
+  });
 
   if (dados.outrasDeducoes < 0) {
     await registrarAuditoria({
@@ -955,13 +979,24 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
         });
       }
     }
-  } else if (Number(dados.outrasDeducoes) < 0 && Number(antes.outras_deducoes) >= 0) {
-    // Rascunho ganhando um ajuste negativo pela primeira vez: audita mesmo sem "correção" formal.
+  } else {
+    // Auditoria do ciclo de vida do rascunho (item novo): "atualizações
+    // posteriores" e "finalização" — uma linha por ação de salvar, nunca
+    // por campo. Só entra aqui quando NÃO era finalizado (o bloco `if`
+    // acima já audita campo a campo qualquer correção de um já finalizado).
     await registrarAuditoria({
-      lancamentoId, organizacaoId, unidadeId: antes.unidade_id, campo: "outras_deducoes",
-      valorAnterior: String(antes.outras_deducoes), valorNovo: String(dados.outrasDeducoes),
-      usuario, motivo: dados.justificativaAjuste,
+      lancamentoId, organizacaoId, unidadeId: antes.unidade_id, campo: "status",
+      valorAnterior: "rascunho", valorNovo: patch.status,
+      usuario, motivo: patch.status === "finalizado" ? "Lançamento finalizado" : "Rascunho atualizado",
     });
+    if (Number(dados.outrasDeducoes) < 0 && Number(antes.outras_deducoes) >= 0) {
+      // Rascunho ganhando um ajuste negativo pela primeira vez: audita mesmo sem "correção" formal.
+      await registrarAuditoria({
+        lancamentoId, organizacaoId, unidadeId: antes.unidade_id, campo: "outras_deducoes",
+        valorAnterior: String(antes.outras_deducoes), valorNovo: String(dados.outrasDeducoes),
+        usuario, motivo: dados.justificativaAjuste,
+      });
+    }
   }
 
   return { lancamento: paraApi(depois), avisos: dados.avisos };

@@ -61,7 +61,7 @@ export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, e
   const m = abrirOverlay(`<div class="estado"><div class="spinner"></div>Carregando…</div>`);
   fm = {
     data, unidadeId, modeloLogistico, ehTeste: !!ehTeste, onSalvo, passo: 1,
-    modoCorrecao: false, lancamentoId: null, statusOriginal: null,
+    modoCorrecao: false, lancamentoId: null, statusOriginal: null, atualizadoEm: null,
     motivoCorrecao: "", campos: camposPadrao(), avisos: [], confirmarAvisos: false, salvando: false,
     // Autoridade é sempre o servidor (ver obterLancamentoPorData/financeiroDisponivelNaData
     // no backend) — valores por omissão aqui só cobrem o instante antes da
@@ -76,8 +76,13 @@ export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, e
     if (resp.lancamento) {
       fm.lancamentoId = resp.lancamento.id;
       fm.statusOriginal = resp.lancamento.status;
+      fm.atualizadoEm = resp.lancamento.updatedAt ?? null;
       fm.modoCorrecao = resp.lancamento.status === "finalizado";
       fm.campos = camposDoLancamento(resp.lancamento);
+      // Reabrir um rascunho (item novo): pula direto pra primeira etapa que
+      // ainda falta algo obrigatório, sem obrigar reconferir o que já foi
+      // preenchido — mas o usuário sempre pode "Voltar" pra revisar antes.
+      if (fm.statusOriginal === "rascunho") fm.passo = primeiroPassoIncompletoIndex();
     } else if (!resp.disponibilidade.disponivel) {
       renderIndisponivel(m, resp.disponibilidade.motivo);
       return;
@@ -86,6 +91,21 @@ export async function abrirLancamentoModal({ data, unidadeId, modeloLogistico, e
   } catch (e) {
     renderIndisponivel(m, e.message);
   }
+}
+
+/**
+ * Primeira etapa ainda incompleta de um rascunho reaberto (item novo do
+ * pedido). Só considera o que é de fato OBRIGATÓRIO pra finalizar — Desempenho
+ * é sempre opcional (nunca "trava" a navegação, mesmo parcialmente
+ * preenchido), então nunca é o alvo. Sem nada pendente, abre na Conferência
+ * (o lançamento já está pronto pra revisar e finalizar).
+ */
+function primeiroPassoIncompletoIndex() {
+  const passos = passosAtivos();
+  const c = fm.campos;
+  if (c.situacao === "sem_operacao" && !c.motivoSemOperacao) return passos.indexOf("situacao") + 1;
+  if (passos.includes("financeiro") && c.situacao === "normal" && c.valorVendasIfood === "") return passos.indexOf("financeiro") + 1;
+  return passos.length;
 }
 
 function renderIndisponivel(m, motivo) {
@@ -194,11 +214,13 @@ function renderPasso(m) {
       ${fm.ehTeste && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-reset-teste" id="dex-abrir-reset-teste" type="button">🧪 Resetar dia para teste</button>` : ""}
       ${podeExcluir() && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-excluir" id="dex-abrir-exclusao" type="button">🗑️ Excluir lançamento</button>` : ""}
     </div>
+    ${fm.statusOriginal === "rascunho" ? avisoRascunhoAnterior() : ""}
     <div class="dex-stepper">${passos.map((_, i) => `<span class="dex-step ${i + 1 === fm.passo ? "ativo" : i + 1 < fm.passo ? "feito" : ""}">${i + 1}</span>`).join("")}</div>
     <div class="dex-form-corpo">${corpo()}</div>
     <div class="ed-acoes dex-form-acoes">
       ${fm.passo > 1 ? `<button class="btn btn-ghost" id="dex-f-voltar">Voltar</button>` : `<button class="btn btn-ghost" id="dex-f-cancelar">Cancelar</button>`}
-      ${fm.passo < passos.length ? `<button class="btn btn-primary" id="dex-f-avancar">Avançar</button>` : botoesFinalizacao()}
+      ${!fm.modoCorrecao ? `<button class="btn btn-ghost" id="dex-f-rascunho">Salvar como rascunho</button>` : ""}
+      ${fm.passo < passos.length ? `<button class="btn btn-primary" id="dex-f-avancar">Avançar</button>` : botaoUltimoPasso()}
     </div>`;
 
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
@@ -208,7 +230,16 @@ function renderPasso(m) {
   m.querySelector("#dex-abrir-reset-teste")?.addEventListener("click", () => renderResetPreview(m));
   m.querySelector("#dex-abrir-exclusao")?.addEventListener("click", () => renderExclusaoConfirmacao(m));
   wirePasso(m, chave);
-  if (chave === "conferencia") wireFinalizacao(m);
+  // Sempre wireia (não só na Conferência): "Salvar como rascunho" agora
+  // aparece em toda etapa (item novo do pedido) — os handlers usam `?.`,
+  // então não fazem nada nas etapas onde o botão correspondente não existe.
+  wireFinalizacao(m);
+}
+
+/** Discreto — item novo: "Rascunho salvo anteriormente" + última atualização, se houver. */
+function avisoRascunhoAnterior() {
+  const quando = fm.atualizadoEm ? fmtDataHoraBr(fm.atualizadoEm) : null;
+  return `<p class="dex-form-info dex-rascunho-aviso">📝 Rascunho salvo anteriormente.${quando ? ` Última atualização: ${quando}.` : ""}</p>`;
 }
 
 const podeExcluir = () => pode("dashboard_executivo.excluir");
@@ -263,7 +294,10 @@ async function confirmarExclusao(m) {
   }
 }
 
-function botoesFinalizacao() {
+// "Salvar como rascunho" mudou de lugar — vive direto no template de
+// `renderPasso` agora (aparece em TODA etapa, item novo do pedido). Esta
+// função cuida só do botão da ÚLTIMA etapa (Finalizar/Salvar correção).
+function botaoUltimoPasso() {
   // Financeiro só é OBRIGATÓRIO pra finalizar quando a etapa está disponível
   // (`fm.mostrarFinanceiro` — dia elegível ou já com snapshot salvo, ver
   // financeiroDisponivelNaData no backend). Nos demais dias, Situação (+
@@ -276,11 +310,9 @@ function botoesFinalizacao() {
   // demais campos ficam a cargo da validação do servidor (autoridade final).
   const financeiroExigidoEPreenchido = !fm.mostrarFinanceiro || fm.campos.valorVendasIfood !== "";
   const podeFinalizar = fm.campos.situacao !== "normal" || financeiroExigidoEPreenchido;
-  return `
-    ${!fm.modoCorrecao ? `<button class="btn btn-ghost" id="dex-f-rascunho">Salvar como rascunho</button>` : ""}
-    ${podeFinalizar
-      ? `<button class="btn btn-primary" id="dex-f-finalizar">${fm.modoCorrecao ? "Salvar correção" : "Finalizar lançamento"}</button>`
-      : ""}`;
+  return podeFinalizar
+    ? `<button class="btn btn-primary" id="dex-f-finalizar">${fm.modoCorrecao ? "Salvar correção" : "Finalizar lançamento"}</button>`
+    : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -578,11 +610,18 @@ function payloadBase(status) {
     // só deixa o dia virar rascunho, ver normalizarDadosLancamento).
     return { ...base, ...desempenho };
   }
+  // Financeiro: também nunca vira 0 por conta própria — mesmo quando a etapa
+  // é elegível, "Salvar como rascunho" agora existe em toda etapa (item novo
+  // do pedido) e pode ser clicado ANTES de o usuário sequer abrir esta etapa,
+  // com os campos ainda vazios. `numOuIndefinido` omite o que não foi
+  // preenchido; ao Finalizar, o backend já garante que tudo chegue preenchido
+  // (validarPassoAtual barra o avanço antes disso), então usar a mesma função
+  // aqui não muda nada pra quem finaliza — só corrige quem salva rascunho cedo.
   return {
     ...base, ...desempenho,
-    valorVendasIfood: Number(c.valorVendasIfood) || 0, taxasComissoes: Number(c.taxasComissoes) || 0,
-    servicosPromocoes: Number(c.servicosPromocoes) || 0, taxasEntregadores: Number(c.taxasEntregadores) || 0,
-    outrasDeducoes: Number(c.outrasDeducoes) || 0, justificativaAjuste: c.justificativaAjuste || undefined,
+    valorVendasIfood: numOuIndefinido(c.valorVendasIfood), taxasComissoes: numOuIndefinido(c.taxasComissoes),
+    servicosPromocoes: numOuIndefinido(c.servicosPromocoes), taxasEntregadores: numOuIndefinido(c.taxasEntregadores),
+    outrasDeducoes: numOuIndefinido(c.outrasDeducoes), justificativaAjuste: c.justificativaAjuste || undefined,
     confirmarAvisos: fm.confirmarAvisos,
   };
 }
@@ -600,7 +639,7 @@ async function salvar(m, status) {
     } else {
       await dashExecCriarLancamento(payload);
     }
-    toast(status === "finalizado" ? "Lançamento finalizado ✅" : "Rascunho salvo.");
+    toast(status === "finalizado" ? "Lançamento finalizado ✅" : "Rascunho salvo com sucesso.");
     const onSalvo = fm?.onSalvo; // capturado ANTES de fechar: fecharOverlay() zera `fm`
     fecharOverlay();
     onSalvo?.();
@@ -615,4 +654,14 @@ function fmtDataBr(iso) {
   if (!iso) return "—";
   const [a, mes, d] = iso.split("-");
   return `${d}/${mes}/${a}`;
+}
+
+/** "DD/MM/AAAA às HH:MM" — usado só no aviso de rascunho (item novo do pedido). */
+function fmtDataHoraBr(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const data = d.toLocaleDateString("pt-BR");
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${data} às ${hora}`;
 }
