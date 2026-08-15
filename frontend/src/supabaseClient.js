@@ -7,10 +7,17 @@ export function getSupabase() {
       .then((r) => r.json())
       .then((cfg) =>
         window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-          // persistSession: false -> login sempre exigido ao reabrir o site (nada
-          // fica salvo entre sessões do navegador). autoRefreshToken continua
-          // ligado só para não derrubar quem está com a aba aberta e em uso.
-          auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
+          // persistSession: true -> a sessão sobrevive a F5, fechar/reabrir a aba
+          // e navegação entre rotas (fica em localStorage, gerido pelo próprio
+          // supabase-js). Isso NÃO é sessão infinita: o token ainda expira e é
+          // renovado sozinho enquanto válido (autoRefreshToken), e continua
+          // exigindo login de novo quando a sessão expira/é revogada de verdade
+          // — ver app:sessao-expirada (sessao.js/api.js) e logout() (sessao.js).
+          // O CONTEXTO de empresa/unidade é outra coisa (guardarContextToken em
+          // sessao.js) e continua em sessionStorage por design, revalidado no
+          // servidor a cada boot via restaurarContexto() — nunca é restaurado só
+          // por existir no storage.
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
         })
       );
   }

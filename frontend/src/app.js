@@ -29,6 +29,8 @@ import { getLinha, contarAlertas } from "./views.js";
 import { abrirProdutoModal } from "./produtoModal.js";
 import { aplicarTemaSalvo } from "./configuracoes.js";
 import { abrirPainelAdmin, fecharPainelAdmin } from "./admin.js";
+import { initTooltips } from "./tooltip.js";
+import { icon } from "./icons.js";
 
 // ---------- sidebar ----------
 function montarMenu() {
@@ -40,7 +42,7 @@ function montarMenu() {
     if (!itens.length) return "";
     return `<li class="menu-secao">${secao}</li>` + itens.map((m) => {
       const logo = (m.integ && INTEGRACOES[m.integ]?.logo) || m.logo;
-      const icone = logo ? `<img src="${logo}" alt="" class="m-logo" />` : m.icon;
+      const icone = logo ? `<img src="${logo}" alt="" class="m-logo" />` : icon(m.icon, { size: 18 });
       return `
       <li data-rota="${m.id}">
         <span class="m-icon">${icone}</span>
@@ -113,6 +115,10 @@ const TELAS = { login: "#login-screen", senha: "#senha-screen", selecao: "#selec
 
 /** Mostra uma tela e esconde as outras. Estado de tela é exclusivo por design. */
 function mostrarTela(qual) {
+  // A decisão de qual tela mostrar já foi tomada — o splash de boot (ver
+  // index.html) não tem mais motivo pra existir, em nenhum dos caminhos
+  // (login, seleção, senha, app ou admin).
+  el("#boot-loading")?.remove();
   for (const [nome, sel] of Object.entries(TELAS)) {
     const nodo = el(sel);
     if (nodo) nodo.hidden = nome !== qual;
@@ -522,6 +528,7 @@ function wireEventos() {
 async function boot() {
   aplicarTemaSalvo();
   wireEventos();
+  initTooltips();
   try {
     if (await restaurarSessao()) await encaminhar();
     else mostrarLogin();

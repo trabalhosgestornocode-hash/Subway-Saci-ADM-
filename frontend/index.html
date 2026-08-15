@@ -16,8 +16,16 @@
   <script src="/src/tema.js"></script>
 </head>
 <body>
+  <!-- Splash de boot: cobre a tela enquanto restaurarSessao()/encaminhar()
+       (app.js) decidem pra onde ir. Sem isso, o login-screen abaixo (visível
+       por padrão) apareceria por um instante mesmo pra quem já está logado,
+       antes de trocar pra tela certa — o "flash de login" no refresh.
+       Removido pelo próprio app.js assim que a tela real é decidida. -->
+  <div id="boot-loading" class="boot-loading" aria-busy="true" aria-live="polite">
+    <div class="spinner"></div>
+  </div>
   <!-- ===================== LOGIN ===================== -->
-  <div id="login-screen" class="login-screen">
+  <div id="login-screen" class="login-screen" hidden>
     <div class="lg-split">
       <!-- ---------- ESQUERDA: vitrine ---------- -->
       <aside class="lg-vitrine">

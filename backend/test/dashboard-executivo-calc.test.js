@@ -705,7 +705,7 @@ describe("distribuirQuantidadeMensal — mesma exatidão, para contagens inteira
 // ---------------------------------------------------------------------------
 describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensal", () => {
   const EXTRAS_VAZIOS = {
-    qtdVendasTotal: null, novosClientesTotal: null, taxasComissoesTotal: null,
+    qtdVendasTotal: null, valorVendasBrutoTotal: null, novosClientesTotal: null, taxasComissoesTotal: null,
     servicosPromocoesTotal: null, taxasEntregadoresTotal: null, outrasDeducoesTotal: null,
   };
 
@@ -779,5 +779,31 @@ describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensa
     });
     assert.ok(r.fatiasPorCampo.qtdVendasTotal.every((f) => Number.isInteger(f)));
     assert.equal(r.fatiasPorCampo.qtdVendasTotal.reduce((s, f) => s + f, 0), 100);
+  });
+
+  // Item novo do pedido "Lançamento Mensal completo": valor bruto de vendas
+  // (Desempenho) é um total INDEPENDENTE do Financeiro — nunca reaproveita a
+  // fatia de valorVendasIfood. Usa distribuirValorMensal (centavo exato),
+  // igual aos outros campos em R$, nunca a distribuição inteira.
+  test("valorVendasBrutoTotal (Desempenho) distribui em centavos, independente do faturamento (Financeiro)", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { valorVendasBrutoTotal: 45678.9 } },
+      quantidadeDias: 31,
+    });
+    assert.equal(r.extras.valorVendasBrutoTotal, 45678.9);
+    assert.ok(perto(r.fatiasPorCampo.valorVendasBrutoTotal.reduce((s, f) => s + f, 0), 45678.9, 1e-9));
+    // Não é a mesma fatia do faturamento (valorVendasIfood) — são séries independentes.
+    assert.notDeepEqual(r.fatiasPorCampo.valorVendasBrutoTotal, r.fatiasPorCampo.valorVendasIfood);
+  });
+
+  test("sem valorVendasBrutoTotal informado, fica null (nunca reaproveita a fatia do faturamento)", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 80000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { qtdVendasTotal: 100 } }, // só quantidade, sem valor bruto
+      quantidadeDias: 31,
+    });
+    assert.equal(r.extras.valorVendasBrutoTotal, null);
+    assert.equal(r.fatiasPorCampo.valorVendasBrutoTotal, null);
   });
 });

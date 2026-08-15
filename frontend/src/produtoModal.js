@@ -9,6 +9,7 @@ import { state } from "./state.js";
 import { UNIDADES_BASE, CATEGORIA_INSUMO_ROTULO } from "./config.js";
 import { fmtMoeda, fmtPct, fmtTexto, escapeHtml, statusCmv, toast } from "./utils.js";
 import { registrarResetDeContexto } from "./contextoEscopo.js";
+import { icon } from "./icons.js";
 
 const CAT_LABEL = {
   sanduiche: "Sanduíche", salada: "Salada", bebida: "Bebida", sobremesa: "Sobremesa",
@@ -50,7 +51,7 @@ export async function abrirProdutoModal(produtoId) {
     render(data);
   } catch (e) {
     overlay.querySelector(".modal").innerHTML =
-      `<button class="modal-close" aria-label="Fechar">×</button><div class="estado erro"><span class="emoji">⚠️</span><h3>Erro ao carregar</h3><p>${escapeHtml(e.message)}</p></div>`;
+      `<button class="modal-close" aria-label="Fechar">×</button><div class="estado erro"><span class="estado-ic">${icon("alert-triangle", { size: 22 })}</span><h3>Erro ao carregar</h3><p>${escapeHtml(e.message)}</p></div>`;
     overlay.querySelector(".modal-close").addEventListener("click", fechar);
   }
 }
@@ -66,7 +67,7 @@ function render(p) {
 
   const fichaRows = (p.ficha ?? []).length
     ? p.ficha.map((c) => linhaFicha(c, editar)).join("")
-    : `<tr><td colspan="${editar ? 7 : 6}"><div class="estado"><span class="emoji">📋</span><p>Ficha vazia. ${editar ? "Adicione o primeiro insumo abaixo." : "Nenhum componente cadastrado."}</p></div></td></tr>`;
+    : `<tr><td colspan="${editar ? 7 : 6}"><div class="estado"><span class="estado-ic">${icon("clipboard-list", { size: 22 })}</span><p>Ficha vazia. ${editar ? "Adicione o primeiro insumo abaixo." : "Nenhum componente cadastrado."}</p></div></td></tr>`;
 
   const precoRows = (p.precos ?? []).length
     ? p.precos.map((pr) => {
@@ -100,16 +101,16 @@ function render(p) {
     </div>
     ${st.chave === "insumo_sem_custo" ? `<div class="banner-erro">Não é possível calcular o CMV: há insumo sem custo na ficha. Defina o preço do insumo pendente.</div>` : ""}
 
-    <div class="modal-sec-titulo">🧾 Ficha técnica</div>
+    <div class="modal-sec-titulo">${icon("receipt", { size: 14 })} Ficha técnica</div>
     <div class="tabela-wrap">
       <table class="grid grid-modal">
         <thead><tr><th>Insumo</th><th>Categoria</th><th class="num">Qtd</th><th>Un.</th><th class="num">Custo/un-base</th><th class="num">Custo aplicado</th>${editar ? "<th>Ações</th>" : ""}</tr></thead>
         <tbody id="pm-ficha">${fichaRows}</tbody>
       </table>
     </div>
-    ${editar ? `<div id="pm-add-area"><button class="btn btn-ghost btn-sm" id="pm-add-btn">➕ Adicionar insumo</button></div>` : ""}
+    ${editar ? `<div id="pm-add-area"><button class="btn btn-ghost btn-sm" id="pm-add-btn">${icon("plus", { size: 13 })} Adicionar insumo</button></div>` : ""}
 
-    <div class="modal-sec-titulo">💵 Preços por canal · CMV</div>
+    <div class="modal-sec-titulo">${icon("banknote", { size: 14 })} Preços por canal · CMV</div>
     <div class="tabela-wrap">
       <table class="grid grid-modal">
         <thead><tr><th>Canal</th><th>Tabela</th><th class="num">Preço</th><th class="num">CMV</th></tr></thead>
@@ -132,8 +133,8 @@ function linhaFicha(c, editar) {
   const custoUn = c.custo_unitario_base == null ? '<span class="pill muted">sem custo</span>' : fmtMoeda(c.custo_unitario_base);
   const custoAp = c.custo_aplicado == null ? '<span class="pill bad">pendente</span>' : fmtMoeda(c.custo_aplicado);
   const acoes = c.tipo === "insumo"
-    ? `<button class="acao-btn" data-ficha-acao="editar" data-ficha-id="${c.ficha_id}" title="Editar" aria-label="Editar componente">✏️</button>
-       <button class="acao-btn" data-ficha-acao="remover" data-ficha-id="${c.ficha_id}" title="Remover da ficha" aria-label="Remover da ficha">🗑️</button>`
+    ? `<button class="acao-btn" data-ficha-acao="editar" data-ficha-id="${c.ficha_id}" title="Editar" aria-label="Editar componente">${icon("pencil", { size: 14 })}</button>
+       <button class="acao-btn" data-ficha-acao="remover" data-ficha-id="${c.ficha_id}" title="Remover da ficha" aria-label="Remover da ficha">${icon("trash", { size: 14 })}</button>`
     : `<span class="cu-cod">submontagem</span>`;
   return `<tr class="${c.insumo_ativo ? "" : "linha-inativa"}">
     <td>${escapeHtml(c.nome)}${c.insumo_ativo ? "" : ' <span class="pill warn">inativo</span>'}</td>

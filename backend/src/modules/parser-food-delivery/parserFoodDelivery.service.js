@@ -14,6 +14,24 @@ const TABELA_PEDIDOS = "parser_fd_pedidos";
 const TABELA_AUDIT = "parser_fd_auditoria";
 const BUCKET = "parser-food-delivery";
 
+// Colunas de fato usadas por paraApiPedido()/paraApiPedidoIgnorado() (+ as 3
+// datas de entrega, guardadas de propósito pra uma futura métrica de tempo
+// médio — ver migration 037). De propósito SEM `dados_brutos`: é a linha
+// original completa do relatório (auditoria, nunca lida de volta pela API) —
+// um pedido de food delivery real chega a alguns KB de JSON cada; um
+// relatório com centenas/milhares de pedidos multiplicava isso à toa em
+// TODA visualização de uma importação (era a causa do carregamento lento ao
+// abrir o Parser Food Delivery). Continua gravada no insert, só não é mais
+// buscada de volta nas leituras — quem precisar dela de verdade, consulta o
+// banco diretamente.
+const COLUNAS_PEDIDO_LEITURA = [
+  "id", "importacao_id", "numero_pedido", "data_hora", "situacao", "entregador",
+  "taxa_entregador", "valor_total_pedido", "forma_pagamento", "razao_cancelamento",
+  "justificativa_cancelamento", "data_entregue", "data_finalizado", "data_cancelado",
+  "origem", "sem_taxa_informado", "status_conciliacao", "operacao", "operacao_motivo",
+  "detalhes_pedido", "criado_em",
+].join(", ");
+
 /** Number(x), mas preserva null/undefined — "não informado" nunca vira 0. */
 const numOuNulo = (x) => (x == null ? null : Number(x));
 
@@ -352,7 +370,8 @@ export async function obterImportacao({ organizacaoId, unidadeId, importacaoId }
   if (error) throw ApiError.internal(error.message);
   if (!importacao) throw ApiError.notFound("Importação não encontrada.");
 
-  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS).select("*").eq("importacao_id", importacaoId).order("data_hora", { ascending: true });
+  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS)
+    .select(COLUNAS_PEDIDO_LEITURA).eq("importacao_id", importacaoId).order("data_hora", { ascending: true });
   if (e2) throw ApiError.internal(e2.message);
 
   const todosPedidos = (pedidosRows || []).map(paraApiPedido);
@@ -383,7 +402,7 @@ export async function editarCodigosSemTaxa({ organizacaoId, unidadeId, importaca
   if (error) throw ApiError.internal(error.message);
   if (!importacao) throw ApiError.notFound("Importação não encontrada.");
 
-  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS).select("*").eq("importacao_id", importacaoId);
+  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA).eq("importacao_id", importacaoId);
   if (e2) throw ApiError.internal(e2.message);
 
   const codigosAntes = importacao.codigos_sem_taxa || [];

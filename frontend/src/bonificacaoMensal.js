@@ -8,17 +8,33 @@ import { state } from "./state.js";
 import { pode } from "./sessao.js";
 import { bonifMes, bonifMetas, bonifHistorico, bonifLancamento, bonifSalvarLancamento, bonifExcluirLancamento } from "./api.js";
 import { abrirImportarVisioModal } from "./bonificacaoMensalImportModal.js";
+import { abrirEditarMetaModal } from "./bonificacaoMensalMetasModal.js";
+import { renderIndicadorManualTab } from "./bonificacaoMensalIndicadorManual.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { destruirGraficosBonificacao, graficoEvolucaoFaturamento, graficoEvolucaoMix } from "./charts.js";
 import { gaugeSvg, sparklineSvg, tendencia, escadaFaixas, countUp } from "./bonificacaoMensalVisuais.js";
+import { icon } from "./icons.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+// Cada indicador sem fonte automática (item 76-B) tem sua PRÓPRIA aba — não
+// um formulário genérico com todos juntos. `INDICADOR_MANUAL_ABA` mapeia
+// aba -> indicador pra bonificacaoMensalIndicadorManual.js, que é UM
+// renderer reaproveitado pelas 4 (DRY na implementação, sem misturar as telas).
 const ABAS = [
   { id: "visao", icon: "📊", label: "Visão Geral" },
-  { id: "lancamentos", icon: "🗓️", label: "Lançamentos" },
-  { id: "metas", icon: "🎯", label: "Metas" },
+  { id: "visio", icon: "🗓️", label: "Visio" },
+  { id: "rev", icon: "📶", label: "REV" },
+  { id: "pesquisas", icon: "📝", label: "Pesquisas" },
+  { id: "nota_ifood", icon: "⭐", label: "Nota iFood" },
+  { id: "pedidos_chamado", icon: "☎️", label: "Pedidos c/ Chamado" },
+  { id: "cancelamentos", icon: "🚫", label: "Cancelamentos" },
+  { id: "metas", icon: "🎯", label: "Metas e Bonificações" },
   { id: "historico", icon: "📚", label: "Histórico" },
 ];
+const INDICADOR_MANUAL_ABA = {
+  rev: "rev", pesquisas: "pesquisas", nota_ifood: "avaliacao_ifood",
+  pedidos_chamado: "pedidos_chamado", cancelamentos: "cancelamentos",
+};
 
 const STATUS_DIA_LEGENDA = [
   { chave: "IMPORTADO", label: "Importado", classe: "ok" },
@@ -50,6 +66,19 @@ const INDICADOR = {
   pesquisas:        { label: "Pesquisas",           icon: "📝", tipo: "int",   direcao: "higher_is_better" },
 };
 
+// Fonte do dado (item 10 da auditoria de 15/08/2026) — de onde cada
+// indicador vem hoje. Estático por indicador: Faturamento/Ticket Médio
+// sempre do Geral (Relatório de Vendas), Bebidas/Adicionais/Diversos
+// sempre do Loja (Relatório de Produtos), o resto é lançamento manual
+// (nenhum tem fonte automática comprovada ainda).
+const FONTE_INDICADOR = {
+  faturamento: "Visio — Relatório de Vendas", ticket_medio: "Visio — Relatório de Vendas",
+  bebidas: "Visio — Relatório de Produtos", adicionais: "Visio — Relatório de Produtos", diversos: "Visio — Relatório de Produtos",
+  cmv: "Lançamento manual", avaliacao_ifood: "Lançamento manual", cancelamentos: "Lançamento manual",
+  pedidos_chamado: "Lançamento manual", rev: "Lançamento manual", pesquisas: "Lançamento manual",
+};
+const fonteHtml = (chave) => FONTE_INDICADOR[chave] ? `<span class="bm-fonte">Fonte: ${escapeHtml(FONTE_INDICADOR[chave])}</span>` : "";
+
 const hoje = new Date();
 const bm = { aba: "visao", mes: hoje.getMonth() + 1, ano: hoje.getFullYear(), dadosMes: null, metas: null, historico: null };
 
@@ -71,6 +100,7 @@ registrarResetDeContexto(() => {
 
 const podeLancar = () => pode("bonificacao_mensal.lancar");
 const podeExcluir = () => pode("bonificacao_mensal.excluir");
+const podeConfigurar = () => pode("bonificacao_mensal.configurar");
 const vazio = (emoji, titulo, msg, extra = "") =>
   `<div class="estado"><span class="emoji">${emoji}</span><h3>${escapeHtml(titulo)}</h3><p>${escapeHtml(msg)}</p>${extra}</div>`;
 const carregando = () => `<div class="estado"><div class="spinner"></div>Carregando…</div>`;
@@ -103,7 +133,7 @@ function montarLayout(unidadeNome) {
   view.innerHTML = `
     <div class="bm-topo">
       <div class="dex-head-txt">
-        <h2>🏆 Bonificação Mensal</h2>
+        <h2><img src="/assets/menu-bonificacao-mensal.png" alt="" class="dex-logo" /> Bonificação Mensal</h2>
         <p>Sua central de performance: metas, progresso e bonificação da unidade em tempo real.</p>
       </div>
       <div class="bm-filtros">
@@ -164,9 +194,15 @@ function renderAbaAtual() {
   if (!box || !bm.dadosMes) return;
   destruirGraficosBonificacao();
   if (bm.aba === "visao") return renderVisaoGeral(box);
-  if (bm.aba === "lancamentos") return renderLancamentos(box);
+  if (bm.aba === "visio") return renderLancamentos(box);
   if (bm.aba === "metas") return renderMetas(box);
   if (bm.aba === "historico") return renderHistorico(box);
+  if (INDICADOR_MANUAL_ABA[bm.aba]) {
+    return renderIndicadorManualTab(box, INDICADOR_MANUAL_ABA[bm.aba], {
+      ano: bm.ano, mes: bm.mes, unidadeNome: state.sessao?.unidade?.nome, podeLancar: podeLancar(),
+      metaVigente: metaDoIndicador(INDICADOR_MANUAL_ABA[bm.aba]),
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +282,7 @@ function mostrarNovaFaixaToast(indicador, res, ordemAnterior) {
   const bonusAnterior = ordemAnterior > 0 ? "faixa anterior" : "R$ 0";
   const banner = document.createElement("div");
   banner.className = "bm-conquista-toast";
-  banner.innerHTML = `<span class="bm-conquista-emoji">🏆</span>
+  banner.innerHTML = `<span class="bm-conquista-emoji">${icon("award", { size: 22 })}</span>
     <div><b>Nova faixa alcançada!</b><br>${escapeHtml(meta.label)} chegou a ${fmtValor(res.valorAtual, meta.tipo)}.<br>
     <span class="bm-conquista-bonus">Bonificação: ${bonusAnterior} → ${fmtMoeda(res.bonusAtual)}</span></div>
     <button class="bm-conquista-fechar" aria-label="Fechar">×</button>`;
@@ -420,7 +456,7 @@ function cardGauge(chave, res, meta) {
   const cor = corIndicador(res, meta);
   if (res.status === "sem_dados" || res.status === "sem_meta") {
     return `<div class="bm-card bm-gauge-card neutro"><div class="bm-card-topo"><span>${info.icon}</span> ${info.label}</div>
-      <p class="bm-vazio-inline">Dados não informados</p></div>`;
+      <p class="bm-vazio-inline">Dados não informados</p>${fonteHtml(chave)}</div>`;
   }
   const g = dadosGauge(res);
   return `<div class="bm-card bm-gauge-card">
@@ -431,6 +467,7 @@ function cardGauge(chave, res, meta) {
       <span>Faixa atual: <b>${res.bonusAtual == null ? "—" : fmtMoeda(res.bonusAtual)}</b></span>
       ${res.proximaFaixa ? `<span>Próxima: <b>${fmtValor(res.proximaFaixa.valorMin ?? res.proximaFaixa.valorMax, info.tipo)}</b> (+${fmtMoeda(res.bonusProximaFaixa)}) · faltam ${fmtValor(Math.abs(res.faltante), info.tipo)}</span>` : `<span>Faixa máxima atingida 🎉</span>`}
     </div>
+    ${fonteHtml(chave)}
   </div>`;
 }
 
@@ -453,6 +490,7 @@ function cardCmv(d, res, meta) {
       <span>Faixa atual: <b>${res.bonusAtual == null ? "—" : fmtMoeda(res.bonusAtual)}</b></span>
       ${res.proximaFaixa ? `<span>Próxima: <b>${fmtValor(res.proximaFaixa.valorMin ?? res.proximaFaixa.valorMax, info.tipo)}</b> (+${fmtMoeda(res.bonusProximaFaixa)}) · faltam ${fmtValor(Math.abs(res.faltante), info.tipo)}</span>` : `<span>Faixa máxima atingida 🎉</span>`}
     </div>
+    ${fonteHtml("cmv")}
   </div>`;
 }
 
@@ -462,7 +500,7 @@ function cardRegua(chave, res, meta) {
   const cor = corIndicador(res, meta);
   if (res.status === "sem_dados" || res.status === "sem_meta") {
     return `<div class="bm-card bm-regua-card neutro"><div class="bm-card-topo"><span>${info.icon}</span> ${info.label}</div>
-      <p class="bm-vazio-inline">Dados não informados (lançamento manual)</p></div>`;
+      <p class="bm-vazio-inline">Dados não informados</p>${fonteHtml(chave)}</div>`;
   }
   const alvo = res.proximaFaixa ? (res.proximaFaixa.valorMin ?? res.proximaFaixa.valorMax) : null;
   const g = dadosGauge(res);
@@ -474,6 +512,7 @@ function cardRegua(chave, res, meta) {
     <div class="bm-gauge-detalhe">
       ${alvo != null ? `<span>Meta: <b>${fmtValor(alvo, info.tipo)}</b> · faltam ${fmtValor(Math.abs(res.faltante), info.tipo)}</span>` : `<span>Faixa máxima atingida 🎉</span>`}
     </div>
+    ${fonteHtml(chave)}
   </div>`;
 }
 
@@ -502,7 +541,7 @@ function experienciaClienteHtml(d) {
     const extra = chave === "pesquisas" && res.proximaFaixa ? ` / ${fmtValor(res.proximaFaixa.valorMin, "int")}` : "";
     return `<div class="bm-chip ${cor}">
       <span class="bm-chip-icone">${info.icon}</span>
-      <div class="bm-chip-txt"><b>${info.label}</b><span>${res.status === "sem_dados" ? "sem dados" : fmtValor(res.valorAtual, info.tipo) + extra}</span></div>
+      <div class="bm-chip-txt"><b>${info.label}</b><span>${res.status === "sem_dados" ? "Dados não informados" : fmtValor(res.valorAtual, info.tipo) + extra}</span></div>
       <span class="bm-chip-status">${res.status === "sem_dados" ? "—" : cor === "sucesso" ? "✓" : cor === "critico" ? "!" : "•"}</span>
     </div>`;
   }).join("");
@@ -612,7 +651,10 @@ function detalheDiaHtml(data, l) {
   if (l.semOperacao) return `<h3>${fmtDataBr(data)}</h3><span class="pill muted">Sem operação</span><p class="bm-vazio-inline">${escapeHtml(l.motivoSemOperacao || "")}</p>${acoes}`;
   const item = (lbl, val) => `<div class="vd-pv-item"><span>${lbl}</span><b>${val}</b></div>`;
   return `<h3>${fmtDataBr(data)} <span class="pill ${l.origem === "manual" ? "info" : l.origem === "misto" ? "warn" : "ok"}">${l.origem}</span></h3>
-    <div class="bm-drawer-bloco"><div class="vd-pv-titulo">Geral</div><div class="vd-pv-grid">${item("Faturamento", fmtMoeda(l.faturamentoGeral))}${item("PPD", l.ppdGeral ?? "—")}</div></div>
+    <div class="bm-drawer-bloco"><div class="vd-pv-titulo">Geral</div><div class="vd-pv-grid">
+      ${item("Faturamento", fmtMoeda(l.faturamentoGeral))}${item("Ticket Médio", l.ticketMedio != null ? fmtMoeda(l.ticketMedio) : "—")}
+      ${item("Cupons válidos", l.cuponsValidosGeral ?? "—")}${item("Cupons de vendas", l.cuponsVendasGeral ?? "—")}
+    </div></div>
     <div class="bm-drawer-bloco"><div class="vd-pv-titulo">Loja / Balcão</div><div class="vd-pv-grid">
       ${item("Faturamento", fmtMoeda(l.faturamentoLoja))}${item("PPD", l.ppdLoja ?? "—")}${item("Sanduíches/Saladas", l.qtdSanduichesLoja ?? "—")}
     </div></div>
@@ -662,22 +704,41 @@ async function renderMetas(box) {
   const dados = bm.metas;
   if (!dados?.length) { box.innerHTML = vazio("🎯", "Nenhuma meta cadastrada", "Esta unidade ainda não tem metas de bonificação cadastradas."); return; }
   const porGrupo = [...GRUPOS, { id: "faturamento", titulo: "Faturamento", icon: "💰", indicadores: ["faturamento"] }];
-  box.innerHTML = `<p class="bm-vazio-inline">Vigência atual a partir de ${fmtDataBr(dados[0]?.validFrom)}. O histórico de metas anteriores é preservado — editar uma meta futura não altera o passado.</p>
+  const aviso = podeConfigurar()
+    ? `O histórico de metas anteriores é preservado — editar cria uma NOVA vigência a partir da data escolhida, o mês já vivido continua avaliado pela regra antiga.`
+    : `Vigente a partir de ${fmtDataBr(metaDoIndicador("faturamento")?.validFrom)}. Só quem tem a permissão "configurar bonificação" pode alterar metas.`;
+  box.innerHTML = `<p class="bm-vazio-inline">${aviso}</p>
     ${porGrupo.map((g) => {
-      const metasDoGrupo = g.indicadores.map((ind) => dados.find((m) => m.indicador === ind)).filter(Boolean);
+      // metaDoIndicador() resolve a VIGENTE pro mês em exibição (item 10) —
+      // nunca pegar a 1ª linha crua de `dados`, que pode ter várias vigências
+      // do mesmo indicador desde que a edição existe. null só quando o
+      // indicador nunca teve NENHUMA meta cadastrada.
+      const metasDoGrupo = g.indicadores.map((ind) => metaDoIndicador(ind) ?? { indicador: ind, semMeta: true });
       if (!metasDoGrupo.length) return "";
       return `<section class="bm-secao"><h3 class="bm-secao-titulo">${g.icon} ${g.titulo}</h3>
         <div class="bm-metas-grid">${metasDoGrupo.map(metaCardHtml).join("")}</div></section>`;
     }).join("")}`;
+  box.querySelectorAll("[data-editar-meta]").forEach((btn) => btn.addEventListener("click", () => {
+    const indicador = btn.dataset.editarMeta;
+    abrirEditarMetaModal({ indicador, metaAtual: metaDoIndicador(indicador), onSalvo: async () => { await carregarConteudo(); } });
+  }));
 }
 
 function metaCardHtml(m) {
   const info = INDICADOR[m.indicador] ?? { label: m.indicador, icon: "🎯", tipo: "num" };
+  const botaoEditar = podeConfigurar() ? `<button class="btn btn-ghost btn-sm" data-editar-meta="${m.indicador}">✏️ Editar</button>` : "";
+  if (m.semMeta) {
+    return `<div class="bm-card bm-meta-card">
+      <div class="bm-card-topo"><span>${info.icon}</span> ${info.label} <span class="pill muted">sem meta cadastrada</span></div>
+      ${botaoEditar}
+    </div>`;
+  }
   const direcaoTxt = m.direcao === "higher_is_better" ? "Quanto maior, melhor" : "Quanto menor, melhor";
   const fmt = (v) => fmtValor(v, info.tipo);
   return `<div class="bm-card bm-meta-card">
     <div class="bm-card-topo"><span>${info.icon}</span> ${info.label} <span class="pill muted">${direcaoTxt}</span></div>
     ${escadaFaixas({ faixas: m.faixas, faixaAtualOrdem: null, fmt })}
+    ${botaoEditar}
   </div>`;
 }
 

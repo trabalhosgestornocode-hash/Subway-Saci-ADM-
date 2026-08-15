@@ -3,6 +3,7 @@
 import { obterInsumo, criarInsumo, atualizarInsumo } from "./api.js";
 import { CATEGORIAS_INSUMO, CATEGORIA_INSUMO_ROTULO, UNIDADES_BASE, UNIDADE_ROTULO, FORMAS_COMPRA } from "./config.js";
 import { fmtMoeda, fmtPct, fmtTexto, fmtDataHora, escapeHtml, toast } from "./utils.js";
+import { icon } from "./icons.js";
 
 let overlay = null;
 function fechar() { overlay?.remove(); overlay = null; document.removeEventListener("keydown", onKey); }
@@ -37,7 +38,7 @@ export async function abrirInsumoModal(id, opts = {}) {
     else renderDetalhe(data, opts);
   } catch (e) {
     overlay.querySelector(".modal").innerHTML =
-      `<button class="modal-close" aria-label="Fechar">×</button><div class="estado erro"><span class="emoji">⚠️</span><h3>Erro</h3><p>${escapeHtml(e.message)}</p></div>`;
+      `<button class="modal-close" aria-label="Fechar">×</button><div class="estado erro"><span class="estado-ic">${icon("alert-triangle", { size: 22 })}</span><h3>Erro</h3><p>${escapeHtml(e.message)}</p></div>`;
     overlay.querySelector(".modal-close").addEventListener("click", fechar);
   }
 }
@@ -53,9 +54,9 @@ function renderForm(insumo, opts) {
 
   overlay.querySelector(".modal").innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>${novo ? "➕ Novo insumo" : "✏️ Editar insumo"}</h2></div>
+    <div class="modal-head"><h2>${novo ? `${icon("plus", { size: 17 })} Novo insumo` : `${icon("pencil", { size: 17 })} Editar insumo`}</h2></div>
 
-    <div class="modal-sec-titulo">📇 Identificação</div>
+    <div class="modal-sec-titulo">${icon("id-card", { size: 14 })} Identificação</div>
     <div class="ed-grid">
       <label class="ed-campo"><span>Nome *</span>
         <input id="in-nome" type="text" value="${escapeHtml(val("nome"))}" maxlength="160" /></label>
@@ -68,7 +69,7 @@ function renderForm(insumo, opts) {
         <input id="in-descricao" type="text" value="${escapeHtml(val("descricao"))}" maxlength="500" placeholder="opcional" /></label>
     </div>
 
-    <div class="modal-sec-titulo">🛒 Informações de compra</div>
+    <div class="modal-sec-titulo">${icon("shopping-cart", { size: 14 })} Informações de compra</div>
     <div class="ed-grid">
       <label class="ed-campo"><span>Forma de compra</span>
         <input id="in-forma" type="text" list="in-formas" value="${escapeHtml(val("forma_compra"))}" placeholder="caixa, pacote..." />
@@ -186,7 +187,7 @@ function renderDetalhe(i, opts) {
     </div>
     <div class="modal-custo"><span>Custo por unidade-base</span><strong>${custo}</strong></div>
 
-    <div class="modal-sec-titulo">🛒 Compra</div>
+    <div class="modal-sec-titulo">${icon("shopping-cart", { size: 14 })} Compra</div>
     <div class="tabela-wrap">
       <table class="grid grid-modal"><tbody>
         <tr><td>Forma de compra</td><td class="num">${fmtTexto(i.forma_compra)}</td></tr>
@@ -196,7 +197,7 @@ function renderDetalhe(i, opts) {
       </tbody></table>
     </div>
 
-    <div class="modal-sec-titulo">📈 Histórico de preço</div>
+    <div class="modal-sec-titulo">${icon("trending-up", { size: 14 })} Histórico de preço</div>
     <div class="tabela-wrap">
       <table class="grid grid-modal">
         <thead><tr><th>Quando</th><th class="num">Preço</th><th class="num">Custo un.</th><th class="num">Variação</th><th>Por</th></tr></thead>
@@ -204,7 +205,7 @@ function renderDetalhe(i, opts) {
       </table>
     </div>
 
-    <div class="modal-sec-titulo">🥪 Produtos que usam (${(i.produtos ?? []).length})</div>
+    <div class="modal-sec-titulo">${icon("grid", { size: 14 })} Produtos que usam (${(i.produtos ?? []).length})</div>
     <div class="tabela-wrap">
       <table class="grid grid-modal">
         <thead><tr><th>Produto</th><th class="num">Custo atual</th></tr></thead>
@@ -214,7 +215,7 @@ function renderDetalhe(i, opts) {
 
     <div class="ed-acoes">
       <button class="btn btn-ghost" id="in-fechar">Fechar</button>
-      ${podeEditar ? `<button class="btn btn-primary" id="in-editar">✏️ Editar / Atualizar preço</button>` : ""}
+      ${podeEditar ? `<button class="btn btn-primary" id="in-editar">${icon("pencil", { size: 13 })} Editar / Atualizar preço</button>` : ""}
     </div>
   `;
 

@@ -4,11 +4,12 @@
 import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
-import { parseVisioProductReport, decodificarPdfVisio } from "./visio-parser.js";
+import { auditar, ACOES } from "../../shared/auditoria.js";
+import { parseVisioProductReport, parseVisioSalesReport, decodificarPdfVisio } from "./visio-parser.js";
 import {
   hojeIsoBrasil, diasDoMes, STATUS_DIA_BONIFICACAO, statusDia, percentualDerivado, mixDoDia,
   validarPercentualCruzado, detectarInversaoRelatorios, faturamentoAcumulado, mixMensalPonderado,
-  mediaDiaria, somaValida, projecaoFaturamento, ritmoNecessario, participacaoLoja, mesmaUnidadeVisio,
+  mediaDiaria, somaValida, ticketMedioPonderado, projecaoFaturamento, ritmoNecessario, participacaoLoja, mesmaUnidadeVisio,
 } from "./bonificacaoMensal.calc.js";
 import { evaluateBonusMetric, resolverMetaVigente, totalBonificacao } from "./bonificacaoMensal.metas.js";
 
@@ -18,19 +19,53 @@ const TABELA_METAS = "bonificacao_metas";
 const TABELA_FAIXAS = "bonificacao_metas_faixas";
 const BUCKET = "bonificacao-visio";
 
+// Indicadores sem fonte automática (item 76-B): lançamento manual próprio,
+// mas MESMA granularidade diária da Visio (item corrigido — a 1ª versão
+// usava uma tabela mensal à parte; migrations 042/043 criaram e reverteram
+// isso no mesmo dia). O valor mora nas colunas de sempre em
+// bonificacao_lancamentos_diarios (rev_nota, pesquisas_qtd, avaliacao_ifood,
+// pedidos_chamado_pct — migration 028), uma por dia, agregadas no mês do
+// mesmo jeito que sempre foram (CAMPOS_INDICADOR abaixo).
+// Cancelamentos entrou nesta lista em 15/08/2026 (auditoria) — sem fonte
+// automática comprovada até hoje, mesmo tratamento dos outros 4.
+const INDICADORES_MANUAIS = ["rev", "pesquisas", "avaliacao_ifood", "pedidos_chamado", "cancelamentos"];
+// campo da API (paraApiLancamento) por indicador manual — usado pro
+// calendário/lançamento por dia (obterCalendarioIndicador/salvarValorDiaIndicador).
+const CAMPO_API_INDICADOR_MANUAL = {
+  rev: "revNota", pesquisas: "pesquisasQtd", avaliacao_ifood: "avaliacaoIfood",
+  pedidos_chamado: "pedidosChamadoPct", cancelamentos: "cancelamentosPct",
+};
+// Todos os indicadores com meta (espelha o check constraint de bonificacao_metas.indicador).
+const INDICADORES_META = [
+  "faturamento", "bebidas", "adicionais", "diversos", "cmv", "ticket_medio",
+  "avaliacao_ifood", "cancelamentos", "pedidos_chamado", "rev", "pesquisas",
+];
+const LABEL_INDICADOR = {
+  faturamento: "Faturamento", bebidas: "Bebidas", adicionais: "Adicionais", diversos: "Diversos",
+  cmv: "CMV", ticket_medio: "Ticket Médio", avaliacao_ifood: "Avaliação/Nota iFood",
+  cancelamentos: "Cancelamentos", pedidos_chamado: "Pedidos com Chamado", rev: "REV", pesquisas: "Pesquisas",
+};
+
+function validarIndicadorManual(indicador) {
+  if (!INDICADORES_MANUAIS.includes(indicador)) throw ApiError.badRequest("Indicador manual inválido.");
+}
+
 /** Number(x), mas preserva null/undefined — "não informado" nunca vira 0. */
 const numOuNulo = (x) => (x == null ? null : Number(x));
 
-/** Indicadores que a importação da Visio alimenta automaticamente (item 27). */
+/** Indicadores que a importação da Visio alimenta automaticamente (item 27); os 4 manuais entram por CAMPO_API_INDICADOR_MANUAL, mesma agregação diária de sempre. */
 const CAMPOS_INDICADOR = {
   faturamento: (m) => faturamentoAcumulado(m.lancamentos),
   bebidas: (m) => m.mix.bebidas,
   adicionais: (m) => m.mix.adicionais,
   diversos: (m) => m.mix.diversos,
   cmv: (m) => mediaDiaria(m.lancamentos.map((l) => l.cmvPct)),
-  ticket_medio: (m) => mediaDiaria(m.lancamentos.map((l) => l.ticketMedio)),
-  avaliacao_ifood: (m) => mediaDiaria(m.lancamentos.map((l) => l.avaliacaoIfood)),
+  // Ponderado pelo volume de cupons de cada dia (faturamento acumulado ÷
+  // cupons acumulados), nunca média simples dos tickets diários — mesmo
+  // princípio do Mix (item 9 das instruções da auditoria de 15/08/2026).
+  ticket_medio: (m) => ticketMedioPonderado(m.lancamentos),
   cancelamentos: (m) => mediaDiaria(m.lancamentos.map((l) => l.cancelamentosPct)),
+  avaliacao_ifood: (m) => mediaDiaria(m.lancamentos.map((l) => l.avaliacaoIfood)),
   pedidos_chamado: (m) => mediaDiaria(m.lancamentos.map((l) => l.pedidosChamadoPct)),
   rev: (m) => mediaDiaria(m.lancamentos.map((l) => l.revNota)),
   // Pesquisas é CONTAGEM acumulada no mês, não média (item 34) — cada dia
@@ -50,7 +85,9 @@ function paraApiLancamento(row) {
     semOperacao: !!row.sem_operacao,
     motivoSemOperacao: row.motivo_sem_operacao ?? null,
     faturamentoGeral: numOuNulo(row.faturamento_geral),
-    ppdGeral: numOuNulo(row.ppd_geral),
+    ppdGeral: numOuNulo(row.ppd_geral), // legado — o Relatório de Vendas (novo Geral) não traz mais PPD; coluna preservada só pra dado histórico
+    cuponsValidosGeral: row.cupons_validos_geral ?? null,
+    cuponsVendasGeral: row.cupons_vendas_geral ?? null,
     estabelecimentoGeral: row.estabelecimento_geral ?? null,
     faturamentoLoja: numOuNulo(row.faturamento_loja),
     ppdLoja: numOuNulo(row.ppd_loja),
@@ -152,6 +189,195 @@ export async function listarMetas({ organizacaoId, unidadeId }) {
   await resolverUnidade({ organizacaoId, unidadeId });
   const metas = await carregarMetas({ unidadeId });
   return metas.map(paraApiMeta);
+}
+
+// ---------------------------------------------------------------------------
+// METAS — CRUD com vigência (item 76-B). Editar NUNCA reescreve o passado:
+// uma vigência nova sempre fecha a anterior (valid_until) em vez de
+// sobrescrevê-la; só uma meta que ainda não começou a valer pode ser
+// corrigida in-place (mesmo `valid_from` exato).
+// ---------------------------------------------------------------------------
+const TIPOS_FAIXA = ["limite_minimo", "limite_maximo", "intervalo"];
+
+function validarFaixas(faixas) {
+  if (!Array.isArray(faixas) || !faixas.length) throw ApiError.badRequest("Cadastre ao menos uma faixa.");
+  const ordens = new Set();
+  return faixas.map((f, i) => {
+    const ordem = Number(f?.ordem ?? i + 1);
+    if (!Number.isInteger(ordem) || ordem < 1) throw ApiError.badRequest(`Faixa ${i + 1}: ordem inválida.`);
+    if (ordens.has(ordem)) throw ApiError.badRequest(`Duas faixas não podem ter a mesma ordem (${ordem}).`);
+    ordens.add(ordem);
+    if (!TIPOS_FAIXA.includes(f?.tipo)) throw ApiError.badRequest(`Faixa ${ordem}: tipo inválido.`);
+    const valorMin = f.valorMin === "" || f.valorMin == null ? null : Number(f.valorMin);
+    const valorMax = f.valorMax === "" || f.valorMax == null ? null : Number(f.valorMax);
+    const bonus = f.bonus === "" || f.bonus == null ? null : Number(f.bonus);
+    if (f.tipo === "limite_minimo" && (valorMin == null || !Number.isFinite(valorMin))) throw ApiError.badRequest(`Faixa ${ordem}: informe o valor mínimo.`);
+    if (f.tipo === "limite_maximo" && (valorMax == null || !Number.isFinite(valorMax))) throw ApiError.badRequest(`Faixa ${ordem}: informe o valor máximo.`);
+    if (f.tipo === "intervalo" && (valorMin == null || valorMax == null || !Number.isFinite(valorMin) || !Number.isFinite(valorMax))) {
+      throw ApiError.badRequest(`Faixa ${ordem}: informe o intervalo completo (mínimo e máximo).`);
+    }
+    if (bonus != null && !Number.isFinite(bonus)) throw ApiError.badRequest(`Faixa ${ordem}: bônus inválido.`);
+    return { ordem, tipo: f.tipo, valorMin, valorMax, bonus };
+  });
+}
+
+const fmtFaixaResumo = (f) => {
+  const alvo = f.tipo === "intervalo" ? `${f.valorMin}–${f.valorMax}` : f.tipo === "limite_maximo" ? `até ${f.valorMax}` : `${f.valorMin}+`;
+  return `${alvo}→${f.bonus == null ? "sem valor" : "R$" + f.bonus}`;
+};
+const resumoFaixas = (faixas) => (faixas || []).slice().sort((a, b) => a.ordem - b.ordem).map(fmtFaixaResumo).join(", ");
+
+/**
+ * @param {{organizacaoId:string, unidadeId:string, usuario:object, indicador:string,
+ *   direcao:'higher_is_better'|'lower_is_better', validFrom:string, faixas:Array, observacao?:string}} p
+ */
+export async function salvarMeta({ organizacaoId, unidadeId, usuario, indicador, direcao, validFrom, faixas, observacao }) {
+  const unidade = await resolverUnidade({ organizacaoId, unidadeId });
+  if (!INDICADORES_META.includes(indicador)) throw ApiError.badRequest("Indicador inválido.");
+  if (!["higher_is_better", "lower_is_better"].includes(direcao)) throw ApiError.badRequest("Direção da meta inválida.");
+  const dataVigencia = v.dataOpcional(validFrom, "Vigente a partir de");
+  if (!dataVigencia) throw ApiError.badRequest("Informe a partir de quando a meta vale.");
+  const faixasValidadas = validarFaixas(faixas);
+  const hoje = hojeIsoBrasil();
+
+  const { data: metasExistentes, error: eList } = await supabase.from(TABELA_METAS).select("*")
+    .eq("unidade_id", unidadeId).eq("indicador", indicador).order("valid_from", { ascending: false });
+  if (eList) throw ApiError.internal(eList.message);
+
+  const mesmaData = (metasExistentes || []).find((m) => m.valid_from === dataVigencia);
+  let metaId, antesResumo = null;
+
+  if (mesmaData) {
+    // Corrige uma vigência que ainda não começou (ou começa hoje) — nunca uma já vivida.
+    if (dataVigencia < hoje) throw ApiError.badRequest("Não é possível alterar uma vigência que já passou — o histórico é preservado.");
+    const { data: faixasAntes } = await supabase.from(TABELA_FAIXAS).select("*").eq("meta_id", mesmaData.id).order("ordem");
+    antesResumo = resumoFaixas((faixasAntes || []).map((f) => ({ ordem: f.ordem, tipo: f.tipo, valorMin: numOuNulo(f.valor_min), valorMax: numOuNulo(f.valor_max), bonus: numOuNulo(f.bonus) })));
+    const { error: eUpd } = await supabase.from(TABELA_METAS).update({ direcao, observacao: observacao || null }).eq("id", mesmaData.id);
+    if (eUpd) throw ApiError.badRequest(eUpd.message);
+    const { error: eDelFaixas } = await supabase.from(TABELA_FAIXAS).delete().eq("meta_id", mesmaData.id);
+    if (eDelFaixas) throw ApiError.badRequest(eDelFaixas.message);
+    metaId = mesmaData.id;
+  } else {
+    // Vigência nova de verdade — nunca antes de hoje (não reescreve o passado, item 10).
+    if (dataVigencia < hoje) throw ApiError.badRequest("A nova vigência precisa começar hoje ou numa data futura — não é possível reescrever meses já fechados.");
+    const aberta = (metasExistentes || []).find((m) => !m.valid_until && m.valid_from < dataVigencia);
+    if (aberta) {
+      const { data: faixasAntes } = await supabase.from(TABELA_FAIXAS).select("*").eq("meta_id", aberta.id).order("ordem");
+      antesResumo = resumoFaixas((faixasAntes || []).map((f) => ({ ordem: f.ordem, tipo: f.tipo, valorMin: numOuNulo(f.valor_min), valorMax: numOuNulo(f.valor_max), bonus: numOuNulo(f.bonus) })));
+      const d = new Date(dataVigencia + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 1);
+      const { error: eClose } = await supabase.from(TABELA_METAS).update({ valid_until: d.toISOString().slice(0, 10) }).eq("id", aberta.id);
+      if (eClose) throw ApiError.badRequest(eClose.message);
+    }
+    const { data: nova, error: eIns } = await supabase.from(TABELA_METAS).insert({
+      organizacao_id: organizacaoId, unidade_id: unidadeId, indicador, direcao,
+      valid_from: dataVigencia, valid_until: null, observacao: observacao || null,
+    }).select("id").single();
+    if (eIns) throw ApiError.badRequest(eIns.message);
+    metaId = nova.id;
+  }
+
+  const { error: eFaixas } = await supabase.from(TABELA_FAIXAS).insert(
+    faixasValidadas.map((f) => ({ meta_id: metaId, ordem: f.ordem, tipo: f.tipo, valor_min: f.valorMin, valor_max: f.valorMax, bonus: f.bonus })),
+  );
+  if (eFaixas) throw ApiError.badRequest(eFaixas.message);
+
+  const depoisResumo = resumoFaixas(faixasValidadas);
+  const label = LABEL_INDICADOR[indicador] || indicador;
+  await auditar({
+    atorId: usuario?.id ?? null, atorEmail: usuario?.email ?? null, atorTipo: "usuario",
+    acao: ACOES.BONIFICACAO_META_ALTERADA, entidade: "bonificacao_meta", entidadeId: metaId, organizacaoId,
+    detalhes: {
+      unidadeId, unidadeNome: unidade.nome, indicador, validFrom: dataVigencia, direcao,
+      antes: antesResumo, depois: depoisResumo,
+      resumo: antesResumo
+        ? `Meta de ${label} alterada de ${antesResumo} para ${depoisResumo} (vigente a partir de ${dataVigencia})`
+        : `Meta de ${label} cadastrada: ${depoisResumo} (vigente a partir de ${dataVigencia})`,
+    },
+  });
+
+  const { data: metaSalva, error: eGet } = await supabase.from(TABELA_METAS)
+    .select("*, bonificacao_metas_faixas(*)").eq("id", metaId).single();
+  if (eGet) throw ApiError.internal(eGet.message);
+  return paraApiMeta(metaSalva);
+}
+
+// ---------------------------------------------------------------------------
+// INDICADORES MANUAIS (REV/Pesquisas/Avaliação iFood/Pedidos com chamado) —
+// acompanhamento DIÁRIO, igual à Visio (item corrigido a pedido do usuário:
+// a 1ª versão era mensal, ver migrations 042/043). O valor mora nas mesmas
+// colunas de sempre em bonificacao_lancamentos_diarios; estas funções só
+// expõem um recorte "um indicador, um mês" (calendário) e "salvar um dia"
+// em cima do que obterMes()/upsertLancamentoManual() já fazem — nenhuma
+// lógica de agregação nova, reaproveita tudo.
+// ---------------------------------------------------------------------------
+
+/** Calendário do mês para UM indicador manual — mesmo `obterMes`, recortado. */
+export async function obterCalendarioIndicador({ organizacaoId, unidadeId, indicador, ano, mes }) {
+  validarIndicadorManual(indicador);
+  const r = await obterMes({ organizacaoId, unidadeId, ano, mes });
+  const campo = CAMPO_API_INDICADOR_MANUAL[indicador];
+  const dias = r.calendario.map((d) => {
+    const valor = d.lancamento ? d.lancamento[campo] : null;
+    let status;
+    if (d.status === STATUS_DIA_BONIFICACAO.FUTURO) status = "FUTURO";
+    else if (d.status === STATUS_DIA_BONIFICACAO.SEM_OPERACAO) status = "SEM_OPERACAO";
+    else status = valor != null ? "PREENCHIDO" : "PENDENTE";
+    return { data: d.data, valor, status };
+  });
+  return { unidade: r.unidade, ano: r.ano, mes: r.mes, mesFechado: r.mesFechado, indicador, agregado: r.indicadores[indicador], dias };
+}
+
+/** Últimos N meses (padrão 6) desse indicador — mesma agregação de `obterMes`, um resumo por mês. */
+export async function historicoMensalIndicador({ organizacaoId, unidadeId, indicador, meses = 6 }) {
+  validarIndicadorManual(indicador);
+  const qtd = v.limite(meses, 6, 1, 12);
+  const hoje = hojeIsoBrasil();
+  let ano = Number(hoje.slice(0, 4)), mes = Number(hoje.slice(5, 7));
+  const lista = [];
+  for (let i = 0; i < qtd; i++) {
+    const r = await obterMes({ organizacaoId, unidadeId, ano, mes });
+    lista.push({ ano, mes, ...r.indicadores[indicador] });
+    mes--; if (mes < 1) { mes = 12; ano--; }
+  }
+  return lista;
+}
+
+/**
+ * Lança/edita o valor de UM indicador manual em UM dia — mesmo mecanismo de
+ * `upsertLancamentoManual` (preserva os outros campos do dia intactos), só
+ * que restrito a um dos 4 indicadores sem fonte automática e SEMPRE com
+ * auditoria (item 13 — "REV de dd/mm/aaaa atualizado de X para Y").
+ */
+export async function salvarValorDiaIndicador({ organizacaoId, unidadeId, usuario, indicador, data, valor }) {
+  validarIndicadorManual(indicador);
+  const unidade = await resolverUnidade({ organizacaoId, unidadeId });
+  const dataIso = v.dataOpcional(data, "Data");
+  if (!dataIso) throw ApiError.badRequest("Informe a data do lançamento.");
+  const campo = CAMPO_API_INDICADOR_MANUAL[indicador];
+  const label = LABEL_INDICADOR[indicador] || indicador;
+
+  const valorNum = v.numeroOpcionalNulo(valor, label);
+  if (valorNum == null) throw ApiError.badRequest(`Informe o valor de ${label}.`);
+  if (valorNum < 0) throw ApiError.badRequest(`${label} não pode ser negativo.`);
+
+  const existente = await obterLancamentoPorData({ organizacaoId, unidadeId, data: dataIso });
+  const valorAnterior = existente ? numOuNulo(existente[campo]) : null;
+
+  const salvo = await upsertLancamentoManual({ organizacaoId, unidadeId, usuario, dados: { data: dataIso, [campo]: valorNum } });
+  const valorNovo = numOuNulo(salvo[campo]);
+
+  await auditar({
+    atorId: usuario?.id ?? null, atorEmail: usuario?.email ?? null, atorTipo: "usuario",
+    acao: ACOES.BONIFICACAO_INDICADOR_LANCADO, entidade: "bonificacao_indicador_manual", entidadeId: salvo.id, organizacaoId,
+    detalhes: {
+      unidadeId, unidadeNome: unidade.nome, indicador, data: dataIso, valorAnterior, valorNovo,
+      resumo: valorAnterior != null
+        ? `${label} de ${dataIso} atualizado de ${valorAnterior} para ${valorNovo}`
+        : `${label} de ${dataIso} lançado: ${valorNovo}`,
+    },
+  });
+
+  return salvo;
 }
 
 // ---------------------------------------------------------------------------
@@ -336,14 +562,29 @@ async function gravarImportacao({ organizacaoId, unidadeId, tipo, data, parsed, 
 
   if (String(error.message).toLowerCase().includes("uq_bimp_hash")) {
     // Mesmo arquivo (mesmo hash) já registrado para esta unidade+relatório.
-    // Numa SUBSTITUIÇÃO do mesmo dia isso é esperado (o usuário reenviou o
-    // mesmo PDF) — reaproveita o registro de importação já existente em vez
-    // de bloquear. Fora de uma substituição, continua bloqueando (item 20).
-    if (permitirReuso) {
-      const { data: existente, error: e2 } = await supabase.from(TABELA_IMPORT)
-        .select("id").eq("unidade_id", unidadeId).eq("tipo_relatorio", tipo).eq("hash_arquivo", parsed.hash)
-        .eq("status", "concluida").order("criado_em", { ascending: false }).limit(1).maybeSingle();
-      if (!e2 && existente) return existente.id;
+    const { data: existente, error: e2 } = await supabase.from(TABELA_IMPORT)
+      .select("id").eq("unidade_id", unidadeId).eq("tipo_relatorio", tipo).eq("hash_arquivo", parsed.hash)
+      .eq("status", "concluida").order("criado_em", { ascending: false }).limit(1).maybeSingle();
+    if (!e2 && existente) {
+      // Numa SUBSTITUIÇÃO do mesmo dia isso é esperado (o usuário reenviou o
+      // mesmo PDF) — reaproveita o registro de importação já existente em vez
+      // de bloquear (item 20).
+      if (permitirReuso) return existente.id;
+
+      // CORREÇÃO — o par (Geral+Loja) é gravado em 2 inserts separados,
+      // seguidos de UM upsert no lançamento diário; se o processo cair entre
+      // essas etapas (rede, erro transitório), o import registrado aqui fica
+      // "órfão": sem NENHUM lançamento em bonificacao_lancamentos_diarios
+      // apontando pra ele. Sem essa checagem, o usuário ficava travado num
+      // loop permanente reimportando o mesmo dia (bug relatado: "a
+      // bonificação do dia 1º pede pra ser preenchida de novo" — o dia nunca
+      // se salvava porque o 2º insert sempre batia neste mesmo hash órfão).
+      // Só bloqueia de verdade quando o registro está de fato vinculado a
+      // ALGUM lançamento (aí sim pode ser reuso indevido do mesmo arquivo em
+      // outro dia — mantém a proteção original do item 20).
+      const coluna = tipo === "geral" ? "importacao_geral_id" : "importacao_loja_id";
+      const { data: vinculo } = await supabase.from(TABELA).select("id").eq(coluna, existente.id).maybeSingle();
+      if (!vinculo) return existente.id;
     }
     throw ApiError.badRequest(`Este arquivo (Relatório ${tipo === "geral" ? "Geral" : "Loja"}) já foi importado anteriormente.`);
   }
@@ -361,7 +602,9 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
   if (!payload?.geral && !payload?.loja) throw ApiError.badRequest("Envie pelo menos um dos dois relatórios (Geral ou Loja).");
 
   let bufGeral = null, bufLoja = null, parsedGeral = null, parsedLoja = null;
-  if (payload.geral) { bufGeral = decodificarPdfVisio(payload.geral, "Geral"); parsedGeral = await parseVisioProductReport(bufGeral, { rotulo: "Geral" }); }
+  // Geral = "Relatório de Vendas" (novo layout — Faturamento + Ticket Médio,
+  // sem PPD). Loja continua no "Relatório de Produtos" de sempre (Mix).
+  if (payload.geral) { bufGeral = decodificarPdfVisio(payload.geral, "Geral"); parsedGeral = await parseVisioSalesReport(bufGeral, { rotulo: "Geral" }); }
   if (payload.loja) { bufLoja = decodificarPdfVisio(payload.loja, "Loja"); parsedLoja = await parseVisioProductReport(bufLoja, { rotulo: "Loja" }); }
 
   // item 19 — correção manual ANTES de salvar (a leitura do PDF pode ter
@@ -431,7 +674,11 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
   const preview = {
     data: dataLancamento,
     unidade: { id: unidade.id, nome: unidade.nome },
-    geral: parsedGeral && { faturamento: parsedGeral.faturamento, ppd: parsedGeral.ppd, estabelecimento: parsedGeral.estabelecimento },
+    geral: parsedGeral && {
+      faturamento: parsedGeral.faturamento, ticketMedio: parsedGeral.ticketMedio,
+      cuponsValidos: parsedGeral.cuponsValidos, cuponsVendas: parsedGeral.cuponsVendas,
+      estabelecimento: parsedGeral.estabelecimento,
+    },
     loja: parsedLoja && {
       faturamento: parsedLoja.faturamento, ppd: parsedLoja.ppd, estabelecimento: parsedLoja.estabelecimento,
       sanduichesSaladas: parsedLoja.sandwichesSalads, bebidas: parsedLoja.beverages, adicionais: parsedLoja.additions, diversos: parsedLoja.miscellaneous,
@@ -455,7 +702,13 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
   const importacaoLojaId = parsedLoja ? await gravarImportacao({ organizacaoId, unidadeId, tipo: "loja", data: dataLancamento, parsed: parsedLoja, storage: storageLoja, nomeArquivo: payload.loja.nomeArquivo, usuario, permitirReuso }) : null;
 
   const camposVisio = {};
-  if (parsedGeral) { camposVisio.faturamento_geral = parsedGeral.faturamento; camposVisio.ppd_geral = parsedGeral.ppd; camposVisio.estabelecimento_geral = parsedGeral.estabelecimento; }
+  if (parsedGeral) {
+    camposVisio.faturamento_geral = parsedGeral.faturamento;
+    camposVisio.ticket_medio = parsedGeral.ticketMedio;
+    camposVisio.cupons_validos_geral = parsedGeral.cuponsValidos;
+    camposVisio.cupons_vendas_geral = parsedGeral.cuponsVendas;
+    camposVisio.estabelecimento_geral = parsedGeral.estabelecimento;
+  }
   if (parsedLoja) {
     camposVisio.faturamento_loja = parsedLoja.faturamento; camposVisio.ppd_loja = parsedLoja.ppd; camposVisio.estabelecimento_loja = parsedLoja.estabelecimento;
     camposVisio.qtd_sanduiches_loja = parsedLoja.sandwichesSalads; camposVisio.qtd_bebidas_loja = parsedLoja.beverages;
@@ -469,7 +722,7 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
 
   // item 19 — campos corrigidos manualmente na prévia ficam marcados mesmo
   // vindo desta importação (não são mais 100% "extração automática").
-  const DB_POR_CAMPO_GERAL = { faturamento: "faturamento_geral", ppd: "ppd_geral" };
+  const DB_POR_CAMPO_GERAL = { faturamento: "faturamento_geral", ticketMedio: "ticket_medio" };
   const DB_POR_CAMPO_LOJA = {
     faturamento: "faturamento_loja", ppd: "ppd_loja", sandwichesSalads: "qtd_sanduiches_loja",
     beverages: "qtd_bebidas_loja", additions: "qtd_adicionais_loja", miscellaneous: "qtd_diversos_loja",
@@ -490,8 +743,15 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
     importacao_loja_id: importacaoLojaId ?? existente?.importacao_loja_id ?? null,
     usuario_id: usuario?.id || null, usuario_nome: usuario?.nome || null,
   };
-  // preserva indicadores manuais (CMV/Ticket médio/...) que não vieram da Visio
-  if (existente) for (const dbKey of ["cmv_pct", "ticket_medio", "avaliacao_ifood", "cancelamentos_pct", "pedidos_chamado_pct", "rev_nota", "pesquisas_qtd"]) linha[dbKey] = existente[dbKey];
+  // preserva indicadores manuais que não vieram da Visio. Ticket Médio agora
+  // VEM do Geral (Relatório de Vendas) — só preserva o valor antigo quando
+  // este import NÃO trouxe um Geral novo (senão sobrescreveria o valor
+  // fresco que `camposVisio` acabou de gravar em `linha`, alguns campos
+  // acima, com um valor desatualizado).
+  if (existente) {
+    for (const dbKey of ["cmv_pct", "avaliacao_ifood", "cancelamentos_pct", "pedidos_chamado_pct", "rev_nota", "pesquisas_qtd"]) linha[dbKey] = existente[dbKey];
+    if (!parsedGeral) linha.ticket_medio = existente.ticket_medio;
+  }
 
   const { data: salvo, error } = await supabase.from(TABELA).upsert(linha, { onConflict: "unidade_id,data" }).select("*").single();
   if (error) throw ApiError.badRequest(error.message);

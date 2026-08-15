@@ -1173,6 +1173,7 @@ async function localizarDiasParaDistribuicao({ unidadeId, ano, mes, hojeIso }) {
 // mês. O que não for informado continua null em cada dia gerado (nunca 0).
 const CAMPOS_EXTRAS_MENSAL = [
   ["qtdVendasTotal", "Quantidade de pedidos do mês"],
+  ["valorVendasBrutoTotal", "Valor bruto de vendas do mês"],
   ["novosClientesTotal", "Novos clientes do mês"],
   ["taxasComissoesTotal", "Taxas e comissões do mês"],
   ["servicosPromocoesTotal", "Serviços e promoções do mês"],
@@ -1195,6 +1196,7 @@ function validarEntradaLancamentoMensal({ mesRaw, anoRaw, valorRaw, extrasRaw })
 // diária de cada campo extra do lançamento mensal.
 const COLUNA_DIARIA_EXTRA = {
   qtdVendasTotal: "qtd_vendas",
+  valorVendasBrutoTotal: "valor_vendas_bruto",
   novosClientesTotal: "novos_clientes",
   taxasComissoesTotal: "taxas_comissoes",
   servicosPromocoesTotal: "servicos_promocoes",
@@ -1336,6 +1338,7 @@ export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidade
   // senão fica null em todo dia (nunca 0). Contagens usam distribuição
   // inteira; valores em R$ usam a mesma exatidão em centavos do faturamento.
   const fatiasQtdVendas = extras.qtdVendasTotal != null ? distribuirQuantidadeMensal(extras.qtdVendasTotal, n) : null;
+  const fatiasValorVendasBruto = extras.valorVendasBrutoTotal != null ? distribuirValorMensal(extras.valorVendasBrutoTotal, n) : null;
   const fatiasNovosClientes = extras.novosClientesTotal != null ? distribuirQuantidadeMensal(extras.novosClientesTotal, n) : null;
   const fatiasTaxasComissoes = extras.taxasComissoesTotal != null ? distribuirValorMensal(extras.taxasComissoesTotal, n) : null;
   const fatiasServicosPromocoes = extras.servicosPromocoesTotal != null ? distribuirValorMensal(extras.servicosPromocoesTotal, n) : null;
@@ -1356,12 +1359,12 @@ export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidade
     origem_lancamento: "distribuicao_mensal", distribuicao_mensal_id: lote.id,
     valor_vendas_ifood: fatias[i],
     qtd_vendas: fatiasQtdVendas ? fatiasQtdVendas[i] : null,
-    // valor_vendas_bruto (Desempenho) NÃO é perguntado de novo — o
-    // franqueado já informou o faturamento total uma vez (Financeiro). Só
-    // quando ele também informa a quantidade de pedidos é que a mesma fatia
-    // de faturamento é reaproveitada aqui, pra ticket médio poder ser
-    // calculado; sem quantidade, fica null (sem ticket médio mesmo).
-    valor_vendas_bruto: fatiasQtdVendas ? fatias[i] : null,
+    // valor_vendas_bruto (Desempenho) é um total INDEPENDENTE do franqueado
+    // (valorVendasBrutoTotal) — nunca reaproveita a fatia do Financeiro
+    // (valor_vendas_ifood). Sem o total de Desempenho informado, fica null
+    // (mesmo comportamento do lançamento diário: sem os dois lados, sem
+    // ticket médio — ver dashboardExecutivo.calc.js#ticketMedio).
+    valor_vendas_bruto: fatiasValorVendasBruto ? fatiasValorVendasBruto[i] : null,
     novos_clientes: fatiasNovosClientes ? fatiasNovosClientes[i] : null,
     taxas_comissoes: fatiasTaxasComissoes ? fatiasTaxasComissoes[i] : null,
     servicos_promocoes: fatiasServicosPromocoes ? fatiasServicosPromocoes[i] : null,
@@ -1455,13 +1458,13 @@ export async function atualizarLancamentoMensal({ organizacaoId, unidadeIdSessao
     return { existe: true, ...montarResumoLoteMensal(lote, linhas) };
   }
 
-  const temQtdVendas = fatiasPorCampo.qtdVendasTotal != null;
   const resultados = await Promise.all(linhas.map((linha, i) => {
     const patchLinha = {
       valor_vendas_ifood: fatiasPorCampo.valorVendasIfood[i],
-      // Mesma regra da criação: valor_vendas_bruto só existe quando a
-      // quantidade de pedidos também foi informada (ver lancamentoMensal acima).
-      valor_vendas_bruto: temQtdVendas ? fatiasPorCampo.valorVendasIfood[i] : null,
+      // Mesma regra da criação: valor_vendas_bruto vem só do total
+      // INDEPENDENTE de Desempenho (valorVendasBrutoTotal), nunca da fatia
+      // do Financeiro (ver lancamentoMensal acima).
+      valor_vendas_bruto: fatiasPorCampo.valorVendasBrutoTotal ? fatiasPorCampo.valorVendasBrutoTotal[i] : null,
       qtd_vendas: fatiasPorCampo.qtdVendasTotal ? fatiasPorCampo.qtdVendasTotal[i] : null,
       novos_clientes: fatiasPorCampo.novosClientesTotal ? fatiasPorCampo.novosClientesTotal[i] : null,
       taxas_comissoes: fatiasPorCampo.taxasComissoesTotal ? fatiasPorCampo.taxasComissoesTotal[i] : null,

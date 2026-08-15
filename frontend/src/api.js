@@ -269,6 +269,11 @@ export const bonifImportacoes = () => getJson(`${BM}/importacoes`);
 export const bonifArquivoImportacao = (id) => getJson(`${BM}/importacoes/${id}/arquivo`);
 export const bonifImportarPreview = (payload) => postJson(`${BM}/importar/preview`, payload);
 export const bonifImportarConfirmar = (payload) => postJson(`${BM}/importar`, payload);
+export const bonifSalvarMeta = (indicador, dados) => postJson(`${BM}/metas/${encodeURIComponent(indicador)}`, dados);
+// Indicadores manuais (REV/Pesquisas/Nota iFood/Pedidos com chamado) — calendário diário, igual à Visio.
+export const bonifCalendarioIndicador = (indicador, f) => getJson(`${BM}/indicadores/${encodeURIComponent(indicador)}/calendario${qs(f)}`);
+export const bonifHistoricoMensalIndicador = (indicador, f) => getJson(`${BM}/indicadores/${encodeURIComponent(indicador)}/historico${qs(f)}`);
+export const bonifSalvarValorDiaIndicador = (indicador, dados) => postJson(`${BM}/indicadores/${encodeURIComponent(indicador)}`, dados);
 
 // ---------- Parser Food Delivery (importação + conciliação de taxas de entregador) ----------
 const PFD = "/api/v1/parser-food-delivery";

@@ -7,14 +7,22 @@ export const bonificacaoMensalRouter = Router();
 
 const ver = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_VER);
 const lancar = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_LANCAR);
+const configurar = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_CONFIGURAR);
 const excluir = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_EXCLUIR);
 
 bonificacaoMensalRouter.get("/mes", ver, controller.mes);
 bonificacaoMensalRouter.get("/metas", ver, controller.metas);
+bonificacaoMensalRouter.post("/metas/:indicador", configurar, controller.salvarMeta);
 bonificacaoMensalRouter.get("/historico", ver, controller.historico);
 bonificacaoMensalRouter.get("/lancamentos/:data", ver, controller.lancamentoPorData);
 bonificacaoMensalRouter.post("/lancamentos", lancar, controller.salvarLancamento);
 bonificacaoMensalRouter.post("/lancamentos/:data/excluir", excluir, controller.excluirLancamento);
+
+// Indicadores manuais (REV/Pesquisas/Avaliação iFood/Pedidos com chamado) —
+// acompanhamento diário, igual à Visio.
+bonificacaoMensalRouter.get("/indicadores/:indicador/calendario", ver, controller.calendarioIndicador);
+bonificacaoMensalRouter.get("/indicadores/:indicador/historico", ver, controller.historicoMensalIndicador);
+bonificacaoMensalRouter.post("/indicadores/:indicador", lancar, controller.salvarValorDiaIndicador);
 
 bonificacaoMensalRouter.get("/importacoes", ver, controller.importacoes);
 bonificacaoMensalRouter.get("/importacoes/:id/arquivo", ver, controller.arquivoImportacao);

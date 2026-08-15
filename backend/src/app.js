@@ -40,8 +40,21 @@ export function createApp() {
     skip: (req) => req.path === "/health",   // não polui o log com o probe
   }));
 
-  // Frontend estático (shell público — a proteção real está na API de dados)
-  app.use(express.static(frontendDir));
+  // Frontend estático (shell público — a proteção real está na API de dados).
+  // `.js`/`.html` nunca ficam em cache sem revalidar: os módulos do frontend
+  // não têm nome versionado (sem hash no arquivo, ao contrário de um build
+  // com bundler) — sem isso, o navegador pode continuar rodando uma versão
+  // antiga de um arquivo já trocado no deploy até o cache expirar sozinho
+  // (visto na prática: correção aplicada, usuário só via o comportamento
+  // velho até dar um refresh "forçado"). Assets versionados por conteúdo
+  // (imagens/fontes em /assets) continuam com o cache padrão do Express.
+  app.use(express.static(frontendDir, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith(".js") || filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  }));
 
   app.get("/health", (_req, res) =>
     res.json({ ok: true, service: "subway-saci", ts: new Date().toISOString(), csp: cspEmModoBloqueio ? "enforce" : "report-only" })

@@ -2,10 +2,25 @@
 // franqueado só sabe o total do mês, não o valor de cada dia. Distribui o
 // total pelos dias sem lançamento (nunca sobrescreve dia já lançado).
 //
-// Fluxo simples de propósito (item 39 do pedido original): NÃO é outro
-// wizard de 4 etapas — é mês/ano/valor -> prévia -> confirmar. O valor
-// autoritativo é sempre o que o backend recalcula (distribuirValorMensal em
-// dashboardExecutivo.calc.js), inclusive a exatidão em centavos.
+// Paridade de conteúdo com o lançamento diário: as mesmas categorias de
+// informação (Período, Desempenho, Financeiro, Conferência), sempre que
+// fizerem sentido pra um consolidado do mês. "Situação" (normal/sem
+// operação/zero vendas) do diário NÃO tem equivalente aqui de propósito —
+// a distribuição mensal sempre representa dias operando normalmente; não
+// existe "o mês inteiro sem operação" com um faturamento lançado.
+//
+// Fluxo de criação em 4 passos (Período -> Desempenho -> Financeiro ->
+// Conferência), reaproveitando o MESMO componente de stepper
+// (.dex-stepper/.dex-step) que dashboardExecutivoForm.js já usa — nenhum
+// componente novo. O valor autoritativo é sempre o que o backend recalcula
+// (distribuirValorMensal em dashboardExecutivo.calc.js), inclusive a
+// exatidão em centavos.
+//
+// Desempenho e Financeiro NUNCA se misturam: cada campo extra pertence a um
+// grupo (`grupo: "desempenho" | "financeiro"`) só usado pra organizar a
+// tela — o valor bruto de vendas do mês (Desempenho) é um total
+// independente do franqueado, nunca derivado do faturamento (Financeiro);
+// ver dashboardExecutivo.service.js#lancamentoMensal.
 //
 // GERENCIAMENTO (visualizar/editar/excluir): quando o mês JÁ TEM um
 // lançamento mensal, este modal nunca mais tenta criar um segundo — abre
@@ -19,8 +34,11 @@ import {
   dashExecPreviewLancamentoMensal, dashExecConfirmarLancamentoMensal,
   dashExecLancamentoMensal, dashExecAtualizarLancamentoMensal, dashExecExcluirLancamentoMensal,
 } from "./api.js";
+import { icon } from "./icons.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const PASSOS = ["periodo", "desempenho", "financeiro", "conferencia"];
+const TITULOS_PASSO = { periodo: "Período", desempenho: "Desempenho", financeiro: "Financeiro", conferencia: "Conferência" };
 
 let ov = null;
 let lm = null;
@@ -43,16 +61,20 @@ const podeExcluirLote = () => pode("dashboard_executivo.excluir");
 // backend distribui do mesmo jeito exato do faturamento (contagem inteira
 // pra pedidos/clientes, centavo exato pra valores). Vazios, o dia gerado
 // continua sem essa informação (null, nunca 0) — ver dashboardExecutivo.calc.js.
+// `grupo` só organiza a tela (Desempenho x Financeiro) — mesmo vocabulário
+// do lançamento diário, sem duplicar conceito nenhum no banco.
 const CAMPOS_EXTRAS = [
-  { campo: "qtdVendasTotal", label: "Quantidade de pedidos do mês", tipo: "int" },
-  { campo: "novosClientesTotal", label: "Novos clientes do mês", tipo: "int" },
-  { campo: "taxasComissoesTotal", label: "Taxas e comissões do mês (R$)", tipo: "money" },
-  { campo: "servicosPromocoesTotal", label: "Serviços e promoções do mês (R$)", tipo: "money" },
-  { campo: "taxasEntregadoresTotal", label: "Taxas de entregadores do mês (R$)", tipo: "money", ocultoSeFullService: true },
-  { campo: "outrasDeducoesTotal", label: "Outras deduções do mês (R$)", tipo: "money" },
+  { campo: "qtdVendasTotal", label: "Quantidade de pedidos do mês", tipo: "int", grupo: "desempenho" },
+  { campo: "valorVendasBrutoTotal", label: "Valor bruto de vendas do mês (R$)", tipo: "money", grupo: "desempenho" },
+  { campo: "novosClientesTotal", label: "Novos clientes do mês", tipo: "int", grupo: "desempenho" },
+  { campo: "taxasComissoesTotal", label: "Taxas e comissões do mês (R$)", tipo: "money", grupo: "financeiro" },
+  { campo: "servicosPromocoesTotal", label: "Serviços e promoções do mês (R$)", tipo: "money", grupo: "financeiro" },
+  { campo: "taxasEntregadoresTotal", label: "Taxas de entregadores do mês (R$)", tipo: "money", grupo: "financeiro", ocultoSeFullService: true },
+  { campo: "outrasDeducoesTotal", label: "Outras deduções do mês (R$)", tipo: "money", grupo: "financeiro" },
 ];
 const ROTULO_EXTRA = Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, c.label.replace(" do mês", "").replace(" (R$)", "")]));
 const camposVisiveis = () => CAMPOS_EXTRAS.filter((c) => !(c.ocultoSeFullService && lm.modeloLogistico === "full_service"));
+const camposDoGrupo = (grupo) => camposVisiveis().filter((c) => c.grupo === grupo);
 
 /**
  * @param {{unidadeId: string|null, mes: number, ano: number, modeloLogistico?: string, onSalvo: () => void, modoInicial?: 'ver'|'editar'|'excluir'}} p
@@ -62,7 +84,7 @@ export async function abrirLancamentoMensalModal({ unidadeId, mes, ano, modeloLo
   // por isso o estado só é atribuído DEPOIS de abrir o overlay novo, nunca
   // antes (mesma pegadinha documentada em dashboardExecutivoForm.js).
   const m = abrirOverlay(`<div class="estado"><div class="spinner"></div>Carregando…</div>`);
-  lm = { unidadeId, mes, ano, modeloLogistico, valor: "", extras: {}, onSalvo, lote: null, edicao: null };
+  lm = { unidadeId, mes, ano, modeloLogistico, valor: "", extras: {}, passo: 1, onSalvo, lote: null, edicao: null };
   try {
     const { data } = await dashExecLancamentoMensal({ unidadeId: unidadeId || undefined, mes, ano });
     if (data.existe) {
@@ -71,11 +93,11 @@ export async function abrirLancamentoMensalModal({ unidadeId, mes, ano, modeloLo
       else if (modoInicial === "excluir") renderConfirmarExclusao(m);
       else renderGerenciamento(m);
     } else {
-      renderEntrada(m);
+      renderPeriodo(m);
     }
   } catch (e) {
     m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
-      <div class="estado erro"><span class="emoji">⚠️</span><h3>Erro ao carregar</h3><p>${escapeHtml(e.message)}</p></div>`;
+      <div class="estado erro"><span class="estado-ic">${icon("alert-triangle", { size: 22 })}</span><h3>Erro ao carregar</h3><p>${escapeHtml(e.message)}</p></div>`;
     m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   }
 }
@@ -84,39 +106,102 @@ export async function abrirLancamentoMensalModal({ unidadeId, mes, ano, modeloLo
 // CRIAÇÃO — só aparece quando o mês AINDA NÃO tem lançamento mensal (item 8:
 // nunca mais bloqueia dizendo "já foi lançado" sem saída — quando já existe,
 // abrirLancamentoMensalModal acima nem chega aqui, vai direto pro gerenciamento).
+//
+// 4 passos: Período -> Desempenho -> Financeiro -> Conferência. Cada
+// render* é dono do próprio HTML/listeners (mesmo padrão do resto do
+// arquivo) — só a barrinha de progresso (.dex-stepper) é compartilhada.
 // ---------------------------------------------------------------------------
-function renderEntrada(m) {
-  m.innerHTML = `
+function stepperHtml() {
+  return `<div class="dex-stepper">${PASSOS.map((_, i) => `<span class="dex-step ${i + 1 === lm.passo ? "ativo" : i + 1 < lm.passo ? "feito" : ""}">${i + 1}</span>`).join("")}</div>`;
+}
+
+function cabecalhoPasso(titulo) {
+  return `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>📅 Lançar faturamento mensal</h2></div>
+    <div class="modal-head"><h2>${icon("calendar", { size: 17 })} Lançar faturamento mensal</h2></div>
+    ${stepperHtml()}
+    <div class="dex-form-pergunta">${titulo}</div>`;
+}
+
+function anosDisponiveis() {
+  const atual = new Date().getFullYear();
+  const lista = [];
+  for (let a = atual; a >= atual - 4; a--) lista.push(a);
+  return lista;
+}
+
+function extrasInputsHtml(grupo) {
+  return camposDoGrupo(grupo).map((c) => `
+    <label class="cfg-campo"><span>${c.label}</span>
+      <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="Não informado"></label>`).join("");
+}
+function wireExtrasInputs(m) {
+  m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
+    lm.extras[e.target.dataset.extra] = e.target.value;
+  }));
+}
+
+// PASSO 1 — Período (mês/ano, igual já era antes do stepper existir)
+function renderPeriodo(m) {
+  m.innerHTML = `
+    ${cabecalhoPasso("Período")}
     <p class="dex-form-info">Para meses históricos onde você só sabe o total faturado, não o valor de cada dia. O sistema distribui os valores proporcionalmente entre os dias do mês que ainda não têm lançamento.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Mês</span>
         <select id="lm-mes">${MESES.map((n, i) => `<option value="${i + 1}" ${i + 1 === lm.mes ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <label class="cfg-campo"><span>Ano</span>
         <select id="lm-ano">${anosDisponiveis().map((a) => `<option value="${a}" ${a === lm.ano ? "selected" : ""}>${a}</option>`).join("")}</select></label>
-      <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$) *</span>
-        <input type="number" min="0.01" step="0.01" id="lm-valor" value="${lm.valor}" placeholder="0,00"></label>
-    </div>
-    <p class="dex-form-info">📎 Dados complementares — preencha caso tenha esses totais do mês também. Nada aqui é obrigatório; o que ficar em branco fica "não informado", nunca zero.</p>
-    <div class="cfg-form-grid">
-      ${camposVisiveis().map((c) => `
-        <label class="cfg-campo"><span>${c.label}</span>
-          <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="Não informado"></label>`).join("")}
     </div>
     <div class="ed-acoes dex-form-acoes">
       <button class="btn btn-ghost" id="lm-cancelar">Cancelar</button>
-      <button class="btn btn-primary" id="lm-avancar">Ver prévia da distribuição</button>
+      <button class="btn btn-primary" id="lm-avancar">Continuar</button>
     </div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   m.querySelector("#lm-cancelar").addEventListener("click", fecharOverlay);
   m.querySelector("#lm-mes").addEventListener("change", (e) => { lm.mes = Number(e.target.value); });
   m.querySelector("#lm-ano").addEventListener("change", (e) => { lm.ano = Number(e.target.value); });
+  m.querySelector("#lm-avancar").addEventListener("click", () => { lm.passo = 2; renderDesempenho(m); });
+}
+
+// PASSO 2 — Desempenho do mês (dados operacionais, tudo opcional — mesmos
+// campos/nomenclatura do Desempenho diário, só que consolidados no total do
+// período: qtd_vendas, valor_vendas_bruto, novos_clientes).
+function renderDesempenho(m) {
+  m.innerHTML = `
+    ${cabecalhoPasso(`Desempenho — ${MESES[lm.mes - 1]}/${lm.ano}`)}
+    <p class="dex-form-info">Dados operacionais do mês. Preencha caso tenha acesso a esses totais — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
+    <div class="cfg-form-grid">${extrasInputsHtml("desempenho")}</div>
+    <div class="ed-acoes dex-form-acoes">
+      <button class="btn btn-ghost" id="lm-voltar">Voltar</button>
+      <button class="btn btn-primary" id="lm-avancar">Continuar</button>
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#lm-voltar").addEventListener("click", () => { lm.passo = 1; renderPeriodo(m); });
+  wireExtrasInputs(m);
+  m.querySelector("#lm-avancar").addEventListener("click", () => { lm.passo = 3; renderFinanceiro(m); });
+}
+
+// PASSO 3 — Financeiro (dados oficiais). Faturamento total é o único campo
+// obrigatório de todo o fluxo — é ele que vira `valor_vendas_ifood`, a fonte
+// oficial dos indicadores financeiros do Dashboard iFood.
+function renderFinanceiro(m) {
+  m.innerHTML = `
+    ${cabecalhoPasso("Financeiro")}
+    <p class="dex-form-info">Dados oficiais do mês. O faturamento total é obrigatório; o detalhamento das deduções é opcional.</p>
+    <div class="cfg-form-grid">
+      <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$) *</span>
+        <input type="number" min="0.01" step="0.01" id="lm-valor" value="${lm.valor}" placeholder="0,00"></label>
+      ${extrasInputsHtml("financeiro")}
+    </div>
+    <div class="ed-acoes dex-form-acoes">
+      <button class="btn btn-ghost" id="lm-voltar">Voltar</button>
+      <button class="btn btn-primary" id="lm-avancar">Ver conferência</button>
+    </div>`;
+  m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
+  m.querySelector("#lm-voltar").addEventListener("click", () => { lm.passo = 2; renderDesempenho(m); });
   m.querySelector("#lm-valor").addEventListener("input", (e) => { lm.valor = e.target.value; });
-  m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
-    lm.extras[e.target.dataset.extra] = e.target.value;
-  }));
-  m.querySelector("#lm-avancar").addEventListener("click", () => avancarParaPrevia(m));
+  wireExtrasInputs(m);
+  m.querySelector("#lm-avancar").addEventListener("click", () => avancarParaConferencia(m));
 }
 
 /** Monta o corpo do pedido: extras vazios viram `undefined` (omitidos), nunca 0. */
@@ -129,14 +214,7 @@ function payloadExtras() {
   return p;
 }
 
-function anosDisponiveis() {
-  const atual = new Date().getFullYear();
-  const lista = [];
-  for (let a = atual; a >= atual - 4; a--) lista.push(a);
-  return lista;
-}
-
-async function avancarParaPrevia(m) {
+async function avancarParaConferencia(m) {
   if (!lm.valor || Number(lm.valor) <= 0) { toast("Informe o faturamento total do mês."); return; }
   const btn = m.querySelector("#lm-avancar");
   btn.disabled = true; btn.textContent = "Calculando…";
@@ -145,40 +223,55 @@ async function avancarParaPrevia(m) {
       unidadeId: lm.unidadeId || undefined, mes: lm.mes, ano: lm.ano, valorTotalMensal: Number(lm.valor),
       ...payloadExtras(),
     });
-    renderPrevia(m, data);
+    lm.passo = 4;
+    renderConferencia(m, data);
   } catch (e) {
     toast("Erro: " + e.message);
-    btn.disabled = false; btn.textContent = "Ver prévia da distribuição";
+    btn.disabled = false; btn.textContent = "Ver conferência";
   }
 }
 
-function renderPrevia(m, preview) {
+/** Uma linha "rótulo -> valor formatado (ou 'Não informado')" pra um campo extra — usada na Conferência e no Gerenciamento, único formatador pros dois. */
+function linhaExtraResumo(c, valorBruto) {
+  const vazio = valorBruto === "" || valorBruto == null;
+  const html = vazio ? `<span class="dex-lm-nao-informado">Não informado</span>` : (c.tipo === "money" ? fmtMoeda(Number(valorBruto)) : String(Number(valorBruto)));
+  return linhaResumo(ROTULO_EXTRA[c.campo], html);
+}
+
+// PASSO 4 — Conferência: mesma prévia que o backend já calculava
+// (dashExecPreviewLancamentoMensal), só que agora em dois blocos separados
+// e claramente rotulados — nunca uma lista só misturando os dois.
+function renderConferencia(m, preview) {
   const temLancamentosExistentes = preview.diasComLancamento > 0;
-  const informados = preview.camposExtrasInformados ?? [];
-  const naoInformados = CAMPOS_EXTRAS.map((c) => c.campo).filter((c) => !informados.includes(c));
+  const extrasDesempenho = camposDoGrupo("desempenho");
+  const extrasFinanceiro = camposDoGrupo("financeiro");
   m.innerHTML = `
-    <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>📅 Confirmar distribuição — ${MESES[preview.mes - 1]}/${preview.ano}</h2></div>
+    ${cabecalhoPasso(`Conferência — ${MESES[preview.mes - 1]}/${preview.ano}`)}
     ${temLancamentosExistentes ? `
       <div class="dex-avisos">
-        <b>⚠️ Este mês já possui ${preview.diasComLancamento} lançamento(s) individual(is).</b>
+        <b>${icon("alert-triangle", { size: 13 })} Este mês já possui ${preview.diasComLancamento} lançamento(s) individual(is).</b>
         <p>Esses dias NÃO serão alterados. A distribuição vai preencher só os ${preview.diasParaDistribuir} dia(s) que ainda estão sem lançamento.</p>
       </div>` : ""}
+    <div class="modal-sec-titulo">${icon("banknote", { size: 14 })} Financeiro <small>dados oficiais</small></div>
     <div class="dex-conf-grid">
-      <div class="dex-conf-item"><span>Faturamento mensal informado</span><b>${fmtMoeda(preview.valorTotalMensal)}</b></div>
-      <div class="dex-conf-item"><span>Dias que receberão distribuição</span><b>${preview.diasParaDistribuir}</b></div>
-      <div class="dex-conf-item"><span>Valor médio aproximado por dia</span><b>${fmtMoeda(preview.valorMedioAproximado)}</b></div>
+      ${linhaResumo("Faturamento mensal informado", fmtMoeda(preview.valorTotalMensal))}
+      ${linhaResumo("Dias que receberão distribuição", String(preview.diasParaDistribuir))}
+      ${linhaResumo("Valor médio aproximado por dia", fmtMoeda(preview.valorMedioAproximado))}
+      ${extrasFinanceiro.map((c) => linhaExtraResumo(c, lm.extras[c.campo])).join("")}
     </div>
-    ${informados.length ? `<p class="dex-form-info">Também serão distribuídos: <b>${informados.map((c) => escapeHtml(ROTULO_EXTRA[c])).join(", ")}</b>.</p>` : ""}
+    <div class="modal-sec-titulo">${icon("bar-chart", { size: 14 })} Desempenho <small>dados operacionais</small></div>
+    <div class="dex-conf-grid">
+      ${extrasDesempenho.length ? extrasDesempenho.map((c) => linhaExtraResumo(c, lm.extras[c.campo])).join("") : `<p class="dex-diag-vazio">Nenhum dado de Desempenho informado.</p>`}
+    </div>
     <div class="dex-form-info">
-      Esses valores serão registrados como <b>distribuição estimada de faturamento mensal</b> — não como faturamento diário real. A grade de lançamentos vai marcar esses dias como "Estimado".${naoInformados.length ? ` ${naoInformados.map((c) => ROTULO_EXTRA[c]).join(", ")} continuam desconhecidos para esses dias (não inventamos o que não sabemos).` : ""}
+      Esses valores serão registrados como <b>distribuição estimada de faturamento mensal</b> — não como faturamento diário real. A grade de lançamentos vai marcar esses dias como "Estimado".
     </div>
     <div class="ed-acoes dex-form-acoes">
       <button class="btn btn-ghost" id="lm-voltar">Voltar</button>
-      <button class="btn btn-primary" id="lm-confirmar">Confirmar distribuição</button>
+      <button class="btn btn-primary" id="lm-confirmar">Confirmar lançamento</button>
     </div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
-  m.querySelector("#lm-voltar").addEventListener("click", () => renderEntrada(m));
+  m.querySelector("#lm-voltar").addEventListener("click", () => { lm.passo = 3; renderFinanceiro(m); });
   m.querySelector("#lm-confirmar").addEventListener("click", () => confirmar(m, preview));
 }
 
@@ -196,13 +289,14 @@ async function confirmar(m, preview) {
     onSalvo?.();
   } catch (e) {
     toast("Erro: " + e.message);
-    btn.disabled = false; btn.textContent = "Confirmar distribuição";
+    btn.disabled = false; btn.textContent = "Confirmar lançamento";
   }
 }
 
 // ---------------------------------------------------------------------------
 // GERENCIAMENTO — item 1/6/7 do pedido: ver o lançamento mensal ORIGINAL
-// (não os dias distribuídos), com acesso a Editar e Excluir.
+// (não os dias distribuídos), com acesso a Editar e Excluir. Financeiro e
+// Desempenho aparecem em blocos separados, mesma organização da Conferência.
 // ---------------------------------------------------------------------------
 function linhaResumo(rotulo, valorHtml) {
   return `<div class="dex-conf-item"><span>${escapeHtml(rotulo)}</span><b>${valorHtml}</b></div>`;
@@ -210,11 +304,8 @@ function linhaResumo(rotulo, valorHtml) {
 
 function renderGerenciamento(m) {
   const lote = lm.lote;
-  const linhasExtras = camposVisiveis().map((c) => {
-    const valor = lote.extras[c.campo];
-    const html = valor == null ? `<span class="dex-lm-nao-informado">Não informado</span>` : (c.tipo === "money" ? fmtMoeda(valor) : String(valor));
-    return linhaResumo(c.label.replace(" do mês", ""), html);
-  }).join("");
+  const extrasDesempenho = camposDoGrupo("desempenho");
+  const extrasFinanceiro = camposDoGrupo("financeiro");
   const rodape = [
     `Criado em ${fmtDataHora(lote.criadoEm)}${lote.criadoPor?.nome ? ` por ${escapeHtml(lote.criadoPor.nome)}` : ""}.`,
     lote.atualizadoPor ? `Última atualização em ${fmtDataHora(lote.atualizadoEm)} por ${escapeHtml(lote.atualizadoPor.nome ?? lote.atualizadoPor.email ?? "—")}.` : "",
@@ -222,20 +313,25 @@ function renderGerenciamento(m) {
 
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>📅 Lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
+    <div class="modal-head"><h2>${icon("calendar", { size: 17 })} Lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
     <p class="dex-form-info">Origem: <b>distribuição mensal</b> (<code>monthly_distribution</code>) — este é o lançamento original que gerou os ${lote.diasDistribuidos} dia(s) estimados na grade, não os valores diários em si.</p>
+    <div class="modal-sec-titulo">${icon("banknote", { size: 14 })} Financeiro <small>dados oficiais</small></div>
     <div class="dex-conf-grid">
       ${linhaResumo("Faturamento mensal informado", fmtMoeda(lote.valorTotalMensal))}
       ${linhaResumo("Dias distribuídos", String(lote.diasDistribuidos))}
       ${linhaResumo("Valor médio por dia", fmtMoeda(lote.valorMedioAproximado))}
-      ${linhasExtras}
+      ${extrasFinanceiro.map((c) => linhaExtraResumo(c, lote.extras[c.campo])).join("")}
     </div>
-    ${lote.camposPendentes.length ? `<div class="dex-avisos"><b>📎 Dados complementares pendentes:</b> ${lote.camposPendentes.map((c) => escapeHtml(ROTULO_EXTRA[c])).join(", ")}. Use "Editar" para completar sem refazer o lançamento.</div>` : ""}
+    <div class="modal-sec-titulo">${icon("bar-chart", { size: 14 })} Desempenho <small>dados operacionais</small></div>
+    <div class="dex-conf-grid">
+      ${extrasDesempenho.length ? extrasDesempenho.map((c) => linhaExtraResumo(c, lote.extras[c.campo])).join("") : `<p class="dex-diag-vazio">Nenhum dado de Desempenho informado.</p>`}
+    </div>
+    ${lote.camposPendentes.length ? `<div class="dex-avisos"><b>${icon("paperclip", { size: 13 })} Dados complementares pendentes:</b> ${lote.camposPendentes.map((c) => escapeHtml(ROTULO_EXTRA[c])).join(", ")}. Use "Editar" para completar sem refazer o lançamento.</div>` : ""}
     <p class="dex-form-info">${rodape}</p>
     <div class="ed-acoes dex-form-acoes">
       <button class="btn btn-ghost" id="lm-fechar">Fechar</button>
-      ${podeEditarLote() ? `<button class="btn btn-ghost" id="lm-ir-editar">✏️ Editar / Atualizar lançamento</button>` : ""}
-      ${podeExcluirLote() ? `<button class="btn btn-perigo" id="lm-ir-excluir">🗑️ Excluir lançamento mensal</button>` : ""}
+      ${podeEditarLote() ? `<button class="btn btn-ghost" id="lm-ir-editar">${icon("pencil", { size: 13 })} Editar / Atualizar lançamento</button>` : ""}
+      ${podeExcluirLote() ? `<button class="btn btn-perigo" id="lm-ir-excluir">${icon("trash", { size: 13 })} Excluir lançamento mensal</button>` : ""}
     </div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   m.querySelector("#lm-fechar").addEventListener("click", fecharOverlay);
@@ -247,6 +343,7 @@ function renderGerenciamento(m) {
 // EDIÇÃO — item 2/3 do pedido: só substitui o que o usuário de fato editar.
 // Campo deixado como estava (igual ao valor pré-preenchido) não é enviado —
 // preserva o que já estava salvo, nunca vira zero nem some em silêncio.
+// Mesma separação Financeiro/Desempenho das outras telas.
 // ---------------------------------------------------------------------------
 function renderEdicao(m) {
   const lote = lm.lote;
@@ -257,20 +354,22 @@ function renderEdicao(m) {
     };
   }
   const ed = lm.edicao;
+  const inputsExtras = (grupo) => camposDoGrupo(grupo).map((c) => `
+    <label class="cfg-campo"><span>${c.label}</span>
+      <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="Não informado"></label>`).join("");
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>✏️ Editar lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
+    <div class="modal-head"><h2>${icon("pencil", { size: 13 })} Editar lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
     <p class="dex-form-info">Só o que você alterar aqui é substituído — o resto continua exatamente como estava salvo. Deixar um campo como está (sem mexer) não apaga o valor dele.</p>
+    <div class="modal-sec-titulo">${icon("banknote", { size: 14 })} Financeiro <small>dados oficiais</small></div>
     <div class="cfg-form-grid">
       <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$)</span>
         <input type="number" min="0.01" step="0.01" id="lm-ed-valor" value="${ed.valorTotalMensal}"></label>
+      ${inputsExtras("financeiro")}
     </div>
-    <p class="dex-form-info">⚠️ Alterar o faturamento recalcula a distribuição pelos mesmos ${lote.diasDistribuidos} dia(s) já lançados — a soma continua batendo exatamente com o novo valor.</p>
-    <div class="cfg-form-grid">
-      ${camposVisiveis().map((c) => `
-        <label class="cfg-campo"><span>${c.label}</span>
-          <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="Não informado"></label>`).join("")}
-    </div>
+    <p class="dex-form-info">${icon("alert-triangle", { size: 13 })} Alterar o faturamento recalcula a distribuição pelos mesmos ${lote.diasDistribuidos} dia(s) já lançados — a soma continua batendo exatamente com o novo valor.</p>
+    <div class="modal-sec-titulo">${icon("bar-chart", { size: 14 })} Desempenho <small>dados operacionais</small></div>
+    <div class="cfg-form-grid">${inputsExtras("desempenho")}</div>
     <div class="ed-acoes dex-form-acoes">
       <button class="btn btn-ghost" id="lm-ed-cancelar">Cancelar</button>
       <button class="btn btn-primary" id="lm-ed-salvar">Salvar alterações</button>
@@ -278,10 +377,14 @@ function renderEdicao(m) {
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   m.querySelector("#lm-ed-cancelar").addEventListener("click", () => { lm.edicao = null; renderGerenciamento(m); });
   m.querySelector("#lm-ed-valor").addEventListener("input", (e) => { ed.valorTotalMensal = e.target.value; });
+  wireExtrasInputsEdicao(m, ed);
+  m.querySelector("#lm-ed-salvar").addEventListener("click", () => salvarEdicao(m));
+}
+
+function wireExtrasInputsEdicao(m, ed) {
   m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
     ed.extras[e.target.dataset.extra] = e.target.value;
   }));
-  m.querySelector("#lm-ed-salvar").addEventListener("click", () => salvarEdicao(m));
 }
 
 /** Só entra no patch o que MUDOU em relação ao valor salvo (`lm.lote`) — chave ausente = "não editei", preserva o que já estava lá. */
@@ -328,7 +431,7 @@ function renderConfirmarExclusao(m) {
   const rotuloMes = `${MESES[lote.mes - 1]}/${lote.ano}`;
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>🗑️ Excluir lançamento mensal — ${rotuloMes}</h2></div>
+    <div class="modal-head"><h2>${icon("trash", { size: 13 })} Excluir lançamento mensal — ${rotuloMes}</h2></div>
     <div class="dex-avisos dex-avisos-perigo">
       <p><b>Você está prestes a excluir o lançamento mensal de ${rotuloMes} e os valores diários estimados gerados por ele.</b></p>
       <div class="dex-conf-grid">

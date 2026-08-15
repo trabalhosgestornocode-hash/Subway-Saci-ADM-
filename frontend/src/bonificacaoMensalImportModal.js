@@ -151,7 +151,7 @@ function renderDuplicado(m, ctx, data) {
         <thead><tr><th></th><th class="num">Valor atual</th><th class="num">Novo valor</th></tr></thead>
         <tbody>
           ${linha("Faturamento Geral", fmtMoeda(l.faturamentoGeral), p.geral ? fmtMoeda(p.geral.faturamento) : "—")}
-          ${linha("PPD Geral", l.ppdGeral ?? "—", p.geral?.ppd ?? "—")}
+          ${linha("Ticket Médio Geral", l.ticketMedio != null ? fmtMoeda(l.ticketMedio) : "—", p.geral?.ticketMedio != null ? fmtMoeda(p.geral.ticketMedio) : "—")}
           ${linha("Faturamento Loja", fmtMoeda(l.faturamentoLoja), p.loja ? fmtMoeda(p.loja.faturamento) : "—")}
           ${linha("Sanduíches/Saladas", l.qtdSanduichesLoja ?? "—", p.loja?.sanduichesSaladas ?? "—")}
           ${linha("Bebidas", l.qtdBebidasLoja ?? "—", p.loja?.bebidas ?? "—")}
@@ -176,7 +176,9 @@ function renderPreview(m, ctx, data) {
       <div class="vd-pv-titulo">Dados encontrados — ${fmtDataBr(p.data)}</div>
       ${p.geral ? `<div class="bm-pv-bloco"><b>Geral</b><div class="vd-pv-grid">
         ${item("Faturamento Total", fmtMoeda(p.geral.faturamento))}
-        ${item("PPD", p.geral.ppd)}
+        ${item("Ticket Médio", fmtMoeda(p.geral.ticketMedio))}
+        ${item("Cupons válidos", p.geral.cuponsValidos ?? "—")}
+        ${item("Cupons de vendas", p.geral.cuponsVendas ?? "—")}
         ${item("Estabelecimento", escapeHtml(p.geral.estabelecimento || "—"))}
       </div></div>` : `<p class="dex-diag-vazio">Relatório Geral não enviado.</p>`}
       ${p.loja ? `<div class="bm-pv-bloco"><b>Loja / Balcão</b><div class="vd-pv-grid">
@@ -192,7 +194,7 @@ function renderPreview(m, ctx, data) {
       <details class="bm-pv-corrigir"><summary>Algum número foi lido errado? Corrigir manualmente</summary>
         <div class="cfg-form-grid">
           ${p.geral ? `<label class="cfg-campo"><span>Faturamento Geral (correção)</span><input type="number" step="0.01" id="bm-corr-geral-faturamento" placeholder="${p.geral.faturamento}"></label>
-          <label class="cfg-campo"><span>PPD Geral (correção)</span><input type="number" step="1" id="bm-corr-geral-ppd" placeholder="${p.geral.ppd}"></label>` : ""}
+          <label class="cfg-campo"><span>Ticket Médio (correção)</span><input type="number" step="0.01" id="bm-corr-geral-ticketMedio" placeholder="${p.geral.ticketMedio}"></label>` : ""}
           ${p.loja ? `<label class="cfg-campo"><span>Faturamento Loja (correção)</span><input type="number" step="0.01" id="bm-corr-loja-faturamento" placeholder="${p.loja.faturamento}"></label>
           <label class="cfg-campo"><span>Sanduíches/Saladas (correção)</span><input type="number" step="1" id="bm-corr-loja-sandwichesSalads" placeholder="${p.loja.sanduichesSaladas}"></label>
           <label class="cfg-campo"><span>Bebidas (correção)</span><input type="number" step="1" id="bm-corr-loja-beverages" placeholder="${p.loja.bebidas}"></label>
@@ -212,7 +214,7 @@ function renderPreview(m, ctx, data) {
 function aplicarCorrecoes(m, ctx) {
   const lerNum = (id) => { const v = m.querySelector(`#${id}`)?.value; return v === "" || v == null ? undefined : v; };
   const correcoes = {
-    geral: { faturamento: lerNum("bm-corr-geral-faturamento"), ppd: lerNum("bm-corr-geral-ppd") },
+    geral: { faturamento: lerNum("bm-corr-geral-faturamento"), ticketMedio: lerNum("bm-corr-geral-ticketMedio") },
     loja: {
       faturamento: lerNum("bm-corr-loja-faturamento"), sandwichesSalads: lerNum("bm-corr-loja-sandwichesSalads"),
       beverages: lerNum("bm-corr-loja-beverages"), additions: lerNum("bm-corr-loja-additions"), miscellaneous: lerNum("bm-corr-loja-miscellaneous"),

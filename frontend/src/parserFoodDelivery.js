@@ -10,6 +10,7 @@ import {
 } from "./api.js";
 import { abrirImportarFoodDeliveryModal } from "./parserFoodDeliveryImportModal.js";
 import { registrarResetDeContexto } from "./contextoEscopo.js";
+import { icon } from "./icons.js";
 
 const ABAS = [
   { id: "visao", icon: "📊", label: "Visão Geral" },
@@ -55,6 +56,17 @@ const podeExcluir = () => pode("parser_food_delivery.excluir");
 const vazio = (emoji, titulo, msg, extra = "") =>
   `<div class="estado"><span class="emoji">${emoji}</span><h3>${escapeHtml(titulo)}</h3><p>${escapeHtml(msg)}</p>${extra}</div>`;
 const carregando = () => `<div class="estado"><div class="spinner"></div>Carregando…</div>`;
+// Skeleton (mesmo componente .vd-skel já usado em vendas.js — sem duplicar
+// CSS) pro CONTEÚDO da tela, não a tela inteira: cabeçalho e abas continuam
+// visíveis e clicáveis, só a área de dados pisca em "carregando". Corrige o
+// buraco real do delay sentido ao abrir o Parser — hoje #pfd-conteudo fica
+// um <div> vazio (sem nenhuma animação) durante toda a espera de rede, só o
+// spinner cheio da tela aparece por uma fração de segundo antes de sumir.
+const skeletonVisaoGeral = () => `
+  <div class="vd-skel vd-skel-linha" style="max-width:420px"></div>
+  <div class="vd-cards">${Array.from({ length: 3 }).map(() => '<div class="vd-skel vd-skel-card"></div>').join("")}</div>
+  <div class="vd-skels">${Array.from({ length: 5 }).map(() => '<div class="vd-skel vd-skel-linha"></div>').join("")}</div>`;
+const skeletonTabela = () => `<div class="vd-skels">${Array.from({ length: 8 }).map(() => '<div class="vd-skel vd-skel-linha"></div>').join("")}</div>`;
 const fmtDataBr = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 const fmtPeriodo = (ini, fim) => (!ini ? "—" : ini === fim ? fmtDataBr(ini) : `${fmtDataBr(ini)} até ${fmtDataBr(fim)}`);
 
@@ -78,7 +90,7 @@ function montarLayout(unidadeNome) {
   view.innerHTML = `
     <div class="bm-topo">
       <div class="dex-head-txt">
-        <h2><img src="/assets/Logo-Foody-Delivery.png" alt="" class="pfd-logo" /> Parser Food Delivery</h2>
+        <h2><img src="/assets/menu-parser-food-delivery.png" alt="" class="pfd-logo" /> Parser Food Delivery</h2>
         <p>Importe o relatório de pedidos, marque os cancelados que não geram taxa e veja o valor final devido a cada entregador.</p>
       </div>
       <div class="bm-filtros">
@@ -89,7 +101,7 @@ function montarLayout(unidadeNome) {
     <nav class="dex-nav" aria-label="Seções do Parser Food Delivery">
       ${ABAS.map((a) => `<button class="dex-tab ${a.id === pfd.aba ? "ativo" : ""}" data-aba="${a.id}"><span>${a.icon}</span> ${a.label}</button>`).join("")}
     </nav>
-    <div id="pfd-conteudo" class="bm-conteudo"></div>`;
+    <div id="pfd-conteudo" class="bm-conteudo">${skeletonVisaoGeral()}</div>`;
 
   el("#pfd-importar")?.addEventListener("click", () => abrirImportarFoodDeliveryModal({ unidadeNome, onSalvo: aoConfirmarImportacao }));
   view.querySelectorAll(".dex-tab").forEach((b) => b.addEventListener("click", () => irParaAba(b.dataset.aba)));
@@ -135,7 +147,7 @@ async function abrirImportacao(id, { silencioso = false } = {}) {
 function renderAbaAtual() {
   const box = el("#pfd-conteudo");
   if (!box) return;
-  if (pfd.aba === "historico") { box.innerHTML = carregando(); renderHistorico(box); return; }
+  if (pfd.aba === "historico") { box.innerHTML = skeletonTabela(); renderHistorico(box); return; }
   if (!pfd.atual) {
     box.innerHTML = vazio("🛵", "Nenhuma importação aberta",
       podeImportar() ? "Importe um relatório Food Delivery ou abra uma importação no Histórico." : "Nenhuma importação disponível para esta unidade ainda.",
@@ -188,7 +200,7 @@ function renderVisaoGeral(box) {
       ${card("✅", "Taxas válidas dos entregadores", fmtMoeda(resumo.taxasValidas), "", true)}
     </div>
     <div class="bm-pv-bloco" style="margin-top:18px">
-      <b>🏆 Ranking resumido de entregadores</b>
+      <b>${icon("award", { size: 15 })} Ranking resumido de entregadores</b>
       <div class="tabela-wrap"><table class="grid">
         <thead><tr><th>Entregador</th><th class="num">Entregas</th><th class="num">Cancel. com taxa</th><th class="num">Cancel. sem taxa</th><th class="num">Taxas válidas</th></tr></thead>
         <tbody>${top.map((e) => `<tr><td>${escapeHtml(e.entregador)}</td><td class="num">${e.entregues}</td><td class="num">${e.canceladosComTaxa}</td><td class="num">${e.canceladosSemTaxa}</td><td class="num">${fmtMoeda(e.taxasValidas)}</td></tr>`).join("")}</tbody>
@@ -367,6 +379,7 @@ async function renderHistorico(box) {
 
   box.querySelectorAll(".pfd-hist-linha").forEach((tr) => tr.addEventListener("click", (e) => {
     if (e.target.closest("button")) return;
+    box.innerHTML = skeletonVisaoGeral(); // feedback imediato — abrirImportacao troca pra aba Visão Geral quando terminar
     abrirImportacao(tr.dataset.id);
   }));
   box.querySelectorAll(".pfd-hist-arquivo").forEach((b) => b.addEventListener("click", async (e) => {

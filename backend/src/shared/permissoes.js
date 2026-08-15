@@ -55,13 +55,19 @@ export const PERMISSOES = {
 
   // Bonificação Mensal (metas + lançamentos diários + importação Visio).
   // Módulo próprio, não uma sub-aba do Dashboard iFood (ver frontend/config.js).
-  // Cadastro/edição de metas (faixas de bonificação) ainda não tem tela —
-  // nesta 1ª etapa as metas são seed via migration (028); quando existir
-  // uma tela de edição, entra uma permissão BONIFICACAO_MENSAL_CONFIGURAR
-  // própria, no mesmo espírito de DASHBOARD_EXECUTIVO_CONFIGURAR.
   BONIFICACAO_MENSAL_VER: "bonificacao_mensal.ver",
-  // Importar os 2 PDFs da Visio e lançar/corrigir manualmente um dia.
+  // Importar os 2 PDFs da Visio, lançar/corrigir manualmente um dia, e
+  // lançar o valor diário dos indicadores manuais (REV/Pesquisas/Nota
+  // iFood/Pedidos com chamado — mesmas colunas de bonificacao_lancamentos_
+  // diarios, migration 028; ver bonificacaoMensal.service.js#salvarValorDiaIndicador).
   BONIFICACAO_MENSAL_LANCAR: "bonificacao_mensal.lancar",
+  // Cadastrar/editar metas e faixas de bonificação (bonificacao_metas/
+  // bonificacao_metas_faixas) — DELIBERADAMENTE separada de LANCAR (item 12
+  // das instruções: quem lança o indicador do dia a dia não precisa poder
+  // mudar a régua da bonificação). NÃO listada em nenhum papel abaixo — só
+  // entra em organization_admin via Object.values(P), mesmo desenho de
+  // BONIFICACAO_MENSAL_EXCLUIR.
+  BONIFICACAO_MENSAL_CONFIGURAR: "bonificacao_mensal.configurar",
   // Excluir um lançamento de verdade (DELETE, com motivo + snapshot).
   // Deliberadamente NÃO listada em nenhum papel abaixo — só entra em
   // organization_admin via Object.values(P). Mesmo espírito de

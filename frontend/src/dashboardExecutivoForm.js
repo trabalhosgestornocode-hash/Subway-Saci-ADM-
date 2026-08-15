@@ -8,6 +8,7 @@ import {
   dashExecLancamento, dashExecCriarLancamento, dashExecAtualizarLancamento,
   dashExecPreviewResetTeste, dashExecConfirmarResetTeste, dashExecExcluirLancamento,
 } from "./api.js";
+import { icon } from "./icons.js";
 
 const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema operacional", "Falta de insumos", "Fechamento temporário", "Outro"];
 
@@ -110,7 +111,7 @@ function primeiroPassoIncompletoIndex() {
 
 function renderIndisponivel(m, motivo) {
   m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
-    <div class="estado erro"><span class="emoji">🔒</span><h3>Dia indisponível</h3><p>${escapeHtml(motivo)}</p></div>`;
+    <div class="estado erro"><span class="estado-ic">${icon("lock", { size: 22 })}</span><h3>Dia indisponível</h3><p>${escapeHtml(motivo)}</p></div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
 }
 
@@ -122,7 +123,7 @@ function renderIndisponivel(m, motivo) {
 // ---------------------------------------------------------------------------
 async function renderResetPreview(m) {
   m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>🧪 Resetar dia para teste</h2></div>
+    <div class="modal-head"><h2>${icon("flask", { size: 17 })} Resetar dia para teste</h2></div>
     <div class="estado"><div class="spinner"></div>Verificando lançamentos…</div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   try {
@@ -130,7 +131,7 @@ async function renderResetPreview(m) {
     renderResetConfirmacao(m, data);
   } catch (e) {
     m.innerHTML = `<button class="modal-close" aria-label="Fechar">×</button>
-      <div class="estado erro"><span class="emoji">⚠️</span><h3>Não foi possível resetar</h3><p>${escapeHtml(e.message)}</p></div>`;
+      <div class="estado erro"><span class="estado-ic">${icon("alert-triangle", { size: 22 })}</span><h3>Não foi possível resetar</h3><p>${escapeHtml(e.message)}</p></div>`;
     m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   }
 }
@@ -147,7 +148,7 @@ function renderResetConfirmacao(m, preview) {
 
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>🧪 Resetar dia para teste</h2></div>
+    <div class="modal-head"><h2>${icon("flask", { size: 17 })} Resetar dia para teste</h2></div>
     <div class="dex-avisos dex-avisos-perigo">${corpo}</div>
     <div class="ed-acoes">
       <button class="btn btn-ghost" id="dex-reset-cancelar">Cancelar</button>
@@ -206,13 +207,13 @@ function renderPasso(m) {
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
     <div class="modal-head">
-      <h2>🗓️ Lançamento diário — ${fmtDataBr(fm.data)}</h2>
+      <h2>${icon("calendar", { size: 17 })} Lançamento diário — ${fmtDataBr(fm.data)}</h2>
       <div class="modal-tags">
         <span class="chip">Etapa ${fm.passo}/${passos.length} · ${TITULOS_PASSO[chave]}</span>
         ${fm.modoCorrecao ? `<span class="chip chip-unidade">Correção de lançamento finalizado</span>` : ""}
       </div>
-      ${fm.ehTeste && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-reset-teste" id="dex-abrir-reset-teste" type="button">🧪 Resetar dia para teste</button>` : ""}
-      ${podeExcluir() && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-excluir" id="dex-abrir-exclusao" type="button">🗑️ Excluir lançamento</button>` : ""}
+      ${fm.ehTeste && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-reset-teste" id="dex-abrir-reset-teste" type="button">${icon("flask", { size: 13 })} Resetar dia para teste</button>` : ""}
+      ${podeExcluir() && fm.lancamentoId ? `<button class="btn btn-ghost btn-sm dex-btn-excluir" id="dex-abrir-exclusao" type="button">${icon("trash", { size: 13 })} Excluir lançamento</button>` : ""}
     </div>
     ${fm.statusOriginal === "rascunho" ? avisoRascunhoAnterior() : ""}
     <div class="dex-stepper">${passos.map((_, i) => `<span class="dex-step ${i + 1 === fm.passo ? "ativo" : i + 1 < fm.passo ? "feito" : ""}">${i + 1}</span>`).join("")}</div>
@@ -239,7 +240,7 @@ function renderPasso(m) {
 /** Discreto — item novo: "Rascunho salvo anteriormente" + última atualização, se houver. */
 function avisoRascunhoAnterior() {
   const quando = fm.atualizadoEm ? fmtDataHoraBr(fm.atualizadoEm) : null;
-  return `<p class="dex-form-info dex-rascunho-aviso">📝 Rascunho salvo anteriormente.${quando ? ` Última atualização: ${quando}.` : ""}</p>`;
+  return `<p class="dex-form-info dex-rascunho-aviso">${icon("pencil", { size: 13 })} Rascunho salvo anteriormente.${quando ? ` Última atualização: ${quando}.` : ""}</p>`;
 }
 
 const podeExcluir = () => pode("dashboard_executivo.excluir");
@@ -255,7 +256,7 @@ function renderExclusaoConfirmacao(m) {
     : c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas";
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
-    <div class="modal-head"><h2>🗑️ Excluir lançamento — ${fmtDataBr(fm.data)}</h2></div>
+    <div class="modal-head"><h2>${icon("trash", { size: 17 })} Excluir lançamento — ${fmtDataBr(fm.data)}</h2></div>
     <div class="dex-avisos dex-avisos-perigo">
       <p><b>Esta ação apaga o lançamento deste dia definitivamente.</b></p>
       <div class="dex-conf-grid">
@@ -346,7 +347,7 @@ function passoDesempenho() {
   const ticket = ticketMedioPreview(c);
   const inicioMes = `${fm.data.slice(0, 8)}01`;
   return `
-    <p class="dex-form-info">📊 Desempenho acumulado do mês até aqui — informe o TOTAL desde ${fmtDataBr(inicioMes)} até ${fmtDataBr(fm.data)} (não só o que esse dia fez sozinho). O sistema calcula automaticamente quanto cada dia rendeu por conta própria, pela diferença com o acumulado do dia anterior. Preencha caso tenha acesso às informações — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
+    <p class="dex-form-info">${icon("bar-chart", { size: 13 })} Desempenho acumulado do mês até aqui — informe o TOTAL desde ${fmtDataBr(inicioMes)} até ${fmtDataBr(fm.data)} (não só o que esse dia fez sozinho). O sistema calcula automaticamente quanto cada dia rendeu por conta própria, pela diferença com o acumulado do dia anterior. Preencha caso tenha acesso às informações — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Quantidade de vendas acumulada no mês</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}" placeholder="Não informado"></label>
       <label class="cfg-campo"><span>Valor bruto acumulado no mês (R$)</span><input type="number" min="0" step="0.01" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="Não informado"></label>
@@ -374,14 +375,14 @@ function passoFinanceiro() {
   const calc = calculoPreview(c);
   const mostrarEntreg = mostraEntregadores();
   return `
-    <p class="dex-form-info">📅 Financeiro acumulado do mês até aqui — dados consolidados de ${fmtDataBr(fm.periodoFinanceiroInicio)} até ${fmtDataBr(fm.periodoFinanceiroFim)}, o extrato que o iFood libera hoje.</p>
+    <p class="dex-form-info">${icon("calendar", { size: 13 })} Financeiro acumulado do mês até aqui — dados consolidados de ${fmtDataBr(fm.periodoFinanceiroInicio)} até ${fmtDataBr(fm.periodoFinanceiroFim)}, o extrato que o iFood libera hoje.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="number" min="0" step="0.01" id="dex-vifood" value="${c.valorVendasIfood}"></label>
       <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="number" min="0" step="0.01" id="dex-taxas" value="${c.taxasComissoes}"></label>
       <label class="cfg-campo"><span>Serviços e promoções (R$) *</span><input type="number" min="0" step="0.01" id="dex-servicos" value="${c.servicosPromocoes}"></label>
       ${mostrarEntreg
         ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="number" min="0" step="0.01" id="dex-entregadores" value="${c.taxasEntregadores}"></label>`
-        : `<p class="dex-form-info dex-form-na">🛵 Este modelo (Full Service) não usa entregador próprio — a entrega é feita pelo parceiro do iFood, então não há "taxas de entregadores da loja" a lançar.</p>`}
+        : `<p class="dex-form-info dex-form-na">${icon("truck", { size: 13 })} Este modelo (Full Service) não usa entregador próprio — a entrega é feita pelo parceiro do iFood, então não há "taxas de entregadores da loja" a lançar.</p>`}
       <label class="cfg-campo"><span>Outras deduções/ajustes (R$)${podeNegativo ? " — negativo = ajuste a favor" : ""}</span>
         <input type="number" step="0.01" id="dex-outras" value="${c.outrasDeducoes}" ${podeNegativo ? "" : "min=\"0\""}></label>
       ${podeNegativo ? `<label class="cfg-campo ed-campo-full"><span>Justificativa do ajuste (obrigatória se negativo)</span><input type="text" id="dex-justificativa" value="${escapeHtml(c.justificativaAjuste)}"></label>` : ""}
@@ -441,7 +442,7 @@ function passoConferencia() {
         ${linha("Vendas brutas (acumulado no mês)", fmtMoeda(c.valorVendasBruto))}
         ${linha("Ticket médio (mês até aqui)", fmtMoeda(ticketMedioPreview(c)))}
       </div>
-      <p class="dex-form-info">💰 Financeiro ainda não disponível para esta data — o iFood só consolida com 1 dia
+      <p class="dex-form-info">${icon("banknote", { size: 13 })} Financeiro ainda não disponível para esta data — o iFood só consolida com 1 dia
       de atraso. Você pode finalizar este dia normalmente com os dados acima; quando esta data virar "ontem", volte
       aqui para completar o Financeiro (o registro atual não precisa ser desfeito).</p>
       ${fm.modoCorrecao ? campoMotivoCorrecao() : ""}`;
@@ -466,7 +467,7 @@ function passoConferencia() {
     </div>
     ${avisos.length ? `
       <div class="dex-avisos">
-        <b>⚠️ Inconsistências encontradas:</b>
+        <b>${icon("alert-triangle", { size: 13 })} Inconsistências encontradas:</b>
         <ul>${avisos.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>
         <label class="dex-radio"><input type="checkbox" id="dex-confirmar-avisos" ${fm.confirmarAvisos ? "checked" : ""}> Estou ciente e confirmo os valores mesmo assim.</label>
       </div>` : ""}
@@ -639,7 +640,7 @@ async function salvar(m, status) {
     } else {
       await dashExecCriarLancamento(payload);
     }
-    toast(status === "finalizado" ? "Lançamento finalizado ✅" : "Rascunho salvo com sucesso.");
+    toast(status === "finalizado" ? "Lançamento finalizado." : "Rascunho salvo com sucesso.");
     const onSalvo = fm?.onSalvo; // capturado ANTES de fechar: fecharOverlay() zera `fm`
     fecharOverlay();
     onSalvo?.();

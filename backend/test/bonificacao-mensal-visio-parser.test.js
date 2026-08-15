@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseVisioProductReport, extrairMixVendas } from "../src/modules/bonificacao-mensal/visio-parser.js";
+import { parseVisioProductReport, parseVisioSalesReport, extrairMixVendas } from "../src/modules/bonificacao-mensal/visio-parser.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const perto = (a, b, eps = 0.05) => Math.abs(a - b) <= eps;
@@ -66,6 +66,37 @@ describe("robustez do parser", () => {
   test("rejeita um PDF sem a estrutura esperada", async () => {
     const bufFalso = Buffer.from("%PDF-1.4\n%%EOF");
     await assert.rejects(() => parseVisioProductReport(bufFalso));
+  });
+});
+
+// ===========================================================================
+// "Relatório de Vendas" — novo formato do Geral (auditoria de 15/08/2026).
+// Fixture = o PDF real anexado pelo usuário (visio-vendas.pdf).
+// ===========================================================================
+describe("Relatório de Vendas — novo Geral (Faturamento + Ticket Médio + Cupons)", () => {
+  test("extrai faturamento, ticket médio, cupons e estabelecimento", async () => {
+    const r = await parseVisioSalesReport(readFileSync(join(FIXTURES, "visio-vendas.pdf")));
+    assert.equal(r.faturamento, 10655.71);
+    assert.equal(r.ticketMedio, 47.57);
+    assert.equal(r.cuponsValidos, 224);
+    assert.equal(r.cuponsVendas, 224);
+    assert.equal(r.estabelecimento, "Subway Teresina Saci");
+    assert.ok(r.hash);
+  });
+
+  test("rejeita um PDF sem a estrutura esperada", async () => {
+    const bufFalso = Buffer.from("%PDF-1.4\n%%EOF");
+    await assert.rejects(() => parseVisioSalesReport(bufFalso));
+  });
+
+  test("continua funcionando se o relatório antigo (Relatório de Produtos) for enviado no lugar por engano", async () => {
+    // Não tem os cards "Faturamento"/"Ticket médio" isolados do jeito que o
+    // Relatório de Vendas tem — deve reclamar que não achou os campos certos,
+    // não quebrar nem inventar um valor.
+    await assert.rejects(
+      () => parseVisioSalesReport(readFileSync(join(FIXTURES, "visio-geral.pdf")), { rotulo: "Geral" }),
+      (err) => { assert.match(err.message, /não foi possível localizar/i); return true; },
+    );
   });
 });
 

@@ -19,21 +19,24 @@ import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./cont
 import { abrirLancamentoModal } from "./dashboardExecutivoForm.js";
 import { abrirLancamentoMensalModal } from "./dashboardExecutivoMensal.js";
 import { montarSimuladorPreco } from "./dashboardExecutivoSimulador.js";
+import { icon } from "./icons.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const ABAS = [
-  { id: "visao", icon: "📊", label: "Visão Geral" },
-  { id: "lancamentos", icon: "🗓️", label: "Lançamentos" },
-  { id: "indicadores", icon: "🎯", label: "Indicadores" },
-  { id: "historico", icon: "📚", label: "Histórico" },
+  { id: "visao", icone: "bar-chart", label: "Visão Geral" },
+  { id: "lancamentos", icone: "calendar", label: "Lançamentos" },
+  { id: "indicadores", icone: "target", label: "Indicadores" },
+  { id: "historico", icone: "archive", label: "Histórico" },
 ];
-// FINANCEIRO_PENDENTE NÃO é mais um status visual à parte (item 9 do
-// pedido de UX): o dia continua "Preenchido" — Situação+Desempenho já
-// resolvem a sequência do calendário igual, e o Financeiro é acumulado do
-// mês, não pendência de cada dia (ver migration 036). A falta de snapshot
-// vira só um badge complementar dentro do dia (ver badgeFinanceiro) — o
-// STATUS_DIA em si e a regra que resolve a sequência não mudaram em nada,
-// só a cor/rótulo que esse status usa pra se apresentar.
+// FINANCEIRO_PENDENTE é, no banco, um lançamento com status='rascunho' (ver
+// dashboardExecutivo.calc.js#statusDiaBase — só existe pra não bloquear a
+// SEQUÊNCIA do calendário enquanto o Financeiro daquele dia ainda não está
+// disponível, ver RESOLVIDOS/migration 035). Ele já foi apresentado como
+// "Preenchido" (verde) aqui — foi revertido: um rascunho continua rascunho
+// na tela, mesmo quando a única coisa que falta é um dado que o sistema
+// ainda não liberou. "Situação/Desempenho completos, só falta o Financeiro"
+// segue comunicado do jeito certo: o badge complementar "Financeiro
+// disponível" dentro do dia (ver badgeFinanceiro), nunca a cor do dia em si.
 const STATUS_LEGENDA = [
   { chave: "PREENCHIDO", label: "Preenchido", classe: "ok" },
   { chave: "RASCUNHO", label: "Rascunho", classe: "warn" },
@@ -45,8 +48,11 @@ const STATUS_LEGENDA = [
 ];
 const STATUS_ROTULO = Object.fromEntries(STATUS_LEGENDA.map((s) => [s.chave, s]));
 /** Status "de verdade" que cada status VISUAL usa pra pintar o dia — só o
- * mapeamento acima descrito. */
-const statusVisual = (status) => (status === "FINANCEIRO_PENDENTE" ? "PREENCHIDO" : status);
+ * mapeamento acima descrito. O status explícito do lançamento (rascunho x
+ * finalizado) tem prioridade sobre qualquer heurística de "já tem dado
+ * salvo" — é por isso que FINANCEIRO_PENDENTE (rascunho de verdade no
+ * banco) vira RASCUNHO aqui, nunca PREENCHIDO. */
+const statusVisual = (status) => (status === "FINANCEIRO_PENDENTE" ? "RASCUNHO" : status);
 
 const hoje = new Date();
 const dex = {
@@ -78,8 +84,8 @@ registrarResetDeContexto(() => {
 });
 
 const podeLancar = () => pode("dashboard_executivo.lancar");
-const vazio = (emoji, titulo, msg, extra = "") =>
-  `<div class="estado"><span class="emoji">${emoji}</span><h3>${escapeHtml(titulo)}</h3><p>${escapeHtml(msg)}</p>${extra}</div>`;
+const vazio = (nomeIcone, titulo, msg, extra = "") =>
+  `<div class="estado"><span class="estado-ic">${icon(nomeIcone, { size: 24 })}</span><h3>${escapeHtml(titulo)}</h3><p>${escapeHtml(msg)}</p>${extra}</div>`;
 const carregando = () => `<div class="estado"><div class="spinner"></div>Carregando…</div>`;
 
 export async function renderDashboardExecutivo() {
@@ -106,7 +112,7 @@ export async function renderDashboardExecutivo() {
     await carregarConteudo();
   } catch (e) {
     if (contextoMudou(g)) return;
-    view.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry">Tentar novamente</button>`);
+    view.innerHTML = vazio("alert-triangle", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry">Tentar novamente</button>`);
     el("#dex-retry")?.addEventListener("click", renderDashboardExecutivo);
   }
 }
@@ -127,16 +133,16 @@ function montarLayout() {
       <label class="cfg-campo"><span>Unidade</span>
         <select id="dex-unidade">
           ${dex.unidades.map((u) => `<option value="${u.id}" ${u.id === dex.unidadeId ? "selected" : ""}>${escapeHtml(u.nome)}</option>`).join("")}
-          ${dex.agregadoDisponivel ? `<option value="" ${!dex.unidadeId ? "selected" : ""}>🏢 Todas as unidades</option>` : ""}
+          ${dex.agregadoDisponivel ? `<option value="" ${!dex.unidadeId ? "selected" : ""}>Todas as unidades</option>` : ""}
         </select></label>` : ""}
       <label class="cfg-campo"><span>Mês</span>
         <select id="dex-mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i + 1 === dex.mes ? "selected" : ""}>${m}</option>`).join("")}</select></label>
       <label class="cfg-campo"><span>Ano</span>
         <select id="dex-ano">${anos.map((a) => `<option value="${a}" ${a === dex.ano ? "selected" : ""}>${a}</option>`).join("")}</select></label>
-      ${podeLancar() && dex.unidadeId ? `<button class="btn btn-ghost btn-sm dex-btn-lancamento-mensal" id="dex-lancamento-mensal" type="button">📅 Lançar faturamento mensal</button>` : ""}
+      ${podeLancar() && dex.unidadeId ? `<button class="btn btn-ghost btn-sm dex-btn-lancamento-mensal" id="dex-lancamento-mensal" type="button">${icon("calendar", { size: 14 })} Lançar faturamento mensal</button>` : ""}
     </div>
     <nav class="dex-nav" aria-label="Seções do Dashboard iFood">
-      ${ABAS.map((a) => `<button class="dex-tab ${a.id === dex.aba ? "ativo" : ""}" data-aba="${a.id}"><span>${a.icon}</span> ${a.label}</button>`).join("")}
+      ${ABAS.map((a) => `<button class="dex-tab ${a.id === dex.aba ? "ativo" : ""}" data-aba="${a.id}">${icon(a.icone, { size: 15 })} ${a.label}</button>`).join("")}
     </nav>
     <div id="dex-conteudo" class="dex-conteudo"></div>`;
 
@@ -185,7 +191,7 @@ async function carregarConteudo() {
   } catch (e) {
     if (contextoMudou(g)) return;
     if (minhaGeracao !== geracaoConteudo) return;
-    box.innerHTML = vazio("⚠️", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry-mes">Tentar novamente</button>`);
+    box.innerHTML = vazio("alert-triangle", "Erro ao carregar", e.message, `<button class="btn btn-ghost btn-sm" id="dex-retry-mes">Tentar novamente</button>`);
     el("#dex-retry-mes")?.addEventListener("click", carregarConteudo);
   }
 }
@@ -201,7 +207,7 @@ function renderModeloBox() {
   if (!caixa || !d) return;
 
   if (d.agregado) {
-    caixa.innerHTML = `<span class="dex-modelo-nota">🏷️ Modelo logístico: varia por unidade nesta visão consolidada</span>`;
+    caixa.innerHTML = `<span class="dex-modelo-nota">${icon("tag", { size: 13 })} Modelo logístico: varia por unidade nesta visão consolidada</span>`;
     return;
   }
 
@@ -213,7 +219,7 @@ function renderModeloBox() {
       </select></label>`;
     el("#dex-modelo-select").addEventListener("change", (e) => trocarModeloLogistico(e.target.value));
   } else {
-    caixa.innerHTML = `<span class="dex-modelo-nota">🏷️ Modelo logístico: <b>${escapeHtml(d.modeloLogisticoRotulo ?? ROTULO_MODELO[d.modeloLogistico] ?? "—")}</b></span>`;
+    caixa.innerHTML = `<span class="dex-modelo-nota">${icon("tag", { size: 13 })} Modelo logístico: <b>${escapeHtml(d.modeloLogisticoRotulo ?? ROTULO_MODELO[d.modeloLogistico] ?? "—")}</b></span>`;
   }
 }
 
@@ -252,11 +258,11 @@ function renderVisaoGeral(box) {
 
   if (d.agregado) {
     box.innerHTML = `
-      <div class="dex-aviso">🏢 ${escapeHtml(d.aviso)}</div>
+      <div class="dex-aviso">${icon("building", { size: 15 })} ${escapeHtml(d.aviso)}</div>
       <div class="dex-cards">${cardsPrincipais(d.cards)}</div>
       <div class="dex-graficos">
-        ${graficoBox("comparativo", "📈 Comparativo de percentuais", "dex-chart-comp")}
-        ${graficoBox("composicao", "🍩 Composição das deduções (R$)", "dex-chart-comp2")}
+        ${graficoBox("comparativo", `${icon("trending-up", { size: 15 })} Comparativo de percentuais`, "dex-chart-comp")}
+        ${graficoBox("composicao", `${icon("pie-chart", { size: 15 })} Composição das deduções (R$)`, "dex-chart-comp2")}
       </div>
       ${desempenhoBox(d.desempenhoOperacional)}`;
     barraComparativaMeta("dex-chart-comp", d.graficos.comparativoPercentuais);
@@ -279,11 +285,11 @@ function renderVisaoGeral(box) {
     </section>
     <div class="dex-cards">${cardsPrincipais(d.cards)}</div>
     <div class="dex-graficos">
-      ${graficoBox("comparativo", "📈 Comparativo de percentuais", "dex-chart-comp")}
-      ${graficoBox("composicao", "🍩 Composição das deduções (R$)", "dex-chart-comp2")}
+      ${graficoBox("comparativo", `${icon("trending-up", { size: 15 })} Comparativo de percentuais`, "dex-chart-comp")}
+      ${graficoBox("composicao", `${icon("pie-chart", { size: 15 })} Composição das deduções (R$)`, "dex-chart-comp2")}
     </div>
     <section class="dex-projecao">
-      <h3>📈 Projeção do faturamento — ${MESES[d.periodo.mes - 1]}/${d.periodo.ano}</h3>
+      <h3>${icon("trending-up", { size: 15 })} Projeção do faturamento — ${MESES[d.periodo.mes - 1]}/${d.periodo.ano}</h3>
       <div class="dex-projecao-grid">
         <div><span>Média diária atual</span><b>${fmtMoeda(proj.mediaDiaria)}</b></div>
         <div><span>Dias considerados</span><b>${proj.diasConsiderados}</b></div>
@@ -293,18 +299,18 @@ function renderVisaoGeral(box) {
         <div class="dex-projecao-destaque"><span>Projeção mensal</span><b>${fmtMoeda(proj.projecaoMensal)}</b></div>
       </div>
       <p class="dex-confiabilidade dex-conf-${proj.confiabilidade}"><b>Confiabilidade: ${rotuloConfiabilidade(proj.confiabilidade)}</b> — ${escapeHtml(proj.justificativa)}</p>
-      ${proj.parcial ? `<p class="dex-projecao-parcial">⚠️ PROJEÇÃO PARCIAL — existem dias pendentes neste período. Regularize os lançamentos para uma projeção mais confiável.</p>` : ""}
+      ${proj.parcial ? `<p class="dex-projecao-parcial">${icon("alert-triangle", { size: 13 })} PROJEÇÃO PARCIAL — existem dias pendentes neste período. Regularize os lançamentos para uma projeção mais confiável.</p>` : ""}
     </section>
     <div class="dex-diag-grid">
       <section class="dex-diag">
-        <h3>📋 Diagnóstico via Crescer c/ Delivery
+        <h3>${icon("clipboard-list", { size: 15 })} Diagnóstico via Crescer c/ Delivery
           <span class="vd-tip" data-tip="Análise automática baseada nos dados financeiros e operacionais registrados no Dashboard. Recomendações podem variar conforme a completude das informações." tabindex="0">i</span>
         </h3>
         ${confiabilidadeDadosHtml(d.diagnostico.confiabilidade)}
         ${diagnosticoHtml(d.diagnostico)}
       </section>
       <section class="dex-recom">
-        <h3>🚀 Plano de Ação</h3>
+        <h3>${icon("list-checks", { size: 15 })} Plano de Ação</h3>
         ${planoAcaoHtml(d.diagnostico)}
       </section>
     </div>`;
@@ -342,11 +348,15 @@ function alertaPendencias(d) {
   const totalDias = grupos.reduce((s, g) => s + g.dias.length, 0);
   const listaMeses = grupos.map((g) => `${MESES[g.mes - 1]}/${g.ano} (${g.dias.length})`).join(", ");
   return `<div class="dex-alerta">
-    <b>⚠️ DADOS PENDENTES</b>
+    <b>${icon("alert-triangle", { size: 14 })} DADOS PENDENTES</b>
     <p>Existem ${totalDias} dia(s) financeiro(s) não regularizado(s) em meses anteriores: ${escapeHtml(listaMeses)}.</p>
     <p>Isso não bloqueia o lançamento deste mês, mas prejudica a confiabilidade do histórico e das comparações.</p>
   </div>`;
 }
+
+// Severidade sempre como bolinha colorida (mesmo padrão de .alerta-dot já
+// usado no Dashboard principal — ver views.js), nunca emoji.
+const pontoSeveridade = (classe) => `<span class="alerta-dot ${classe}"></span>`;
 
 function diagnosticoHtml(diag) {
   if (diag.semDadosSuficientes) {
@@ -358,14 +368,17 @@ function diagnosticoHtml(diag) {
   const bloco = (titulo, itens, classe) => !itens.length ? "" : `
     <div class="dex-diag-bloco ${classe}"><h4>${titulo}</h4><ul>${itens.map((a) => `<li><b>${escapeHtml(a.titulo)}</b> — ${escapeHtml(a.descricao)}</li>`).join("")}</ul></div>`;
   const conteudo = [
-    bloco("🟢 Pontos fortes", diag.pontosFortes, "forte"),
-    bloco("🟠 Pontos de atenção", diag.pontosAtencao, "atencao"),
-    bloco("🔴 Alertas", diag.alertas, "alerta"),
+    bloco(`${pontoSeveridade("ok")} Pontos fortes`, diag.pontosFortes, "forte"),
+    bloco(`${pontoSeveridade("warn")} Pontos de atenção`, diag.pontosAtencao, "atencao"),
+    bloco(`${pontoSeveridade("bad")} Alertas`, diag.alertas, "alerta"),
   ].join("");
   return conteudo || `<p class="dex-diag-vazio">Nenhum ponto relevante identificado.</p>`;
 }
 
-const CONFIABILIDADE_ROTULO = { alta: "🟢 Alta", media: "🟡 Média", baixa: "🔴 Baixa", indisponivel: "— Indisponível" };
+const CONFIABILIDADE_ROTULO = {
+  alta: `${pontoSeveridade("ok")} Alta`, media: `${pontoSeveridade("warn")} Média`,
+  baixa: `${pontoSeveridade("bad")} Baixa`, indisponivel: "— Indisponível",
+};
 
 function confiabilidadeDadosHtml(conf) {
   if (!conf) return "";
@@ -383,7 +396,7 @@ function planoAcaoHtml(diag) {
   const acoes = diag.acoes ?? [];
   if (!acoes.length) {
     return `<div class="dex-acao dex-acao-vazia">
-      <b>✅ Nenhuma ação prioritária neste momento</b>
+      <b>${icon("check-circle", { size: 14 })} Nenhuma ação prioritária neste momento</b>
       <p>Os principais indicadores analisados estão dentro dos parâmetros definidos para o período.</p>
     </div>`;
   }
@@ -393,7 +406,7 @@ function planoAcaoHtml(diag) {
   return acoes.map((a, i) => {
     const achado = todos.find((x) => x.id === a.diagnosticoId);
     const classe = classePorSeveridade[achado?.severidade] ?? "";
-    const icone = achado?.severidade === "alerta" ? "🔴" : achado?.severidade === "atencao" ? "🟠" : "🔵";
+    const pontoClasse = achado?.severidade === "alerta" ? "bad" : achado?.severidade === "atencao" ? "warn" : "info";
     const cta = a.cta?.aba
       ? `<button class="btn btn-ghost btn-sm" data-cta-aba="${a.cta.aba}" type="button">${escapeHtml(a.cta.label)}</button>`
       : a.cta?.expandir
@@ -402,7 +415,7 @@ function planoAcaoHtml(diag) {
     return `<div class="dex-acao ${classe}">
       <div class="dex-acao-num">${i + 1}</div>
       <div class="dex-acao-corpo">
-        <b class="dex-acao-titulo">${icone} ${escapeHtml(a.titulo)}</b>
+        <b class="dex-acao-titulo">${pontoSeveridade(pontoClasse)} ${escapeHtml(a.titulo)}</b>
         <p class="dex-acao-desc">${escapeHtml(a.descricao)}</p>
         ${cta}
         ${a.detalhe ? `<div class="dex-acao-detalhe" hidden>${recuperacaoDetalheHtml(a.detalhe)}</div>` : ""}
@@ -453,16 +466,18 @@ function desempenhoBox(op) {
     op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>${op.dataAtualizacao ? ` (até ${fmtDataBr(op.dataAtualizacao)})` : ""}` : null,
   ].filter(Boolean).join(" · ");
   return `<section class="dex-painel dex-desempenho">
-    <h3>📊 Evolução diária do Desempenho</h3>
+    <h3>${icon("bar-chart", { size: 15 })} Evolução diária do Desempenho</h3>
     <div class="dex-chart-wrap"><canvas id="dex-chart-desemp"></canvas></div>
     <p class="dex-desemp-stats">${stats}</p>
     <p class="dex-resumo-sub">ℹ️ ${escapeHtml(op.aviso)}</p>
   </section>`;
 }
 
-const cardDef = (icone, label, valor, sub, tip, cls = "", extra = "") => `
+// Sem ícone por card (rebrand visual — item 1 do pedido): label + valor já
+// carregam a hierarquia sozinhos, um ícone por métrica só adicionava peso.
+const cardDef = (label, valor, sub, tip, cls = "", extra = "") => `
   <div class="card ${cls}">
-    <div class="dex-card-topo"><span>${icone}</span> ${label}${tip ? `<span class="vd-tip" data-tip="${escapeHtml(tip)}" tabindex="0">i</span>` : ""}</div>
+    <div class="dex-card-topo">${label}${tip ? `<span class="vd-tip" data-tip="${escapeHtml(tip)}" tabindex="0">i</span>` : ""}</div>
     <b class="dex-card-val">${valor}</b>
     ${sub ? `<span class="dex-card-sub">${sub}</span>` : ""}
     ${extra}
@@ -503,13 +518,13 @@ function cardsPrincipais(cards) {
   const s2 = cards.servicosPromocoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   const s3 = cards.totalDeducoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   return [
-    cardDef("💰", "Financeiro oficial (iFood)", fmtMoeda(cards.faturamento.valor),
+    cardDef("Financeiro oficial (iFood)", fmtMoeda(cards.faturamento.valor),
       cards.faturamento.periodoFim ? `Consolidado pelo iFood até ${fmtDataBr(cards.faturamento.periodoFim)}` : "Nenhum financeiro consolidado ainda neste mês",
       "Snapshot acumulado do extrato do iFood (dia 1 até a data mais recente informada) — a fonte oficial de faturamento (não o Desempenho)."),
-    cardDef("📊", "Taxas e Comissões", fmtMoeda(cards.taxasComissoes.valor), `${fmtPct(cards.taxasComissoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s1.chave]}">${s1.label}</span>`, "Comissão iFood + taxa de transação de pagamento online.", "", metaBarraHtml(cards.taxasComissoes)),
-    cardDef("🏷️", "Serviços e Promoções", fmtMoeda(cards.servicosPromocoes.valor), `${fmtPct(cards.servicosPromocoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s2.chave]}">${s2.label}</span>`, "Custo de campanhas e promoções ativas no iFood.", "", metaBarraHtml(cards.servicosPromocoes)),
-    cardDef("⛔", "Total de Deduções", fmtMoeda(cards.totalDeducoes.valor), `${fmtPct(cards.totalDeducoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s3.chave]}">${s3.label}</span>`, "Taxas e comissões + serviços e promoções + taxas de entregadores + outras deduções.", "", metaBarraHtml(cards.totalDeducoes)),
-    cardDef("👛", "Receita Após Deduções", fmtMoeda(cards.receitaAposDeducoes.valor), `${fmtPct(cards.receitaAposDeducoes.percentual)} das vendas`, "Valor das vendas menos o total de deduções.", "destaque"),
+    cardDef("Taxas e Comissões", fmtMoeda(cards.taxasComissoes.valor), `${fmtPct(cards.taxasComissoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s1.chave]}">${s1.label}</span>`, "Comissão iFood + taxa de transação de pagamento online.", "", metaBarraHtml(cards.taxasComissoes)),
+    cardDef("Serviços e Promoções", fmtMoeda(cards.servicosPromocoes.valor), `${fmtPct(cards.servicosPromocoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s2.chave]}">${s2.label}</span>`, "Custo de campanhas e promoções ativas no iFood.", "", metaBarraHtml(cards.servicosPromocoes)),
+    cardDef("Total de Deduções", fmtMoeda(cards.totalDeducoes.valor), `${fmtPct(cards.totalDeducoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s3.chave]}">${s3.label}</span>`, "Taxas e comissões + serviços e promoções + taxas de entregadores + outras deduções.", "", metaBarraHtml(cards.totalDeducoes)),
+    cardDef("Receita Após Deduções", fmtMoeda(cards.receitaAposDeducoes.valor), `${fmtPct(cards.receitaAposDeducoes.percentual)} das vendas`, "Valor das vendas menos o total de deduções.", "destaque"),
   ].join("");
 }
 
@@ -519,7 +534,7 @@ function cardsPrincipais(cards) {
 function renderLancamentos(box) {
   const d = dex.dadosMes;
   if (d.agregado) {
-    box.innerHTML = vazio("🏢", "Visão consolidada", "O calendário de lançamentos só está disponível para uma unidade específica. Selecione uma unidade no filtro acima.");
+    box.innerHTML = vazio("building", "Visão consolidada", "O calendário de lançamentos só está disponível para uma unidade específica. Selecione uma unidade no filtro acima.");
     return;
   }
 
@@ -530,10 +545,20 @@ function renderLancamentos(box) {
     <section class="dex-cal-wrap">
       <div class="dex-cal">${d.calendario.map((dia) => diaHtml(dia)).join("")}</div>
       <div class="dex-legenda">
-        ${STATUS_LEGENDA.map((s) => `<span class="dex-leg-item"><span class="pill ${s.classe}">${s.label}</span></span>`).join("")}
-        <span class="dex-leg-item"><span class="pill ok estimado">12 ~</span> Estimado (distribuição mensal)</span>
-        <span class="dex-leg-item"><span class="dex-cal-badge dex-cal-badge-fin-ok">Financeiro ✓</span> Tem snapshot financeiro</span>
-        <span class="dex-leg-item"><span class="dex-cal-badge dex-cal-badge-fin-disp">Financeiro disponível</span> Dia elegível, snapshot ainda não lançado</span>
+        <div class="dex-legenda-grupo">
+          <span class="dex-legenda-titulo">Status do dia</span>
+          <div class="dex-legenda-itens">
+            ${STATUS_LEGENDA.map((s) => `<span class="dex-leg-item"><span class="pill ${s.classe}">${s.label}</span></span>`).join("")}
+            <span class="dex-leg-item"><span class="pill ok estimado">12 ~</span> Estimado (distribuição mensal)</span>
+          </div>
+        </div>
+        <div class="dex-legenda-grupo">
+          <span class="dex-legenda-titulo">Informações financeiras</span>
+          <div class="dex-legenda-itens">
+            <span class="dex-leg-item"><span class="dex-cal-badge dex-cal-badge-fin-ok">Financeiro ✓</span> Tem snapshot financeiro</span>
+            <span class="dex-leg-item"><span class="dex-cal-badge dex-cal-badge-fin-disp">Financeiro disponível</span> Dia elegível, snapshot ainda não lançado</span>
+          </div>
+        </div>
       </div>
     </section>
     <div class="dex-graficos">
@@ -593,11 +618,11 @@ function resumoFinanceiroBanner(d) {
     </div>`;
 
   return `<section class="dex-resumo-fin">
-    ${item("💰 Último Financeiro oficial", fin.valor != null ? fmtMoeda(fin.valor) : "—",
+    ${item(`${icon("banknote", { size: 13 })} Último Financeiro oficial`, fin.valor != null ? fmtMoeda(fin.valor) : "—",
       fin.periodoFim ? `Consolidado de ${fmtDataBr(fin.periodoInicio)} até ${fmtDataBr(fin.periodoFim)}` : "Nenhum snapshot financeiro informado ainda.")}
-    ${item("📊 Desempenho acumulado", desemp.acumulado != null ? fmtMoeda(desemp.acumulado) : "—",
+    ${item(`${icon("bar-chart", { size: 13 })} Desempenho acumulado`, desemp.acumulado != null ? fmtMoeda(desemp.acumulado) : "—",
       desemp.dataAtualizacao ? `Acumulado até ${fmtDataBr(desemp.dataAtualizacao)} · dado operacional, não oficial` : "Nenhum dado de Desempenho lançado neste mês.")}
-    ${item("🔔 Próximo snapshot financeiro", diaElegivel ? (temSnapshotElegivel ? "Atualizado" : "Disponível") : "—",
+    ${item(`${icon("bell", { size: 13 })} Próximo snapshot financeiro`, diaElegivel ? (temSnapshotElegivel ? "Atualizado" : "Disponível") : "—",
       diaElegivel
         ? (temSnapshotElegivel ? `Financeiro atualizado até ${fmtDataBr(diaElegivel.data)}` : `Disponível para ${fmtDataBr(diaElegivel.data)}`)
         : "O dia elegível deste recorte é de outro mês")}
@@ -625,14 +650,14 @@ function desempenhoDiarioBox(op) {
   // delta) — o primeiro dia real do mês pode ter acumulado sem ter delta
   // calculável (ver listaDesempenhoDiario), e isso não é "sem dado".
   if (!op.evolucaoDiaria.some((p) => p.acumuladoValorVendasBruto != null)) {
-    return painelVazio("📊 Evolução diária do Desempenho", "Nenhum dado de Desempenho lançado neste mês.");
+    return painelVazio(`${icon("bar-chart", { size: 15 })} Evolução diária do Desempenho`, "Nenhum dado de Desempenho lançado neste mês.");
   }
   const stats = [
     op.mediaDiaria != null ? `Média do período: <b>${fmtMoeda(op.mediaDiaria)}</b>` : null,
     op.acumulado != null ? `Desempenho acumulado: <b>${fmtMoeda(op.acumulado)}</b>${op.dataAtualizacao ? ` (até ${fmtDataBr(op.dataAtualizacao)})` : ""}` : null,
   ].filter(Boolean).join(" · ");
   return `<section class="dex-painel">
-    <h3>📊 Evolução diária do Desempenho</h3>
+    <h3>${icon("bar-chart", { size: 15 })} Evolução diária do Desempenho</h3>
     <div class="dex-chart-wrap"><canvas id="dex-chart-desemp-lanc"></canvas></div>
     ${stats ? `<p class="dex-desemp-stats">${stats}</p>` : ""}
     <p class="dex-resumo-sub">ℹ️ ${escapeHtml(op.aviso)}</p>
@@ -644,29 +669,31 @@ function desempenhoDiarioBox(op) {
 // indicador (gráfico de 1 ponto não mostra evolução); com 2+, o gráfico de
 // linha sem interpolar entre dias sem snapshot.
 function financeiroAcumuladoBox(snapshots) {
+  const titulo = `${icon("banknote", { size: 15 })} Evolução do Financeiro acumulado`;
   const reais = snapshots.filter((p) => p.valor != null);
-  if (!reais.length) return painelVazio("💰 Evolução do Financeiro acumulado", "Nenhum snapshot financeiro informado ainda.");
+  if (!reais.length) return painelVazio(titulo, "Nenhum snapshot financeiro informado ainda.");
   if (reais.length === 1) {
     const p = reais[0];
-    return painelIndicador("💰 Evolução do Financeiro acumulado", fmtMoeda(p.valor),
+    return painelIndicador(titulo, fmtMoeda(p.valor),
       `Consolidado até ${fmtDataBr(p.data)} — a evolução aparece a partir do 2º snapshot do mês.`);
   }
   return `<section class="dex-painel">
-    <h3>💰 Evolução do Financeiro acumulado</h3>
+    <h3>${titulo}</h3>
     <div class="dex-chart-wrap"><canvas id="dex-chart-fin-acum"></canvas></div>
     <p class="dex-resumo-sub">Cada ponto é o snapshot acumulado daquele dia — nunca interpola dias sem lançamento.</p>
   </section>`;
 }
 
 function deducoesAcumuladasBox(d) {
+  const titulo = `${icon("trending-down", { size: 15 })} Deduções acumuladas`;
   const reais = d.snapshotsFinanceiros.filter((p) => p.percentualTotalDeducoes != null);
-  if (!reais.length) return painelVazio("📉 Deduções acumuladas", "Nenhum snapshot financeiro informado ainda.");
+  if (!reais.length) return painelVazio(titulo, "Nenhum snapshot financeiro informado ainda.");
   if (reais.length === 1) {
     const p = reais[0];
-    return painelIndicador("📉 Deduções acumuladas", fmtPct(p.percentualTotalDeducoes), `Consolidado até ${fmtDataBr(p.data)}`);
+    return painelIndicador(titulo, fmtPct(p.percentualTotalDeducoes), `Consolidado até ${fmtDataBr(p.data)}`);
   }
   return `<section class="dex-painel">
-    <h3>📉 Deduções acumuladas</h3>
+    <h3>${titulo}</h3>
     <div class="dex-chart-wrap"><canvas id="dex-chart-ded-acum"></canvas></div>
     <p class="dex-resumo-sub">% do total de deduções em cada snapshot — nunca interpola dias sem lançamento.</p>
   </section>`;
@@ -681,7 +708,7 @@ function lancamentoMensalBanner(lote) {
   return `
     <div class="dex-lote-banner">
       <div class="dex-lote-banner-txt">
-        <span class="dex-lote-banner-label">📅 Faturamento mensal lançado</span>
+        <span class="dex-lote-banner-label">${icon("calendar", { size: 13 })} Faturamento mensal lançado</span>
         <b>${fmtMoeda(lote.valorTotalMensal)}</b>
         <span class="dex-lote-banner-meta">${lote.diasDistribuidos} dia(s) distribuído(s)${pendente ? ` · <span class="pill warn">Dados complementares pendentes</span>` : ""}</span>
       </div>
@@ -736,7 +763,7 @@ function diaHtml(dia) {
 function renderIndicadores(box) {
   const d = dex.dadosMes;
   if (d.agregado) {
-    box.innerHTML = vazio("🏢", "Visão consolidada", "Os indicadores de rentabilidade dependem do modelo logístico (Marketplace/Full Service) de cada unidade e não são exibidos nesta visão. Selecione uma unidade específica no filtro acima.");
+    box.innerHTML = vazio("building", "Visão consolidada", "Os indicadores de rentabilidade dependem do modelo logístico (Marketplace/Full Service) de cada unidade e não são exibidos nesta visão. Selecione uma unidade específica no filtro acima.");
     return;
   }
   const linhas = Object.entries(d.indicadoresRentabilidade).map(([chave, v]) => {
@@ -765,13 +792,13 @@ function renderIndicadores(box) {
 
   box.innerHTML = `
     <section class="dex-painel">
-      <h3>🎯 Indicadores de Rentabilidade</h3>
+      <h3>${icon("target", { size: 15 })} Indicadores de Rentabilidade</h3>
       <div class="tabela-wrap"><table class="grid">
         <thead><tr><th>Indicador</th><th class="num">Atual</th><th class="num">Meta ideal</th><th class="num">Limite</th><th class="num">Disponível</th><th>Status</th></tr></thead>
         <tbody>${linhas}</tbody>
       </table></div>
     </section>
-    <div class="dex-graficos">${graficoBox("comparativo", "📈 Comparativo de percentuais", "dex-chart-ind")}</div>`;
+    <div class="dex-graficos">${graficoBox("comparativo", `${icon("trending-up", { size: 15 })} Comparativo de percentuais`, "dex-chart-ind")}</div>`;
   barraComparativaMeta("dex-chart-ind", d.graficos.comparativoPercentuais);
 }
 
@@ -791,7 +818,7 @@ async function renderHistorico(box) {
     const { data } = await dashExecHistorico({ unidadeId: dex.unidadeId || undefined, ano: dex.ano });
     dex.historico = data;
   } catch (e) {
-    box.innerHTML = vazio("⚠️", "Erro ao carregar histórico", e.message);
+    box.innerHTML = vazio("alert-triangle", "Erro ao carregar histórico", e.message);
     return;
   }
   const meses = dex.historico.meses;
@@ -811,15 +838,15 @@ async function renderHistorico(box) {
 
   box.innerHTML = `
     <section class="dex-painel">
-      <h3>📚 Histórico de ${dex.ano}</h3>
+      <h3>${icon("archive", { size: 15 })} Histórico de ${dex.ano}</h3>
       <div class="tabela-wrap"><table class="grid">
         <thead><tr><th>Mês</th><th>Status</th><th class="num">Preenchidos</th><th class="num">Pendentes</th><th class="num">Faturamento</th><th class="num">Vendas</th><th class="num">Ticket médio</th><th class="num">Deduções</th><th class="num">% Deduções</th><th class="num">Receita líquida</th><th class="num">vs mês ant.</th></tr></thead>
         <tbody>${meses.map(linha).join("")}</tbody>
       </table></div>
     </section>
     <div class="dex-graficos">
-      ${graficoBox("comparativo-mensal", "📊 Comparativo mensal", "dex-chart-mensal")}
-      ${graficoBox("visao-anual", "📆 Visão anual", "dex-chart-anual")}
+      ${graficoBox("comparativo-mensal", `${icon("bar-chart", { size: 15 })} Comparativo mensal`, "dex-chart-mensal")}
+      ${graficoBox("visao-anual", `${icon("calendar", { size: 15 })} Visão anual`, "dex-chart-anual")}
     </div>`;
 
   barraComparativoMensal("dex-chart-mensal", meses.filter((m) => m.status !== "futuro"));

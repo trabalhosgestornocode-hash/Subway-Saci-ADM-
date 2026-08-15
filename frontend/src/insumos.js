@@ -6,6 +6,7 @@ import { CATEGORIAS_INSUMO, CATEGORIA_INSUMO_ROTULO } from "./config.js";
 import { listarInsumos, definirStatusInsumo, excluirInsumo } from "./api.js";
 import { abrirInsumoModal } from "./insumoModal.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
+import { icon } from "./icons.js";
 
 // Filtros locais desta aba (não poluem o estado global de CMV).
 const filtros = { busca: "", categoria: "todos", status: "todos", semPreco: false };
@@ -49,12 +50,12 @@ export async function renderInsumos() {
       </select>
       <select id="ins-status" aria-label="Filtrar por status">
         <option value="todos">Todos os status</option>
-        <option value="ativo">🟢 Ativos</option>
-        <option value="inativo">⚪ Inativos</option>
+        <option value="ativo">Ativos</option>
+        <option value="inativo">Inativos</option>
       </select>
       <label class="ins-check"><input type="checkbox" id="ins-sempreco" ${filtros.semPreco ? "checked" : ""} /> Sem preço</label>
-      <button id="ins-atualizar" class="btn btn-ghost btn-sm">🔄 Atualizar</button>
-      ${editar ? `<button id="ins-novo" class="btn btn-primary btn-sm">➕ Adicionar insumo</button>` : ""}
+      <button id="ins-atualizar" class="btn btn-ghost btn-sm">${icon("refresh", { size: 14 })} Atualizar</button>
+      ${editar ? `<button id="ins-novo" class="btn btn-primary btn-sm">${icon("plus", { size: 14 })} Adicionar insumo</button>` : ""}
       <span class="result-count" id="ins-count"></span>
     </div>
 
@@ -104,7 +105,7 @@ async function carregar() {
     pintarTabela();
   } catch (e) {
     if (contextoMudou(g)) return;
-    tb.innerHTML = `<tr><td colspan="9"><div class="estado erro"><span class="emoji">⚠️</span><h3>Falha ao carregar</h3><p>${escapeHtml(e.message)}</p></div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="9"><div class="estado erro"><span class="estado-ic">${icon("alert-triangle", { size: 24 })}</span><h3>Falha ao carregar</h3><p>${escapeHtml(e.message)}</p></div></td></tr>`;
   }
 }
 
@@ -124,19 +125,19 @@ function pintarTabela() {
   const rc = el("#ins-count");
   if (rc) rc.textContent = `${_itens.length} insumo(s)`;
   if (!_itens.length) {
-    tb.innerHTML = `<tr><td colspan="9"><div class="estado"><span class="emoji">📭</span><h3>Nenhum insumo</h3><p>Ajuste os filtros ou cadastre o primeiro insumo.</p></div></td></tr>`;
+    tb.innerHTML = `<tr><td colspan="9"><div class="estado"><span class="estado-ic">${icon("inbox", { size: 24 })}</span><h3>Nenhum insumo</h3><p>Ajuste os filtros ou cadastre o primeiro insumo.</p></div></td></tr>`;
     return;
   }
   const editar = podeEditar();
   tb.innerHTML = _itens.map((i, idx) => {
     const emb = i.rendimento != null ? `${i.rendimento.toLocaleString("pt-BR")} ${i.unidade_base}` : "—";
     const acoes = [
-      `<button class="acao-btn" data-acao="ver" data-idx="${idx}" title="Ver detalhes" aria-label="Ver detalhes">👁️</button>`,
-      editar ? `<button class="acao-btn" data-acao="editar" data-idx="${idx}" title="Editar" aria-label="Editar">✏️</button>` : "",
+      `<button class="acao-btn" data-acao="ver" data-idx="${idx}" title="Ver detalhes" aria-label="Ver detalhes">${icon("eye", { size: 15 })}</button>`,
+      editar ? `<button class="acao-btn" data-acao="editar" data-idx="${idx}" title="Editar" aria-label="Editar">${icon("pencil", { size: 15 })}</button>` : "",
       editar ? (i.ativo
-        ? `<button class="acao-btn" data-acao="inativar" data-idx="${idx}" title="Inativar" aria-label="Inativar">🚫</button>`
-        : `<button class="acao-btn" data-acao="reativar" data-idx="${idx}" title="Reativar" aria-label="Reativar">↩️</button>`) : "",
-      editar ? `<button class="acao-btn acao-perigo" data-acao="remover" data-idx="${idx}" title="Remover insumo" aria-label="Remover insumo">🗑️</button>` : "",
+        ? `<button class="acao-btn" data-acao="inativar" data-idx="${idx}" title="Inativar" aria-label="Inativar">${icon("ban", { size: 15 })}</button>`
+        : `<button class="acao-btn" data-acao="reativar" data-idx="${idx}" title="Reativar" aria-label="Reativar">${icon("undo", { size: 15 })}</button>`) : "",
+      editar ? `<button class="acao-btn acao-perigo" data-acao="remover" data-idx="${idx}" title="Remover insumo" aria-label="Remover insumo">${icon("trash", { size: 15 })}</button>` : "",
     ].join("");
     return `<tr class="${i.ativo ? "" : "linha-inativa"}">
       <td class="prod-nome"><button class="prod-link" data-acao="ver" data-idx="${idx}">${escapeHtml(i.nome)}</button>${i.codigo ? `<small class="cu-cod">${escapeHtml(i.codigo)}</small>` : ""}</td>

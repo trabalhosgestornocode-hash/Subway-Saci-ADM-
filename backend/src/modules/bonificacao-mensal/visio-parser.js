@@ -356,6 +356,110 @@ export async function parseVisioProductReport(buf, opts = {}) {
   };
 }
 
+// ---------------------------------------------------------------------
+// "RELATÓRIO DE VENDAS" — novo formato do relatório Geral da Visio
+// (substituiu o antigo "Relatório de Produtos" nesse slot; o Loja continua
+// no formato antigo, parseVisioProductReport acima). Layout bem diferente:
+// cards nomeados ("Faturamento"/"Cupons válidos"/"Cupons de vendas"/"Ticket
+// médio") em vez da tabela "Torque por estabelecimento" — não tem PPD, mas
+// tem Ticket Médio pela 1ª vez.
+//
+// Busca SEMPRE pelo nome do campo (normCel — já tolera espaço/acento/quebra
+// de linha), nunca por posição — mesmo espírito de extrairMixVendas acima.
+// ---------------------------------------------------------------------
+const ROTULOS_VENDAS = {
+  faturamento: [normCel("Faturamento")],
+  cuponsValidos: [normCel("Cupons válidos")],
+  cuponsVendas: [normCel("Cupons de vendas")],
+  ticketMedio: [normCel("Ticket médio")],
+};
+const ANCORA_ESTABELECIMENTO_VENDAS = normCel("Detalhe de vendas por estabelecimento");
+const ROTULOS_TABELA_ESTABELECIMENTO = new Set(["estabelecimento", "total", "vendas por estabelecimento"]);
+
+/**
+ * Testa se `s` (células já concatenadas, sem espaços) é um valor do tipo
+ * pedido — devolve o número (parseBR) ou null.
+ */
+function valorDoTipo(s, tipo) {
+  const j = String(s ?? "").replace(/\s+/g, "");
+  if (tipo === "moeda") return MONEY_RE.test(j) ? parseBR(j) : null;
+  return INT_RE.test(j) ? parseBR(j) : null;
+}
+
+/**
+ * Acha o valor logo após um rótulo EXATO (linha de 1 célula, como nos cards
+ * de resumo) — tolera o valor estar na mesma linha (rótulo + valor juntos)
+ * OU na(s) linha(s) seguinte(s), item pedido explicitamente (12): não
+ * depender da ordem dos elementos nem de quebras de linha.
+ * @param {string[][]} matriz @param {string[]} aliasesNormalizados @param {'moeda'|'inteiro'} tipo
+ */
+function buscarValorAposRotulo(matriz, aliasesNormalizados, tipo) {
+  for (let i = 0; i < matriz.length; i++) {
+    const row = matriz[i] || [];
+    if (!row.length) continue;
+    if (!aliasesNormalizados.includes(normCel(row[0]))) continue;
+
+    if (row.length > 1) {
+      const v = valorDoTipo(row.slice(1).join(""), tipo);
+      if (v != null) return v;
+    }
+    const prox = matriz[i + 1] || [];
+    if (prox.length) {
+      const v = valorDoTipo(prox.join(""), tipo);
+      if (v != null) return v;
+    }
+  }
+  return null;
+}
+
+/** Nome do estabelecimento na tabela "Detalhe de vendas por estabelecimento" — mesmo princípio de extrairTorquePorEstabelecimento. */
+function extrairEstabelecimentoVendas(matriz) {
+  const idxAncora = matriz.findIndex((r) => r.some((c) => {
+    const n = normCel(c);
+    return n === ANCORA_ESTABELECIMENTO_VENDAS || n.includes(ANCORA_ESTABELECIMENTO_VENDAS);
+  }));
+  const inicio = idxAncora >= 0 ? idxAncora + 1 : 0;
+  for (let i = inicio; i < Math.min(inicio + 25, matriz.length); i++) {
+    const row = matriz[i] || [];
+    if (row.length !== 1) continue;
+    const norm = normCel(row[0]);
+    if (!norm || ROTULOS_TABELA_ESTABELECIMENTO.has(norm) || /^\d/.test(norm)) continue;
+    return row[0].trim();
+  }
+  return null;
+}
+
+/**
+ * Parser do "Relatório de Vendas" da Visio — novo formato do relatório
+ * GERAL (item 3-4 e 12 das instruções). Fonte oficial de Faturamento e
+ * Ticket Médio; Cupons válidos/de vendas ficam disponíveis pra auditoria
+ * (item 3), sem entrar em nenhum cálculo de bonificação hoje.
+ * @param {Buffer} buf
+ * @param {{rotulo?: string}} [opts]
+ * @returns {Promise<{estabelecimento: string|null, faturamento: number, ticketMedio: number, cuponsValidos: number|null, cuponsVendas: number|null, hash: string}>}
+ */
+export async function parseVisioSalesReport(buf, opts = {}) {
+  const rotulo = opts.rotulo || null;
+  const alvo = rotulo ? `no Relatório ${rotulo}` : "neste relatório";
+  const matriz = await matrizDePdf(buf);
+
+  const faturamento = buscarValorAposRotulo(matriz, ROTULOS_VENDAS.faturamento, "moeda");
+  const ticketMedio = buscarValorAposRotulo(matriz, ROTULOS_VENDAS.ticketMedio, "moeda");
+  const cuponsValidos = buscarValorAposRotulo(matriz, ROTULOS_VENDAS.cuponsValidos, "inteiro");
+  const cuponsVendas = buscarValorAposRotulo(matriz, ROTULOS_VENDAS.cuponsVendas, "inteiro");
+  const estabelecimento = extrairEstabelecimentoVendas(matriz);
+
+  const faltando = [];
+  if (faturamento == null) faltando.push("o Faturamento");
+  if (ticketMedio == null) faltando.push("o Ticket Médio");
+  if (faltando.length) {
+    logDebug(`[${rotulo ?? "?"}] Relatório de Vendas — campos não localizados: ${faltando.join(", ")}.`);
+    throw ApiError.badRequest(`Não foi possível localizar ${listarPt(faltando)} ${alvo}. Confira se é um "Relatório de Vendas" exportado da Visio.`);
+  }
+
+  return { estabelecimento, faturamento, ticketMedio, cuponsValidos, cuponsVendas, hash: sha256(buf) };
+}
+
 const MAX_ARQUIVO = 15 * 1024 * 1024; // 15 MB — mesmo limite de vendas/sw-parser.js
 /** Decodifica e valida o PDF em base64 vindo do modal de importação. */
 export function decodificarPdfVisio(arq, rotulo) {

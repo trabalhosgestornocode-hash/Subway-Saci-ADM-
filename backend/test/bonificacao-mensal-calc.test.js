@@ -5,7 +5,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   percentualDerivado, mixDoDia, validarPercentualCruzado, detectarInversaoRelatorios,
-  faturamentoAcumulado, mixMensalPonderado, mediaDiaria, somaValida, projecaoFaturamento,
+  faturamentoAcumulado, mixMensalPonderado, ticketMedioPonderado, mediaDiaria, somaValida, projecaoFaturamento,
   ritmoNecessario, participacaoLoja, mesmaUnidadeVisio, statusDia, STATUS_DIA_BONIFICACAO, diasDoMes,
 } from "../src/modules/bonificacao-mensal/bonificacaoMensal.calc.js";
 
@@ -85,6 +85,72 @@ describe("Teste G — dados ausentes nunca viram zero", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Auditoria 15/08/2026 — o Relatório de Vendas (novo Geral) não traz mais
+// PPD. Bug real corrigido: statusDia() exigia ppdGeral pra considerar o dia
+// "com Geral", o que deixaria TODO dia importado depois da troca preso em
+// PARCIAL/PENDENTE pra sempre.
+// ---------------------------------------------------------------------------
+describe("statusDia sem PPD — Relatório de Vendas não traz mais esse campo", () => {
+  const lojaCompleta = { faturamentoLoja: 3893.15, qtdSanduichesLoja: 132, qtdBebidasLoja: 56, qtdAdicionaisLoja: 38, qtdDiversosLoja: 19 };
+
+  test("Geral com faturamento mas SEM ppdGeral ainda conta como IMPORTADO (com Loja completo)", () => {
+    const lancamento = { faturamentoGeral: 10655.71, ppdGeral: null, origem: "visio", manualOverride: {}, ...lojaCompleta };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.IMPORTADO);
+  });
+
+  test("Geral com ppdGeral (relatório antigo, dado legado) continua funcionando do mesmo jeito", () => {
+    const lancamento = { faturamentoGeral: 9845.09, ppdGeral: 168, origem: "visio", manualOverride: {}, ...lojaCompleta };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.IMPORTADO);
+  });
+
+  test("sem faturamentoGeral nenhum -> ainda PARCIAL (só Loja), nunca IMPORTADO por engano", () => {
+    const lancamento = { faturamentoGeral: null, ppdGeral: null, origem: "visio", manualOverride: {}, ...lojaCompleta };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.PARCIAL);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug relatado 15/08/2026: dia com Geral+Loja 100% vindos da Visio aparecia
+// como MANUAL no calendário só porque o dia tinha um override em REV (ou um
+// Ticket Médio manual de antes da automação, salvo com chave camelCase) —
+// campos com aba própria, sem nenhuma relação com a importação da Visio.
+// ---------------------------------------------------------------------------
+describe("statusDia — override manual em indicador de OUTRA aba não deve tirar o dia de IMPORTADO", () => {
+  const diaCompleto = {
+    faturamentoGeral: 10655.71, ppdGeral: null,
+    faturamentoLoja: 3893.15, qtdSanduichesLoja: 132, qtdBebidasLoja: 56, qtdAdicionaisLoja: 38, qtdDiversosLoja: 19,
+    origem: "visio",
+  };
+
+  test("override só em REV (aba própria) -> continua IMPORTADO, não MANUAL", () => {
+    const lancamento = { ...diaCompleto, manualOverride: { revNota: true } };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.IMPORTADO);
+  });
+
+  test("override em Cancelamentos/Pesquisas/Nota iFood/Chamados -> também continua IMPORTADO", () => {
+    for (const chave of ["cancelamentosPct", "pesquisasQtd", "avaliacaoIfood", "pedidosChamadoPct", "cmvPct"]) {
+      const lancamento = { ...diaCompleto, manualOverride: { [chave]: true } };
+      assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.IMPORTADO, `falhou para ${chave}`);
+    }
+  });
+
+  test("override de Ticket Médio em chave camelCase legada (de antes da automação) ainda marca MANUAL — é campo do Geral de verdade, não de outra aba", () => {
+    const lancamento = { ...diaCompleto, manualOverride: { ticketMedio: true } };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.MANUAL);
+  });
+
+  test("override de verdade em campo do Geral (faturamento_geral) continua marcando MANUAL — não é regra frouxa demais", () => {
+    const lancamento = { ...diaCompleto, manualOverride: { faturamento_geral: true } };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.MANUAL);
+  });
+
+  test("mistura: override em REV E em Loja -> MANUAL (o do Loja é que decide)", () => {
+    const lancamento = { ...diaCompleto, manualOverride: { revNota: true, qtd_bebidas_loja: true } };
+    assert.equal(statusDia({ lancamento, dataIso: "2026-08-05", hojeIso: "2026-08-10" }), STATUS_DIA_BONIFICACAO.MANUAL);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe("Teste K — mix mensal PONDERADO (item 44-45), nunca média simples", () => {
   test("exemplo do item 45: 10/5 (50%) + 100/20 (20%) = 22,7% real, não 35% (média simples)", () => {
     const lancamentos = [
@@ -106,6 +172,35 @@ describe("Teste K — mix mensal PONDERADO (item 44-45), nunca média simples", 
   test("mês sem nenhum dado -> null, não 0", () => {
     const r = mixMensalPonderado([]);
     assert.equal(r.bebidas, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("ticketMedioPonderado (auditoria 15/08/2026) — faturamento ÷ cupons acumulados, nunca média simples", () => {
+  test("dois dias com volumes bem diferentes: ponderado != média simples dos tickets diários", () => {
+    // dia 1: R$1.000 / 50 cupons = R$20 de ticket · dia 2: R$100 / 2 cupons = R$50 de ticket
+    // média simples dos tickets: (20+50)/2 = 35 — mas o dia 1 pesa MUITO mais no volume real
+    const lancamentos = [
+      { faturamentoGeral: 1000, cuponsValidosGeral: 50 },
+      { faturamentoGeral: 100, cuponsValidosGeral: 2 },
+    ];
+    const r = ticketMedioPonderado(lancamentos);
+    assert.ok(perto(r, 1100 / 52, 1e-6)); // ~21,15 — bem diferente de 35
+    assert.notEqual(Math.round(r), 35);
+  });
+
+  test("dia com ticket lançado manualmente mas SEM cupons não entra na ponderação", () => {
+    const lancamentos = [
+      { faturamentoGeral: 10655.71, cuponsValidosGeral: 224 },
+      { faturamentoGeral: null, cuponsValidosGeral: null, ticketMedio: 999 }, // ticket manual solto, sem cupons — não pode corromper o mês
+    ];
+    const r = ticketMedioPonderado(lancamentos);
+    assert.ok(perto(r, 10655.71 / 224, 1e-6));
+  });
+
+  test("mês sem nenhum dado -> null, não 0", () => {
+    assert.equal(ticketMedioPonderado([]), null);
+    assert.equal(ticketMedioPonderado([{ faturamentoGeral: null, cuponsValidosGeral: null }]), null);
   });
 });
 

@@ -6,13 +6,17 @@ import {
   evaluateBonusMetric, resolverMetaVigente, totalBonificacao, metaTemBonusDefinido, STATUS_METRICA,
 } from "../src/modules/bonificacao-mensal/bonificacaoMensal.metas.js";
 
-// Regra corrigida do item 34 (a planilha original tinha um bug na 3ª faixa).
+// Item 34 — CORRIGIDO na auditoria de 15/08/2026: a migration 028 tinha
+// "corrigido" a 3ª faixa de R$50 pra R$100 assumindo que a planilha da época
+// tinha um erro de digitação. A planilha oficial de referência (METAS
+// LOJAS.xlsx) confirma R$50 de novo — não era bug, a "correção" que estava
+// errada. Migration 044 reverte o valor no banco; aqui só o mock acompanha.
 const PESQUISAS_META = {
   indicador: "pesquisas", direcao: "higher_is_better",
   faixas: [
     { ordem: 1, tipo: "intervalo", valorMin: 0, valorMax: 89, bonus: 0 },
     { ordem: 2, tipo: "limite_minimo", valorMin: 90, valorMax: null, bonus: 50 },
-    { ordem: 3, tipo: "limite_minimo", valorMin: 120, valorMax: null, bonus: 100 },
+    { ordem: 3, tipo: "limite_minimo", valorMin: 120, valorMax: null, bonus: 50 },
   ],
 };
 
@@ -25,10 +29,10 @@ describe("Teste H — 95 pesquisas", () => {
 });
 
 describe("Teste I — 125 pesquisas", () => {
-  test("bônus é R$ 100 (faixa 120+), NUNCA R$ 150 (soma das faixas)", () => {
+  test("bônus é R$ 50 (faixa 120+, igual à faixa anterior), NUNCA R$ 100 (soma das faixas)", () => {
     const r = evaluateBonusMetric(125, PESQUISAS_META);
-    assert.equal(r.bonusAtual, 100);
-    assert.notEqual(r.bonusAtual, 150);
+    assert.equal(r.bonusAtual, 50);
+    assert.notEqual(r.bonusAtual, 100);
     assert.equal(r.status, STATUS_METRICA.META_MAXIMA);
   });
 });
@@ -130,7 +134,7 @@ describe("totalBonificacao — soma só a melhor faixa de CADA indicador", () =>
       cmv: evaluateBonusMetric(null, { indicador: "cmv", direcao: "lower_is_better", faixas: [{ ordem: 1, tipo: "limite_maximo", valorMin: null, valorMax: 28, bonus: 200 }] }),
     };
     const r = totalBonificacao(resultados);
-    assert.equal(r.atual, 250); // 150 (faturamento) + 100 (pesquisas)
+    assert.equal(r.atual, 200); // 150 (faturamento) + 50 (pesquisas, faixa 120+)
     assert.equal(r.metasAtingidas, 2);
     assert.equal(r.metasComRegra, 3); // avaliacao_ifood não conta (sem regra de bônus); cmv conta mas sem dados
   });

@@ -32,25 +32,33 @@ export const SECOES = ["OPERAÇÃO", "INTEGRAÇÕES", "INTELIGÊNCIA", "SISTEMA"
 // visível — a Crescer não gateia infraestrutura do sistema, só as
 // funcionalidades de OPERAÇÃO/INTEGRAÇÕES que o SuperAdmin provisiona por
 // empresa (ver frontend/src/sessao.js#temModulo e app.js#montarMenu).
+// `icon` é um nome do conjunto de ícones SVG compartilhado (ver icons.js),
+// não emoji — rebrand visual: sidebar sem emoji, mesmo estilo de traço da
+// tela de login. `logo` (imagem) tem prioridade sobre `icon` (ver
+// app.js#montarMenu) — usado tanto para logotipo real de integração quanto
+// para os ícones de arte própria da unidade em /assets (ícones "neon"
+// vermelho/preto pedidos para a seção OPERAÇÃO — autorizado usar todos,
+// incluindo os 4 com arte de marca de terceiro, ciente do alcance
+// multiempresa do menu).
 export const MENU = [
-  { id: "dashboard",     label: "Dashboard",       icon: "📊", tipo: "pagina",      secao: "OPERAÇÃO", modulo: "dashboard" },
-  { id: "produtos",      label: "Produtos / CMV",  icon: "🥪", tipo: "pagina",      secao: "OPERAÇÃO", modulo: "products_cmv" },
-  { id: "insumos",       label: "Insumos",         icon: "🧀", tipo: "insumos",     secao: "OPERAÇÃO", modulo: "ingredients" },
-  { id: "estoque",       label: "Estoque",         icon: "📦", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "inventory" },
-  { id: "vendas",        label: "Vendas",          icon: "🧾", tipo: "vendas",      secao: "OPERAÇÃO", modulo: "sales" },
-  { id: "dashboard-executivo", label: "Dashboard iFood", icon: "📈", integ: "ifood", tipo: "dashboard-executivo", secao: "OPERAÇÃO", modulo: "ifood_dashboard" },
-  { id: "bonificacao-mensal", label: "Bonificação Mensal", icon: "🏆", tipo: "bonificacao-mensal", secao: "OPERAÇÃO", modulo: "monthly_bonus" },
-  { id: "parser-food-delivery", label: "Parser Food Delivery", icon: "🛵", logo: "/assets/Logo-Foody-Delivery.png", tipo: "parser-food-delivery", secao: "OPERAÇÃO", modulo: "parser_food_delivery" },
-  { id: "distribuidoras",label: "Distribuidoras",  icon: "🚚", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "distributors" },
-  { id: "martinbrower",  label: "Martin Brower",   icon: "🏭", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES", modulo: "martin_brower" },
-  { id: "swfast",        label: "SWFast / PDV",    icon: "💳", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES", modulo: "swfast" },
-  { id: "ifood",         label: "iFood",           icon: "🛵", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES", modulo: "ifood" },
-  { id: "cocacola",      label: "Coca-Cola",       icon: "🥤", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES", modulo: "coca_cola" },
-  { id: "claudiahortifruti", label: "Cláudia Hortifruti", icon: "🍓", tipo: "integracao", integ: "claudiahortifruti", secao: "INTEGRAÇÕES", modulo: "hortifruti" },
-  { id: "ia",            label: "Agente de IA",    icon: "🤖", tipo: "integracao",  integ: "ia",           secao: "INTELIGÊNCIA" },
-  { id: "relatorios",    label: "Relatórios",      icon: "📈", tipo: "construcao",  secao: "INTELIGÊNCIA" },
-  { id: "integracoes",   label: "Integrações",     icon: "🔌", tipo: "integracoes", secao: "INTELIGÊNCIA" },
-  { id: "configuracoes", label: "Configurações",   icon: "⚙️", tipo: "configuracoes", secao: "SISTEMA" },
+  { id: "dashboard",     label: "Dashboard",       icon: "bar-chart", logo: "/assets/menu-dashboard.png", tipo: "pagina",      secao: "OPERAÇÃO", modulo: "dashboard" },
+  { id: "produtos",      label: "Produtos / CMV",  icon: "grid", logo: "/assets/menu-produtos-cmv.png", tipo: "pagina",      secao: "OPERAÇÃO", modulo: "products_cmv" },
+  { id: "insumos",       label: "Insumos",         icon: "tag", logo: "/assets/menu-insumos.png", tipo: "insumos",     secao: "OPERAÇÃO", modulo: "ingredients" },
+  { id: "estoque",       label: "Estoque",         icon: "package", logo: "/assets/menu-estoque.png", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "inventory" },
+  { id: "vendas",        label: "Vendas",          icon: "receipt", logo: "/assets/menu-vendas.png", tipo: "vendas",      secao: "OPERAÇÃO", modulo: "sales" },
+  { id: "dashboard-executivo", label: "Dashboard iFood", icon: "trending-up", logo: "/assets/menu-dashboard-ifood.png", tipo: "dashboard-executivo", secao: "OPERAÇÃO", modulo: "ifood_dashboard" },
+  { id: "bonificacao-mensal", label: "Bonificação Mensal", icon: "award", logo: "/assets/menu-bonificacao-mensal.png", tipo: "bonificacao-mensal", secao: "OPERAÇÃO", modulo: "monthly_bonus" },
+  { id: "parser-food-delivery", label: "Parser Food Delivery", icon: "truck", logo: "/assets/menu-parser-food-delivery.png", tipo: "parser-food-delivery", secao: "OPERAÇÃO", modulo: "parser_food_delivery" },
+  { id: "distribuidoras",label: "Distribuidoras",  icon: "truck", logo: "/assets/menu-distribuidoras.png", tipo: "construcao",  secao: "OPERAÇÃO", modulo: "distributors" },
+  { id: "martinbrower",  label: "Martin Brower",   icon: "package", tipo: "martinbrower", integ: "martinbrower", secao: "INTEGRAÇÕES", modulo: "martin_brower" },
+  { id: "swfast",        label: "SWFast / PDV",    icon: "credit-card", tipo: "integracao",  integ: "swfast",       secao: "INTEGRAÇÕES", modulo: "swfast" },
+  { id: "ifood",         label: "iFood",           icon: "truck", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES", modulo: "ifood" },
+  { id: "cocacola",      label: "Coca-Cola",       icon: "tag", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES", modulo: "coca_cola" },
+  { id: "claudiahortifruti", label: "Cláudia Hortifruti", icon: "tag", tipo: "integracao", integ: "claudiahortifruti", secao: "INTEGRAÇÕES", modulo: "hortifruti" },
+  { id: "ia",            label: "Agente de IA",    icon: "bot", tipo: "integracao",  integ: "ia",           secao: "INTELIGÊNCIA" },
+  { id: "relatorios",    label: "Relatórios",      icon: "pie-chart", tipo: "construcao",  secao: "INTELIGÊNCIA" },
+  { id: "integracoes",   label: "Integrações",     icon: "link", tipo: "integracoes", secao: "INTELIGÊNCIA" },
+  { id: "configuracoes", label: "Configurações",   icon: "settings", tipo: "configuracoes", secao: "SISTEMA" },
 ];
 
 // ---------- Insumos / Ficha técnica ----------
@@ -79,45 +87,47 @@ export const STATUS_INTEGRACAO = {
   nao_conectado: { label: "Não conectado",          classe: "muted" },
 };
 
-// Catálogo de integrações (usado na página Integrações e nas telas individuais)
+// Catálogo de integrações (usado na página Integrações e nas telas individuais).
+// `icon` também é nome do conjunto SVG (ver MENU acima) — só aparece quando
+// não há `logo` (marca real do parceiro).
 export const INTEGRACOES = {
   supabase: {
-    nome: "Supabase", icon: "🗄️", status: "conectado",
+    nome: "Supabase", icon: "database", status: "conectado",
     desc: "Banco de dados PostgreSQL. Já conectado e servindo os dados do sistema.",
     features: ["Catálogo, insumos e fichas técnicas", "Cálculo de CMV via views", "Base para RLS multi-loja"],
   },
   ifood: {
-    nome: "iFood", icon: "🛵", logo: "/assets/logo-ifood.jpeg", status: "planejamento",
+    nome: "iFood", icon: "truck", logo: "/assets/menu-dashboard-ifood.png", status: "planejamento",
     desc: "Monitora o cardápio do iFood em tempo real (preços e itens publicados). Não recebe pedidos — foco em acompanhar e detectar divergências.",
     features: ["Monitorar cardápio ao vivo", "Conferir preços publicados", "Alertar divergências de preço"],
   },
   swfast: {
-    nome: "SWFast / PDV", icon: "💳", logo: "/assets/logo-sw.jpeg", status: "planejamento",
+    nome: "SWFast / PDV", icon: "credit-card", logo: "/assets/menu-swfast.png", status: "planejamento",
     desc: "Recebe o fechamento de caixa diário da Subway Saci — o que vendeu e como vendeu. Não registra vendas nem faz fechamento: apenas importa e agrega para melhorar o CMV.",
     features: ["Importar fechamento diário", "Mix de produtos vendidos", "CMV real x teórico"],
   },
   martinbrower: {
-    nome: "Martin Brower", icon: "🏭", logo: "/assets/logo-mb.jpeg", status: "futuro",
+    nome: "Martin Brower", icon: "package", logo: "/assets/menu-martinbrower.png", status: "futuro",
     desc: "Distribuidora oficial: fonte do custo real de cada insumo comprado, mantendo o CMV sempre preciso e atualizado.",
     features: ["Custo real por insumo", "Atualização automática de custos", "Notas e histórico de compra"],
   },
   cocacola: {
-    nome: "Coca-Cola", icon: "🥤", logo: "/assets/logo-cocacola.png", status: "futuro",
+    nome: "Coca-Cola", icon: "tag", logo: "/assets/menu-cocacola.png", status: "futuro",
     desc: "Distribuidora de bebidas (Coca-Cola): custo real de refrigerantes, sucos e água para manter o CMV das bebidas sempre preciso.",
     features: ["Custo real das bebidas", "Atualização de preços de refrigerantes", "Notas e histórico de compra"],
   },
   claudiahortifruti: {
-    nome: "Cláudia Hortifruti", icon: "🍓", logo: "/assets/logo-claudia.svg", status: "futuro",
+    nome: "Cláudia Hortifruti", icon: "tag", logo: "/assets/menu-claudiahortifruti.png", status: "futuro",
     desc: "Fornecedor de hortifrúti: custo real dos vegetais e frutas usados nos sanduíches e saladas, com controle de perdas de itens frescos.",
     features: ["Custo real de vegetais e frutas", "Controle de perdas de itens frescos", "Notas e histórico de compra"],
   },
   whatsapp: {
-    nome: "WhatsApp", icon: "💬", status: "planejamento",
+    nome: "WhatsApp", icon: "message-circle", status: "planejamento",
     desc: "Notificações automáticas (Evolution API / Baileys) do agente operacional.",
     features: ["Alertas de estoque crítico", "Aviso de CMV/margem", "Resumo diário de faturamento"],
   },
   ia: {
-    nome: "Agente de IA", icon: "🤖", status: "planejamento",
+    nome: "Agente de IA", icon: "bot", status: "planejamento",
     desc: "Monitora CMV, margem, ruptura de estoque e gera insights (OpenAI / Claude).",
     features: ["Previsão de ruptura e compra", "Detecção de desperdício e anomalias", "Relatórios e insights automáticos"],
   },

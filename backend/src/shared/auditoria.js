@@ -56,6 +56,10 @@ export const ACOES = {
 
   // configuração global
   CONFIG_ALTERADA: "config.alterada",
+
+  // Bonificação Mensal
+  BONIFICACAO_META_ALTERADA: "bonificacao_mensal.meta_alterada",
+  BONIFICACAO_INDICADOR_LANCADO: "bonificacao_mensal.indicador_lancado",
 };
 
 /**

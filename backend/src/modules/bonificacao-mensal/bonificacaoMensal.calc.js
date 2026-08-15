@@ -30,6 +30,21 @@ export const STATUS_DIA_BONIFICACAO = {
   SEM_OPERACAO: "SEM_OPERACAO", // loja marcou explicitamente que não operou
 };
 
+// Campos do Geral/Loja que, se corrigidos manualmente, tiram o dia de
+// IMPORTADO na Visio — nas DUAS convenções de chave que manual_override usa
+// hoje: snake_case (bonificacaoMensal.service.js#processarImportacaoVisio,
+// correção durante a prévia) e camelCase (upsertLancamentoManual —
+// caminho legado de antes do Ticket Médio virar automático). Nunca inclui
+// os indicadores manuais com aba própria (rev/pesquisas/avaliacao_ifood/
+// pedidos_chamado/cancelamentos) nem CMV — esses não vêm da Visio.
+const CAMPOS_OVERRIDE_VISIO = new Set([
+  "faturamento_geral", "faturamentoGeral", "ticket_medio", "ticketMedio",
+  "estabelecimento_geral", "ppd_geral", "ppdGeral",
+  "faturamento_loja", "faturamentoLoja", "ppd_loja", "ppdLoja", "estabelecimento_loja",
+  "qtd_sanduiches_loja", "qtdSanduichesLoja", "qtd_bebidas_loja", "qtdBebidasLoja",
+  "qtd_adicionais_loja", "qtdAdicionaisLoja", "qtd_diversos_loja", "qtdDiversosLoja",
+]);
+
 /**
  * @param {{lancamento: object|null, dataIso: string, hojeIso: string}} p
  * @returns {string} uma das chaves de STATUS_DIA_BONIFICACAO
@@ -39,10 +54,23 @@ export function statusDia({ lancamento, dataIso, hojeIso }) {
   if (!lancamento) return STATUS_DIA_BONIFICACAO.PENDENTE;
   if (lancamento.semOperacao) return STATUS_DIA_BONIFICACAO.SEM_OPERACAO;
 
-  const temGeral = lancamento.faturamentoGeral != null && lancamento.ppdGeral != null;
+  // Só depende de faturamentoGeral — o Relatório de Vendas (novo layout do
+  // Geral, a partir de 15/08/2026) não traz mais PPD, então exigir
+  // ppdGeral aqui deixaria TODO dia importado depois da troca preso em
+  // PARCIAL/PENDENTE pra sempre (bug real, corrigido na auditoria).
+  const temGeral = lancamento.faturamentoGeral != null;
   const temLoja = lancamento.faturamentoLoja != null && lancamento.qtdSanduichesLoja != null
     && lancamento.qtdBebidasLoja != null && lancamento.qtdAdicionaisLoja != null && lancamento.qtdDiversosLoja != null;
-  const corrigidoManualmente = !!(lancamento.manualOverride && Object.keys(lancamento.manualOverride).length > 0);
+  // "Corrigido manualmente" pra fins do status da VISIO só conta um override
+  // nos campos do Geral/Loja em si — nunca em REV/Pesquisas/Nota iFood/
+  // Pedidos com chamado/Cancelamentos/CMV, que têm aba e calendário PRÓPRIOS
+  // (bonificacaoMensalIndicadorManual.js) e não têm nada a ver com a Visio.
+  // Sem esse filtro, lançar REV pra um dia (ou um Ticket Médio manual de
+  // antes da automação — chaves em snake_case e camelCase coexistem por
+  // causa dessa migração) deixava o dia preso em "MANUAL" pra sempre, mesmo
+  // com Geral+Loja vindo 100% frescos da Visio (bug real relatado 15/08/2026).
+  const overrideAfetaVisio = (chave) => CAMPOS_OVERRIDE_VISIO.has(chave);
+  const corrigidoManualmente = !!(lancamento.manualOverride && Object.keys(lancamento.manualOverride).some(overrideAfetaVisio));
   const ehManual = lancamento.origem === "manual" || corrigidoManualmente;
 
   if (temGeral && temLoja) return ehManual ? STATUS_DIA_BONIFICACAO.MANUAL : STATUS_DIA_BONIFICACAO.IMPORTADO;
@@ -147,6 +175,26 @@ export function mixMensalPonderado(lancamentos) {
     diversos: percentualDerivado(somaDiversos, somaSanduiches),
     somaSanduiches, somaBebidas, somaAdicionais, somaDiversos, diasComDados,
   };
+}
+
+/**
+ * Ticket Médio mensal PONDERADO (auditoria 15/08/2026, item 9): faturamento
+ * acumulado ÷ cupons válidos acumulados — nunca a média simples dos tickets
+ * diários (que distorce quando os dias têm volumes muito diferentes, mesmo
+ * problema que o Mix já resolvia). Só entra na soma o dia que tem os DOIS
+ * dados juntos (faturamento + cupons) — um dia com ticket médio lançado
+ * manualmente sem cupons não pode corromper o ponderado do mês.
+ * @param {Array<{faturamentoGeral:number|null, cuponsValidosGeral:number|null}>} lancamentos
+ * @returns {number|null}
+ */
+export function ticketMedioPonderado(lancamentos) {
+  let somaFaturamento = 0, somaCupons = 0;
+  for (const l of lancamentos || []) {
+    if (l.faturamentoGeral == null || l.cuponsValidosGeral == null || Number(l.cuponsValidosGeral) <= 0) continue;
+    somaFaturamento += Number(l.faturamentoGeral);
+    somaCupons += Number(l.cuponsValidosGeral);
+  }
+  return somaCupons > 0 ? somaFaturamento / somaCupons : null;
 }
 
 /**

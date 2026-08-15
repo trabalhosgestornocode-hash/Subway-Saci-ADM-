@@ -28,6 +28,31 @@ export const metas = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
+export const salvarMeta = asyncHandler(async (req, res) => {
+  // `indicador` vem SEMPRE da rota, nunca do corpo — evita que um campo
+  // `indicador` divergente no body altere silenciosamente qual meta é salva.
+  const data = await service.salvarMeta({ ...tenant(req), usuario: req.user, ...(req.body ?? {}), indicador: req.params.indicador });
+  res.status(201).json({ data });
+});
+
+// Calendário do mês de UM indicador manual (REV/Pesquisas/Nota iFood/Pedidos
+// com chamado) — mesmo padrão do calendário da Visio (item corrigido: era
+// mensal, agora é diário).
+export const calendarioIndicador = asyncHandler(async (req, res) => {
+  const data = await service.obterCalendarioIndicador({ ...tenant(req), indicador: req.params.indicador, ano: req.query.ano, mes: req.query.mes });
+  res.json({ data });
+});
+
+export const historicoMensalIndicador = asyncHandler(async (req, res) => {
+  const data = await service.historicoMensalIndicador({ ...tenant(req), indicador: req.params.indicador, meses: req.query.meses });
+  res.json({ data });
+});
+
+export const salvarValorDiaIndicador = asyncHandler(async (req, res) => {
+  const data = await service.salvarValorDiaIndicador({ ...tenant(req), usuario: req.user, ...(req.body ?? {}), indicador: req.params.indicador });
+  res.status(201).json({ data });
+});
+
 export const historico = asyncHandler(async (req, res) => {
   const data = await service.listarHistoricoMeses({ ...tenant(req), ano: req.query.ano });
   res.json({ data });
