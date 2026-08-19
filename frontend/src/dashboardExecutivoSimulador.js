@@ -11,9 +11,13 @@
 //
 // Fonte dos números — nada é hardcoded, tudo vem do backend
 // (dashboardExecutivo.simulador.service.js):
-//   * preço  -> produto_precos da tabela escolhida naquele canal;
-//   * custo  -> ficha técnica real do produto (mesmo grafo do CMV);
-//   * taxa   -> % real de Taxas e Comissões apurado no mês/unidade (iFood).
+//   * preço     -> produto_precos da tabela escolhida naquele canal;
+//   * custo     -> ficha técnica real do produto (mesmo grafo do CMV);
+//   * deduções  -> % real de Taxas e Comissões e de Serviços e Promoções
+//                  apurados no mês/unidade (iFood) — mesmos indicadores da
+//                  Visão Geral, com meta/limite/status reaproveitados dali;
+//   * referência -> soma das metas ideais das duas deduções acima, pro
+//                  modelo logístico (Marketplace/Full Service) da unidade.
 // Trocar de unidade, de mês ou mexer no custo dos insumos muda os dois lados,
 // porque os dois lados são recalculados no servidor a cada render.
 import { escapeHtml, fmtMoeda, fmtPct, statusCmv } from "./utils.js";
@@ -21,6 +25,16 @@ import { TABELAS } from "./config.js";
 import { dashExecSimuladorPreco } from "./api.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { icon } from "./icons.js";
+
+// Diferença entre percentuais (ex.: CMV iFood − CMV Balcão) usa "p.p.", nunca
+// "%" — "%" leria como variação relativa, não diferença de pontos.
+const fmtPp = (v) => (v == null || Number.isNaN(Number(v)) ? "—" : `${Number(v).toFixed(1)} p.p.`);
+
+// Status "dentro da meta / atenção / fora da meta" vem PRONTO do backend
+// (statusIndicador em dashboardExecutivo.calc.js — a MESMA função que a
+// Visão Geral usa) — aqui só traduz a chave pra classe de CSS do pill. Fonte
+// única, sem regra duplicada.
+const CLASSE_STATUS = { dentro_da_meta: "ok", atencao: "warn", fora_da_meta: "bad", sem_dados: "muted" };
 
 /** Tabela escolhida em cada lado (independentes por design — ver cabeçalho) +
  * se o card está expandido. Recolhido é o padrão (item 1 do pedido de UX):
@@ -206,6 +220,18 @@ function linha(label, valorHtml, cls = "") {
   return `<div class="dex-sim-linha ${cls}"><span>${label}</span><b>${valorHtml}</b></div>`;
 }
 
+/**
+ * Segunda linha, discreta, embaixo de uma dedução (Taxas e Comissões /
+ * Serviços e Promoções): meta ideal, limite e o selo de status — reaproveita
+ * `status` já calculado no backend (mesma regra da Visão Geral). Some quando
+ * não há meta configurada para o modelo (nunca inventa "0%").
+ */
+function metaLinha(status, metaIdeal, limite) {
+  if (!status || status.chave === "sem_dados") return "";
+  const classe = CLASSE_STATUS[status.chave] ?? "muted";
+  return `<div class="dex-sim-meta"><span>Meta ${fmtPct(metaIdeal)} · Limite ${fmtPct(limite)}</span><span class="pill ${classe}">${escapeHtml(status.label)}</span></div>`;
+}
+
 function ladoHtml(d) {
   if (d.preco == null) {
     return `<div class="estado-mini"><p>${escapeHtml(d.indisponivel ?? "Preço não cadastrado para esta tabela.")}</p></div>`;
@@ -217,11 +243,14 @@ function ladoHtml(d) {
     linha("CMV", `<span class="pill ${st.classe}">${fmtPct(d.cmvPct)}</span>`),
   ];
 
-  // Só o iFood tem taxa de canal — o balcão não carrega uma dedução que não
-  // existe (é o que torna a comparação das duas margens honesta).
+  // Só o iFood tem dedução de canal — o balcão não carrega uma dedução que
+  // não existe (é o que torna a comparação das duas margens honesta).
   if (d.canal === "ifood") {
     linhas.push(linha("Taxas e Comissões", d.taxaEstimadaPct == null ? "—" : `${fmtPct(d.taxaEstimadaPct)} <small>${fmtMoeda(d.taxaEstimadaReais)}</small>`));
-    linhas.push(linha("Receita após taxas", d.receitaAposTaxas == null ? "—" : fmtMoeda(d.receitaAposTaxas)));
+    linhas.push(metaLinha(d.taxaEstimadaStatus, d.taxaEstimadaMetaIdeal, d.taxaEstimadaLimite));
+    linhas.push(linha("Serviços e Promoções", d.servicosPromocoesPct == null ? "—" : `${fmtPct(d.servicosPromocoesPct)} <small>${fmtMoeda(d.servicosPromocoesReais)}</small>`));
+    linhas.push(metaLinha(d.servicosPromocoesStatus, d.servicosPromocoesMetaIdeal, d.servicosPromocoesLimite));
+    linhas.push(linha("Receita após Taxas e Comissões + Serviços e Promoções", d.receitaAposDeducoesConsideradas == null ? "—" : fmtMoeda(d.receitaAposDeducoesConsideradas)));
   }
 
   linhas.push(linha(
@@ -240,64 +269,156 @@ function ladoHtml(d) {
 }
 
 /**
- * Rodapé de comparação. Só aparece quando os DOIS lados têm o número em
- * questão — comparar contra um lado indisponível daria uma diferença falsa
- * (ex.: "−R$ 32,00" só porque o iFood ainda não tem taxa apurada no mês).
- * Sinal sempre relativo ao iFood: positivo = iFood acima do balcão.
+ * Rodapé de comparação — DOIS blocos separados de propósito (pedido de
+ * clareza de 19/08: a comparação de preço e a comparação de deduções são
+ * perguntas diferentes e misturadas no mesmo rodapé confundiam leitura):
+ *
+ *   1. "Preço iFood × Balcão"   — quanto o preço do iFood está acima do
+ *      Balcão, e se isso está perto do que o canal cobra de volta.
+ *   2. "Deduções reais do mês"  — o que o canal está cobrando de verdade
+ *      este mês, contra a meta combinada do modelo logístico.
+ *
+ * As duas comparam contra a MESMA referência (`referenciaModeloPct`), mas
+ * contra números diferentes (diferença de preço % vs. deduções reais %) —
+ * por isso duas seções, nunca um número só. Nenhuma fórmula nova aqui: só
+ * reorganização de layout/rótulo por cima dos mesmos campos de sempre.
  */
 function renderComparacao(container) {
   const box = container.querySelector("#dex-sim-comparacao");
   if (!box) return;
   const b = ultimo.balcao, i = ultimo.ifood;
 
-  const itens = [];
-  if (b?.preco != null && i?.preco != null) {
-    // % que a diferença representa sobre o preço do iFood — é a leitura que
-    // conecta direto com as taxas do canal: se a diferença bater perto do
-    // total de taxas (iFood + serviço + motoboy), o preço do iFood só está
-    // "recompondo" o valor do balcão depois dos descontos, não gerando mais
-    // margem de verdade. Por isso mostramos do lado a meta de total de
-    // deduções do modelo logístico da unidade — é o número de referência
-    // pra comparar contra essa diferença real.
-    const pctDelta = i.preco ? ((i.preco - b.preco) / i.preco) * 100 : null;
-    itens.push(itemComparacao("Diferença de preço", i.preco - b.preco, fmtMoeda, { pctDelta }) + refModeloHtml(i));
-  }
+  const blocos = [blocoPrecoHtml(b, i), blocoDeducoesHtml(i)].filter(Boolean).join("");
+
+  const extra = [];
   if (b?.cmvPct != null && i?.cmvPct != null) {
-    // CMV: menor é melhor, então a seta verde/vermelha se inverte.
-    itens.push(itemComparacao("Diferença de CMV", i.cmvPct - b.cmvPct, (v) => fmtPct(v), { menorMelhor: true }));
+    // CMV: menor é melhor, então a seta verde/vermelha se inverte. "p.p.",
+    // nunca "%" — é diferença entre dois percentuais, não variação relativa.
+    extra.push(itemComparacao("Diferença de CMV", i.cmvPct - b.cmvPct, fmtPp, { menorMelhor: true, cru: true }));
   }
   if (b?.margemEstimada != null && i?.margemEstimada != null) {
-    itens.push(itemComparacao("Diferença de margem", i.margemEstimada - b.margemEstimada, fmtMoeda));
+    extra.push(itemComparacao("Diferença de margem", i.margemEstimada - b.margemEstimada, fmtMoeda));
   }
 
-  if (!itens.length) { box.hidden = true; box.innerHTML = ""; return; }
+  if (!blocos && !extra.length) { box.hidden = true; box.innerHTML = ""; return; }
   box.hidden = false;
-  box.innerHTML = `<span class="dex-sim-comp-rotulo">iFood × Balcão</span>${itens.join("")}`;
+  box.innerHTML = `
+    <span class="dex-sim-comp-rotulo">iFood × Balcão</span>
+    ${blocos ? `<div class="dex-sim-comp-blocos">${blocos}</div>` : ""}
+    ${extra.length ? `<div class="dex-sim-comp-extra">${extra.join("")}</div>` : ""}`;
 }
 
 /**
- * Linha de referência: a meta de total de deduções do modelo logístico da
- * unidade (Marketplace/Full Service — ver metas_indicadores). É estática,
- * não "boa" nem "ruim" como a diferença real acima — por isso não usa
- * itemComparacao (que sempre pinta verde/vermelho). Some quando a unidade
- * não tem meta configurada para o modelo (não inventa número).
- * @param {object|null} i resultado do lado iFood
+ * Bloco 1 — Preço iFood × Balcão. Só aparece quando os DOIS lados têm preço
+ * (comparar contra um lado indisponível daria uma diferença falsa).
  */
-function refModeloHtml(i) {
-  if (i?.metaTotalDeducoesPct == null) return "";
-  const modelo = i.modeloLogisticoRotulo ? ` (${escapeHtml(i.modeloLogisticoRotulo)})` : "";
-  return `<div class="dex-sim-comp-ref">Esperado pelo modelo${modelo}: <b>${fmtPct(i.metaTotalDeducoesPct)}</b></div>`;
+function blocoPrecoHtml(b, i) {
+  if (b?.preco == null || i?.preco == null) return "";
+  const delta = i.preco - b.preco;
+  // % que a diferença representa SOBRE O PREÇO DO IFOOD (nunca sobre o do
+  // Balcão) — responde "que fatia do preço final do iFood é o acréscimo
+  // sobre o Balcão" (11/35, não 11/24).
+  const pctDelta = i.preco ? (delta / i.preco) * 100 : null;
+
+  const itens = [
+    itemComparacao("Diferença de preço", delta, fmtMoeda),
+    itemSimples("Acréscimo representado no preço iFood", pctDelta != null ? fmtPct(pctDelta) : "—"),
+  ];
+  if (i.referenciaModeloPct != null) {
+    // Rótulo nomeia o modelo dinamicamente ("...do Marketplace" / "...do Full
+    // Service") — nunca hardcoded, vem de modeloLogisticoRotulo (a unidade).
+    const rotuloReferencia = i.modeloLogisticoRotulo
+      ? `Referência de precificação do ${escapeHtml(i.modeloLogisticoRotulo)}`
+      : "Referência de precificação do modelo";
+    itens.push(itemSimples(rotuloReferencia, fmtPct(i.referenciaModeloPct), "neutro"));
+    const situacao = situacaoTexto(pctDelta, i.referenciaModeloPct, { na: "Na referência", da: "da referência" });
+    if (situacao) itens.push(itemSimples("Situação", situacao, "neutro"));
+  }
+  return blocoHtml("Preço iFood × Balcão", itens.join(""), modeloBadge(i));
 }
 
-function itemComparacao(label, delta, fmt, { menorMelhor = false, pctDelta = null } = {}) {
+/** Badge "Marketplace"/"Full Service" no cabeçalho de um bloco — mesma
+ * apresentação nos dois blocos (item 1 do pedido de 19/08: "Modelo atual"
+ * deve aparecer no bloco de Preço do mesmo jeito que já aparece no de
+ * Deduções). Some se a unidade não tiver modelo resolvido. */
+function modeloBadge(i) {
+  return i?.modeloLogisticoRotulo ? `<span class="dex-sim-comp-modelo">${escapeHtml(i.modeloLogisticoRotulo)}</span>` : "";
+}
+
+/**
+ * Bloco 2 — Deduções reais do mês. Depende só do lado iFood (Taxas e
+ * Comissões + Serviços e Promoções não existem no Balcão) — por isso
+ * aparece mesmo que o painel Balcão ainda não tenha carregado.
+ */
+function blocoDeducoesHtml(i) {
+  if (i?.taxaEstimadaPct == null && i?.servicosPromocoesPct == null) return "";
+  const itens = [];
+  if (i.taxaEstimadaPct != null) itens.push(itemSimples("Taxas e Comissões", fmtPct(i.taxaEstimadaPct)));
+  if (i.servicosPromocoesPct != null) itens.push(itemSimples("Serviços e Promoções", fmtPct(i.servicosPromocoesPct)));
+  if (i.deducoesConsideradasPct != null) itens.push(itemSimples("Total atual", fmtPct(i.deducoesConsideradasPct)));
+  if (i.referenciaModeloPct != null) {
+    itens.push(itemSimples("Meta combinada de deduções", fmtPct(i.referenciaModeloPct), "neutro"));
+  }
+  if (i.limiteCombinadoPct != null) {
+    // Soma dos LIMITES reais (teto), não das metas ideais — ver
+    // limiteCombinadoPct() em dashboardExecutivo.calc.js. Costuma ser maior
+    // que a meta combinada acima (Serviços e Promoções normalmente tem
+    // limite > meta), então as duas situações abaixo podem divergir.
+    itens.push(itemSimples("Limite combinado de deduções", fmtPct(i.limiteCombinadoPct), "neutro"));
+  }
+  if (i.referenciaModeloPct != null) {
+    const situacaoMeta = situacaoTexto(i.deducoesConsideradasPct, i.referenciaModeloPct, { na: "Na meta", da: "da meta" });
+    if (situacaoMeta) itens.push(itemSimples("Situação", situacaoMeta, "neutro"));
+  }
+  if (i.limiteCombinadoPct != null) {
+    const situacaoLimite = situacaoTexto(i.deducoesConsideradasPct, i.limiteCombinadoPct, { na: "No limite", da: "do limite" });
+    if (situacaoLimite) itens.push(itemSimples("Situação (limite)", situacaoLimite, "neutro"));
+  }
+  return blocoHtml("Deduções reais do mês", itens.join(""), modeloBadge(i));
+}
+
+function blocoHtml(titulo, itensHtml, extraTitulo = "") {
+  return `<div class="dex-sim-comp-bloco">
+    <h4>${titulo}${extraTitulo}</h4>
+    ${itensHtml}
+  </div>`;
+}
+
+/**
+ * Situação NEUTRA de `atual` frente a `referencia` — mesmo cálculo/semântica
+ * de `situacaoDiferencaPreco` em dashboardExecutivo.calc.js (espelhado aqui
+ * porque front e back não compartilham módulo). Nunca usa "dentro/fora":
+ * pro bloco de Preço a referência é régua de compensação de custo, e mesmo
+ * pro Limite combinado (que É um teto) a linguagem fica neutra por
+ * consistência com a Situação da Meta logo acima.
+ *
+ * `rotulos.na`/`rotulos.da` já vêm com o artigo certo do chamador — "meta" é
+ * feminino ("Na meta"/"da meta"), "limite" é masculino ("No limite"/"do
+ * limite") — pra nunca gerar concordância errada compondo aqui dentro.
+ * @param {number|null} atual @param {number|null} referencia
+ * @param {{na: string, da: string}} rotulos
+ * @returns {string|null}
+ */
+function situacaoTexto(atual, referencia, { na, da }) {
+  if (atual == null || referencia == null) return null;
+  const diferencaPp = atual - referencia;
+  if (Math.abs(diferencaPp) < 0.05) return na;
+  return `${fmtPp(Math.abs(diferencaPp))} ${diferencaPp > 0 ? "acima" : "abaixo"} ${da}`;
+}
+
+/** Linha simples label:valor, sem seta/cor de delta (usada dentro dos blocos
+ * — não é uma comparação "bom/ruim", é a restituição de um número real). */
+function itemSimples(label, valorHtml, cls = "") {
+  return `<div class="dex-sim-comp-item ${cls}"><span>${label}</span><b>${valorHtml}</b></div>`;
+}
+
+function itemComparacao(label, delta, fmt, { menorMelhor = false, cru = false } = {}) {
   const zero = Math.abs(delta) < 0.005;
   const bom = menorMelhor ? delta < 0 : delta > 0;
   const classe = zero ? "neutro" : bom ? "positivo" : "negativo";
   const sinal = zero ? "" : delta > 0 ? "+" : "−";
-  // % da diferença sobre a base (hoje só usado em "Diferença de preço") —
-  // mesmo sinal do valor principal, então não repete a lógica de zero/bom.
-  const pctHtml = pctDelta != null ? ` <small>${sinal}${fmtPct(Math.abs(pctDelta))}</small>` : "";
-  return `<div class="dex-sim-comp-item ${classe}">
-    <span>${label}</span><b>${sinal}${fmt(Math.abs(delta))}${pctHtml}</b>
-  </div>`;
+  // `cru`: o formatador já devolve o texto pronto (ex.: "8,0 p.p."), sem
+  // sinal/abs aplicado de novo por cima (usado pela Diferença de CMV).
+  const valor = `${sinal}${fmt(Math.abs(delta))}`;
+  return `<div class="dex-sim-comp-item ${classe}"><span>${label}</span><b>${valor}</b></div>`;
 }

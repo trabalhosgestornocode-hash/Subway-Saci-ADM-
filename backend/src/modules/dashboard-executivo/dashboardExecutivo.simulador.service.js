@@ -7,14 +7,28 @@
 //   * Preço  -> produto_precos (mesma tabela que o catálogo/produtoModal usa).
 //   * Custo  -> custo.js (mesmo grafo/fórmula do CMV do catálogo — nunca
 //               duplicado, nunca hardcoded).
-//   * Taxa do iFood -> o percentual de Taxas e Comissões REALMENTE apurado
-//               no Financeiro deste mês, desta unidade (o mesmo indicador já
-//               mostrado na Visão Geral). Não existe uma "taxa configurada"
-//               confiável no sistema hoje (ver auditoria) — usar o dado real
-//               observado é mais honesto que inventar um percentual fixo.
-//               Sem indicador disponível no mês -> não calcula margem/receita
-//               após taxas, mostra só o que dá pra saber com confiança
-//               (preço, custo, CMV).
+//   * Deduções do iFood -> os percentuais de Taxas e Comissões E Serviços e
+//               Promoções REALMENTE apurados no Financeiro deste mês, desta
+//               unidade (os mesmos indicadores já mostrados na Visão Geral —
+//               `indicadoresRentabilidade`, ver dashboardExecutivo.service.js).
+//               Auditoria de 19/08: a margem do iFood só descontava Taxas e
+//               Comissões; Serviços e Promoções (investimento em campanhas)
+//               também é dedução real do mês e passou a entrar na conta —
+//               ver margemEstimadaIfood() em dashboardExecutivo.calc.js.
+//               Taxas de entregadores e Outras Deduções NÃO entram (por isso
+//               NOTA_MARGEM_IFOOD nunca chama isso de lucro líquido). Sem os
+//               dois indicadores disponíveis no mês -> não calcula margem,
+//               mostra só o que dá pra saber com confiança (preço, custo, CMV).
+//   * Meta/limite de cada dedução -> mesma `metas_indicadores` e mesma
+//               `statusIndicador()` da Visão Geral — nunca uma regra paralela.
+//   * Referência do modelo -> soma das metas ideais de Taxas e Comissões e
+//               Serviços e Promoções (`referenciaModeloPct()`), NUNCA lida de
+//               uma linha `total_deducoes` separada — assim não pode divergir
+//               do que a margem realmente desconta. É régua de compensação de
+//               custos do canal, não teto de preço.
+//   * Limite combinado -> soma dos LIMITES (teto real) das mesmas duas
+//               deduções (`limiteCombinadoPct()`) — diferente da referência
+//               acima, que soma metas ideais.
 //   * Balcão -> não tem taxa de canal nenhuma (a comparação Balcão x iFood
 //               só faz sentido se o Balcão não carregar uma taxa que não existe).
 
@@ -23,12 +37,12 @@ import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
 import { carregarGrafo, resumoProduto } from "../produtos/custo.js";
 import { resolverUnidadeAlvo, obterMes } from "./dashboardExecutivo.service.js";
-import { hojeIsoBrasil } from "./dashboardExecutivo.calc.js";
+import { hojeIsoBrasil, margemEstimadaIfood, referenciaModeloPct, limiteCombinadoPct } from "./dashboardExecutivo.calc.js";
 import { obterModeloLogistico, resolverMetas } from "./dashboardExecutivo.metas.service.js";
 
 // Nota de rodapé — a mesma para qualquer unidade/mês, por isso fica fora do
 // resultado calculado (não é dado, é texto de interface).
-export const NOTA_MARGEM_IFOOD = "Margem estimada após o custo da ficha técnica e as Taxas e Comissões do iFood — não é lucro líquido: ainda existem outros custos operacionais da loja (Serviços e Promoções, aluguel, folha etc.) que não entram nesta conta.";
+export const NOTA_MARGEM_IFOOD = "Margem estimada após o custo da ficha técnica, as Taxas e Comissões e os Serviços e Promoções do iFood — não é lucro líquido: ainda existem outros custos operacionais da loja (taxas de entregadores, outras deduções, aluguel, folha etc.) que não entram nesta conta.";
 export const NOTA_MARGEM_BALCAO = "Margem estimada antes de demais despesas operacionais da loja.";
 
 const CANAIS_SIMULADOR = ["balcao", "ifood"];
@@ -99,21 +113,39 @@ export async function simularPrecoProduto({ organizacaoId, unidadeIdSessao, unid
     custo: resumo.custo,
     cmvPct: resumo.cmv_pct,
     statusFicha: resumo.status_ficha,
+    // Taxas e Comissões — dedução obrigatória do canal.
     taxaEstimadaPct: null,
     taxaEstimadaReais: null,
+    taxaEstimadaMetaIdeal: null,
+    taxaEstimadaLimite: null,
+    taxaEstimadaStatus: null,
+    // Serviços e Promoções — investimento em campanhas do mês (auditoria de
+    // 19/08: passou a entrar na margem, antes só Taxas e Comissões entrava).
+    servicosPromocoesPct: null,
+    servicosPromocoesReais: null,
+    servicosPromocoesMetaIdeal: null,
+    servicosPromocoesLimite: null,
+    servicosPromocoesStatus: null,
     taxaEstimadaFonte: null,
-    receitaAposTaxas: null,
+    deducoesConsideradasPct: null,
+    receitaAposDeducoesConsideradas: null,
     margemEstimada: null,
     margemEstimadaPct: null,
     margemNota: null,
-    // Meta de total de deduções do MODELO LOGÍSTICO da unidade (Marketplace x
-    // Full Service) — o "quanto o iFood deveria estar cobrando no total",
-    // configurado em metas_indicadores. Independente do mês ter apuração no
-    // Financeiro (vem de meta, não de lançamento), por isso é resolvido
-    // mesmo quando taxaEstimadaPct fica null por falta de dado no mês.
+    // Referência do modelo logístico (Marketplace x Full Service) para a
+    // diferença de preço Balcão x iFood — soma das metas ideais de Taxas e
+    // Comissões e Serviços e Promoções, calculada ao vivo em
+    // referenciaModeloPct() (dashboardExecutivo.calc.js), nunca lida de uma
+    // linha separada. Vem de meta, não de lançamento do mês, por isso é
+    // resolvida mesmo quando as deduções acima ficam null por falta de dado.
     modeloLogistico: null,
     modeloLogisticoRotulo: null,
-    metaTotalDeducoesPct: null,
+    referenciaModeloPct: null,
+    // Limite combinado — soma dos LIMITES (teto real) de Taxas e Comissões e
+    // Serviços e Promoções, ver limiteCombinadoPct() em dashboardExecutivo.calc.js.
+    // Diferente de referenciaModeloPct (soma das METAS IDEAIS): a meta é
+    // aspiracional, o limite é o teto que statusIndicador usa pra "fora da meta".
+    limiteCombinadoPct: null,
     indisponivel: null,
   };
 
@@ -130,48 +162,70 @@ export async function simularPrecoProduto({ organizacaoId, unidadeIdSessao, unid
     // Sem taxa de canal no balcão — a comparação com o iFood só é honesta se
     // o balcão não carregar uma dedução que não existe de verdade. Margem
     // aqui = preço - custo, ainda ANTES de qualquer despesa operacional.
-    resultado.receitaAposTaxas = preco;
     resultado.margemEstimada = preco - resumo.custo;
     resultado.margemEstimadaPct = preco > 0 ? (resultado.margemEstimada / preco) * 100 : null;
     resultado.margemNota = NOTA_MARGEM_BALCAO;
     return resultado;
   }
 
-  // Modelo logístico da unidade (Marketplace x Full Service) + a meta de
-  // TOTAL DE DEDUÇÕES configurada pra ele (comissão + serviços + motoboy
-  // próprio, ver metas_indicadores) — é o "quanto o iFood deveria estar
-  // cobrando no total" pra comparar contra a diferença de preço real que o
-  // simulador calcula. Vem de meta, não de apuração do mês, então resolve
-  // mesmo quando o mês ainda não tem Taxas e Comissões suficientes.
+  // Modelo logístico da unidade (Marketplace x Full Service) + as metas
+  // (ideal/limite) de Taxas e Comissões e Serviços e Promoções configuradas
+  // pra ele (ver metas_indicadores). Vem de meta, não de apuração do mês,
+  // então resolve mesmo quando o mês ainda não tem indicadores suficientes.
   const modelo = await obterModeloLogistico({ unidadeId, organizacaoId });
   const metas = await resolverMetas({ organizacaoId, unidadeId, modeloLogistico: modelo.modeloLogistico });
   resultado.modeloLogistico = modelo.modeloLogistico;
   resultado.modeloLogisticoRotulo = modelo.modeloLogisticoRotulo;
-  resultado.metaTotalDeducoesPct = metas.total_deducoes?.metaIdeal ?? null;
+  resultado.taxaEstimadaMetaIdeal = metas.taxas_comissoes?.metaIdeal ?? null;
+  resultado.taxaEstimadaLimite = metas.taxas_comissoes?.limite ?? null;
+  resultado.servicosPromocoesMetaIdeal = metas.servicos_promocoes?.metaIdeal ?? null;
+  resultado.servicosPromocoesLimite = metas.servicos_promocoes?.limite ?? null;
+  // Calculada ao vivo a partir das duas metas acima — nunca lida de uma linha
+  // `total_deducoes` separada (ver comentário em referenciaModeloPct()).
+  resultado.referenciaModeloPct = referenciaModeloPct({
+    metaTaxasComissoes: resultado.taxaEstimadaMetaIdeal,
+    metaServicosPromocoes: resultado.servicosPromocoesMetaIdeal,
+  });
+  resultado.limiteCombinadoPct = limiteCombinadoPct({
+    limiteTaxasComissoes: resultado.taxaEstimadaLimite,
+    limiteServicosPromocoes: resultado.servicosPromocoesLimite,
+  });
 
-  // taxa = % real de Taxas e Comissões já apurado no Financeiro do MÊS/ANO
-  // selecionados nesta unidade — o mesmo indicador (e a mesma função,
-  // obterMes) que alimenta o card "Taxas e Comissões" da Visão Geral. Fonte
-  // única: nunca duas contas divergentes para o mesmo número. Não inventa um
+  // Taxas e Comissões e Serviços e Promoções REAIS já apurados no Financeiro
+  // do MÊS/ANO selecionados nesta unidade — os mesmos indicadores (e a mesma
+  // função, obterMes) que alimentam os cards da Visão Geral. Fonte única:
+  // nunca duas contas divergentes para o mesmo número. Não inventa
   // percentual fixo — se o mês não tem dado suficiente ainda, devolve só
-  // preço/custo/CMV/modelo (já preenchidos acima).
+  // preço/custo/CMV/modelo/metas (já preenchidos acima).
   const mesDados = await obterMes({ organizacaoId, unidadeIdSessao: unidadeId, unidadeIdSolicitado: undefined, mes, ano });
-  const indicadorTaxas = mesDados?.indicadoresRentabilidade?.taxas_comissoes;
-  const taxaPct = indicadorTaxas && !indicadorTaxas.naoAplicavel ? indicadorTaxas.atual : null;
+  const indicTaxas = mesDados?.indicadoresRentabilidade?.taxas_comissoes;
+  const indicServicos = mesDados?.indicadoresRentabilidade?.servicos_promocoes;
+  const taxaPct = indicTaxas && !indicTaxas.naoAplicavel ? indicTaxas.atual : null;
+  const servicosPct = indicServicos && !indicServicos.naoAplicavel ? indicServicos.atual : null;
+  // Status "dentro da meta / atenção / fora da meta" — MESMA função
+  // (statusIndicador, já rodada dentro de obterMes) que os cards "Taxas e
+  // Comissões" e "Serviços e Promoções" da Visão Geral usam. Nunca duplicada.
+  resultado.taxaEstimadaStatus = indicTaxas?.status ?? null;
+  resultado.servicosPromocoesStatus = indicServicos?.status ?? null;
 
-  if (taxaPct == null) {
-    resultado.indisponivel = "Ainda não há Taxas e Comissões suficientes apuradas no Financeiro deste mês para estimar a margem no iFood — mostrando só preço, custo e CMV.";
+  if (taxaPct == null || servicosPct == null) {
+    const faltando = [taxaPct == null && "Taxas e Comissões", servicosPct == null && "Serviços e Promoções"].filter(Boolean).join(" e ");
+    resultado.indisponivel = `Ainda não há ${faltando} suficientes apurados no Financeiro deste mês para estimar a margem no iFood — mostrando só preço, custo e CMV.`;
     return resultado;
   }
 
-  // Precisão interna (taxaPct vem em ponto flutuante cheio, sem o
+  // Precisão interna (percentuais vêm em ponto flutuante cheio, sem o
   // arredondamento de exibição) — só a interface arredonda, nunca a conta.
+  const margem = margemEstimadaIfood({ preco, custo: resumo.custo, taxaComissoesPct: taxaPct, servicosPromocoesPct: servicosPct });
   resultado.taxaEstimadaPct = taxaPct;
-  resultado.taxaEstimadaReais = (preco * taxaPct) / 100;
-  resultado.taxaEstimadaFonte = "Percentual real de Taxas e Comissões apurado no Financeiro deste mês, nesta unidade (mesma fonte do card Taxas e Comissões da Visão Geral).";
-  resultado.receitaAposTaxas = preco - resultado.taxaEstimadaReais;
-  resultado.margemEstimada = resultado.receitaAposTaxas - resumo.custo;
-  resultado.margemEstimadaPct = preco > 0 ? (resultado.margemEstimada / preco) * 100 : null;
+  resultado.taxaEstimadaReais = margem.taxaComissoesReais;
+  resultado.servicosPromocoesPct = servicosPct;
+  resultado.servicosPromocoesReais = margem.servicosPromocoesReais;
+  resultado.deducoesConsideradasPct = margem.deducoesConsideradasPct;
+  resultado.taxaEstimadaFonte = "Percentuais reais de Taxas e Comissões e Serviços e Promoções apurados no Financeiro deste mês, nesta unidade (mesma fonte dos cards da Visão Geral).";
+  resultado.receitaAposDeducoesConsideradas = margem.receitaAposDeducoesConsideradas;
+  resultado.margemEstimada = margem.margemEstimada;
+  resultado.margemEstimadaPct = margem.margemEstimadaPct;
   resultado.margemNota = NOTA_MARGEM_IFOOD;
   return resultado;
 }

@@ -2031,24 +2031,47 @@ tr.dex-linha-na { opacity: .65; }
 .dex-sim-linha-destaque { margin-top: 2px; padding-top: 7px; border-top: 1.5px solid var(--linha) !important; }
 .dex-sim-linha-destaque > b { font-size: 16px; font-weight: 800; color: var(--verde-vivo); }
 
-/* Rodapé de comparação — só aparece quando os dois lados têm o número. */
-.dex-sim-comparacao { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--linha); }
+/* Segunda linha discreta embaixo de uma dedução (Taxas e Comissões /
+   Serviços e Promoções): "Meta X% · Limite Y%" + selo de status. */
+.dex-sim-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--cinza-claro); margin: -2px 0 6px; }
+.dex-sim-meta .pill { font-size: 9.5px; padding: 1px 6px; }
+.dex-sim-meta + .dex-sim-linha { border-top: 1px dashed var(--linha); }
+
+/* Rodapé de comparação — dois blocos empilhados (rótulo, blocos, extras),
+   cada um cuidando do próprio layout interno. */
+.dex-sim-comparacao { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--linha); }
 .dex-sim-comp-rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--cinza-claro); font-weight: 750; }
+
+/* Os dois blocos da comparação — "Preço iFood × Balcão" e "Deduções reais do
+   mês" — são perguntas diferentes (ver renderComparacao) e por isso nunca
+   dividem a mesma lista de itens: lado a lado no desktop, empilhados no
+   mobile (breakpoint abaixo). */
+.dex-sim-comp-blocos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dex-sim-comp-bloco { background: var(--superficie-2); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dex-sim-comp-bloco h4 { margin: 0 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .3px; color: var(--cinza-claro); font-weight: 750; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.dex-sim-comp-modelo { font-size: 9.5px; text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--cinza); background: var(--muted-bg); padding: 1px 6px; border-radius: 6px; }
+
+/* Linha dentro de um bloco: rótulo à esquerda, valor à direita (diferente do
+   `.dex-sim-comp-extra`, mais compacto, abaixo). */
+.dex-sim-comp-bloco .dex-sim-comp-item { justify-content: space-between; gap: 10px; }
+
 .dex-sim-comp-item { display: flex; align-items: baseline; gap: 7px; font-size: 12px; }
 .dex-sim-comp-item > span { color: var(--cinza); }
-.dex-sim-comp-item > b { font-size: 13.5px; font-weight: 800; }
+.dex-sim-comp-item > b { font-size: 13.5px; font-weight: 800; text-align: right; }
 .dex-sim-comp-item.positivo > b { color: var(--ok); }
 .dex-sim-comp-item.negativo > b { color: var(--bad); }
 .dex-sim-comp-item.neutro > b { color: var(--cinza); }
 .dex-sim-comp-item > b small { font-size: 10.5px; font-weight: 700; opacity: .72; margin-left: 1px; }
-.dex-sim-comp-ref { font-size: 10.5px; color: var(--cinza-claro); margin: -1px 0 6px; }
-.dex-sim-comp-ref > b { color: var(--cinza); font-weight: 700; }
+
+/* Diferença de CMV / Diferença de margem — fora dos blocos, sem hierarquia
+   de "pergunta" própria, então continuam num rodapezinho compacto. */
+.dex-sim-comp-extra { display: flex; gap: 18px; flex-wrap: wrap; }
 
 @media (max-width: 760px) {
   .dex-sim-duplo { grid-template-columns: minmax(0, 1fr); }
   .dex-sim-lado-corpo { min-height: 0; }
   .dex-sim-cabecalho { flex-direction: column; }
-  .dex-sim-comparacao { gap: 10px 16px; }
+  .dex-sim-comp-blocos { grid-template-columns: minmax(0, 1fr); }
 }
 .dex-projecao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
 .dex-projecao-grid > div { display: flex; flex-direction: column; gap: 4px; }

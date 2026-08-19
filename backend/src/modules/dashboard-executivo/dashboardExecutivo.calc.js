@@ -646,6 +646,107 @@ export function indicadorAplicavel(modelo, indicador) {
   return (INDICADORES_POR_MODELO[modelo] ?? INDICADORES_POR_MODELO.full_service).includes(indicador);
 }
 
+// ---------------------------------------------------------------------------
+// SIMULADOR DE PREÇO (Balcão x iFood) — auditado e corrigido: a margem do
+// iFood passa a descontar Taxas e Comissões E Serviços e Promoções (antes só
+// descontava Taxas e Comissões), e a referência do modelo logístico usada
+// para avaliar a diferença de preço é calculada aqui, não lida de uma linha
+// separada em `metas_indicadores`.
+// ---------------------------------------------------------------------------
+
+/**
+ * Margem estimada do iFood, descontando as DUAS deduções que o simulador
+ * considera hoje: Taxas e Comissões (cobrança obrigatória do canal) e
+ * Serviços e Promoções (investimento em campanhas do mês). NÃO inclui Taxas
+ * de entregadores nem Outras Deduções — por isso nunca é lucro líquido (ver
+ * NOTA_MARGEM_IFOOD em dashboardExecutivo.simulador.service.js).
+ *
+ * Nunca trata percentual ausente como 0: se Taxas e Comissões OU Serviços e
+ * Promoções não foram apurados no mês, a margem inteira fica indisponível
+ * (null) — um 0 aqui inflaria a margem escondendo dado faltante.
+ * @param {{preco: number, custo: number, taxaComissoesPct: number|null, servicosPromocoesPct: number|null}} p
+ * @returns {{taxaComissoesReais: number|null, servicosPromocoesReais: number|null, deducoesConsideradasPct: number|null, receitaAposDeducoesConsideradas: number|null, margemEstimada: number|null, margemEstimadaPct: number|null}}
+ */
+export function margemEstimadaIfood({ preco, custo, taxaComissoesPct, servicosPromocoesPct }) {
+  if (taxaComissoesPct == null || servicosPromocoesPct == null) {
+    return {
+      taxaComissoesReais: null, servicosPromocoesReais: null, deducoesConsideradasPct: null,
+      receitaAposDeducoesConsideradas: null, margemEstimada: null, margemEstimadaPct: null,
+    };
+  }
+  const p = Number(preco);
+  const taxaComissoesReais = (p * taxaComissoesPct) / 100;
+  const servicosPromocoesReais = (p * servicosPromocoesPct) / 100;
+  const receitaAposDeducoesConsideradas = p - taxaComissoesReais - servicosPromocoesReais;
+  const margemEstimada = receitaAposDeducoesConsideradas - Number(custo || 0);
+  const margemEstimadaPct = p > 0 ? (margemEstimada / p) * 100 : null;
+  return {
+    taxaComissoesReais, servicosPromocoesReais,
+    deducoesConsideradasPct: taxaComissoesPct + servicosPromocoesPct,
+    receitaAposDeducoesConsideradas, margemEstimada, margemEstimadaPct,
+  };
+}
+
+/** Soma dois percentuais só se os DOIS existirem — nunca soma parcial (um
+ * presente + um ausente viraria um número inventado, não "quase certo"). */
+function somaSePresentes(a, b) {
+  if (a == null || b == null) return null;
+  return a + b;
+}
+
+/**
+ * Referência do modelo logístico para a diferença de preço Balcão x iFood —
+ * soma das METAS IDEAIS de Taxas e Comissões e Serviços e Promoções do
+ * modelo selecionado. Calculada aqui (nunca lida de uma linha `total_deducoes`
+ * separada em `metas_indicadores`) para nunca poder divergir do que
+ * `margemEstimadaIfood` realmente desconta — se as duas metas mudarem na
+ * configuração, a referência muda junto, sempre em sincronia.
+ *
+ * É uma régua de COMPENSAÇÃO DE CUSTOS do canal, não um teto de preço: se a
+ * diferença de preço iFood x Balcão ficar perto dela, o preço maior do iFood
+ * só está recompondo o que o canal desconta, não gerando margem extra.
+ * Null se qualquer uma das duas metas não estiver configurada — nunca
+ * inventa referência parcial.
+ * @param {{metaTaxasComissoes: number|null, metaServicosPromocoes: number|null}} p
+ * @returns {number|null}
+ */
+export function referenciaModeloPct({ metaTaxasComissoes, metaServicosPromocoes }) {
+  return somaSePresentes(metaTaxasComissoes, metaServicosPromocoes);
+}
+
+/**
+ * Limite combinado das deduções do modelo logístico — soma dos LIMITES
+ * (não das metas ideais) de Taxas e Comissões e Serviços e Promoções.
+ * Mesma lógica de `referenciaModeloPct` (somada ao vivo, nunca lida de uma
+ * linha separada), mas com o campo `limite` de cada meta em vez do
+ * `metaIdeal` — é o teto real configurado (`statusIndicador` usa esse mesmo
+ * campo pra decidir "fora da meta"), diferente da referência de
+ * compensação de custo acima, que é uma meta ideal, não um teto.
+ * Null se qualquer um dos dois limites não estiver configurado.
+ * @param {{limiteTaxasComissoes: number|null, limiteServicosPromocoes: number|null}} p
+ * @returns {number|null}
+ */
+export function limiteCombinadoPct({ limiteTaxasComissoes, limiteServicosPromocoes }) {
+  return somaSePresentes(limiteTaxasComissoes, limiteServicosPromocoes);
+}
+
+/**
+ * Situação da diferença de preço Balcão x iFood frente à referência do
+ * modelo (`referenciaModeloPct`) — linguagem NEUTRA de propósito: a
+ * referência não é limite máximo, então isto nunca deve virar um pill
+ * verde/vermelho de "dentro/fora". `diferencaPp` positivo = diferença de
+ * preço acima da referência (o iFood cobra mais do que só compensar custos).
+ * @param {number|null} diferencaPct diferença de preço iFood x Balcão, em % sobre o preço iFood
+ * @param {number|null} referenciaPct referência do modelo (`referenciaModeloPct`)
+ * @returns {{chave: 'sem_dados'|'acima'|'na_referencia'|'abaixo', diferencaPp: number|null}}
+ */
+export function situacaoDiferencaPreco(diferencaPct, referenciaPct) {
+  if (diferencaPct == null || referenciaPct == null) return { chave: "sem_dados", diferencaPp: null };
+  const diferencaPp = diferencaPct - referenciaPct;
+  const chave = Math.abs(diferencaPp) < 0.05 ? "na_referencia" : diferencaPp > 0 ? "acima" : "abaixo";
+  return { chave, diferencaPp };
+}
+
 // Diagnóstico executivo e Plano de Ação viraram um motor à parte —
 // dashboardExecutivo.diagnostico.js — que usa statusIndicador/saldoMeta
 // daqui como base, mas gera pontos fortes/atenção/alertas/ações
