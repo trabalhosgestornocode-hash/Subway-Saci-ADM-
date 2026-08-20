@@ -2523,3 +2523,64 @@ tr.dex-linha-na { opacity: .65; }
 .pfd-chip-ok { background: var(--ok-bg); border-color: rgba(14,157,87,.25); color: var(--ok); }
 .pfd-chip-aviso { background: var(--warn-bg); border-color: rgba(196,138,18,.3); color: var(--warn); }
 .pfd-chip-erro { background: var(--bad-bg); border-color: rgba(219,59,59,.3); color: var(--bad); }
+
+/* ---------- Parser Food Delivery — reformulação (Central de Conciliação) ---------- */
+/* Navegação de período: chips rápidos + intervalo personalizado + setas ‹ › */
+.pfd-periodo-nav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.pfd-periodo-custom { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--cinza); }
+.pfd-periodo-custom input[type="date"] { padding: 6px 9px; border: 1.5px solid var(--linha); border-radius: 8px; background: var(--campo-bg); color: var(--texto); font-size: 12.5px; }
+.pfd-periodo-setas { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; color: var(--texto); white-space: nowrap; }
+.pfd-periodo-setas .btn { padding: 4px 10px; font-size: 15px; line-height: 1; }
+
+/* "Última importação: ..." discreto + botão de detalhes (item 6 do pedido) */
+.pfd-ultima-import { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--cinza); margin-bottom: 14px; }
+.pfd-ultima-import b { color: var(--texto); }
+
+/* 4 cards principais da Visão Geral — .vd-cards já cai em 3/2/1 colunas
+   via media query própria (620/400px); aqui só fixamos o desktop em 4 e
+   levamos o mesmo degrau intermediário pra não squeezar em telas médias
+   (regra sem media query vence a base ".vd-cards" de 6 colunas por vir
+   depois no arquivo; as media queries abaixo, por sua vez, vencem esta). */
+.pfd-kpis { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 620px) { .pfd-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 400px) { .pfd-kpis { grid-template-columns: 1fr; } }
+
+/* Indicadores secundários compactos (chips, não cards) */
+.pfd-indicadores-sec { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* Distribuição do relatório — barra proporcional empilhada + legenda */
+.pfd-dist-bar { display: flex; width: 100%; height: 10px; border-radius: 999px; overflow: hidden; background: var(--superficie-2); margin-top: 8px; }
+.pfd-dist-segment { height: 100%; min-width: 2px; transition: width .5s ease; }
+.pfd-dist-ok { background: var(--ok); }
+.pfd-dist-info { background: var(--info); }
+.pfd-dist-muted { background: var(--muted); }
+.pfd-dist-warn { background: var(--warn); }
+.pfd-dist-bad { background: var(--bad); }
+.pfd-dist-legenda { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--cinza); }
+.pfd-dist-leg-item { display: inline-flex; align-items: center; gap: 5px; }
+.pfd-dist-leg-item b { color: var(--texto); }
+.pfd-dist-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.pfd-dist-dot.pfd-dist-ok { background: var(--ok); }
+.pfd-dist-dot.pfd-dist-info { background: var(--info); }
+.pfd-dist-dot.pfd-dist-muted { background: var(--muted); }
+.pfd-dist-dot.pfd-dist-warn { background: var(--warn); }
+.pfd-dist-dot.pfd-dist-bad { background: var(--bad); }
+
+/* Conciliação — taxas encontradas / descartadas / valor final */
+.pfd-conciliacao { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio); padding: 16px 18px; margin-top: 18px; }
+.pfd-conc-linha { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; color: var(--cinza); padding: 4px 0; }
+.pfd-conc-linha b { color: var(--texto); font-variant-numeric: tabular-nums; }
+.pfd-conc-linha.pfd-conc-neg b { color: var(--bad); }
+.pfd-conc-divisor { height: 1px; background: var(--linha); margin: 8px 0; }
+.pfd-conc-linha.pfd-conc-final { font-size: 16px; font-weight: 800; }
+.pfd-conc-linha.pfd-conc-final span { color: var(--texto); font-weight: 700; }
+.pfd-conc-linha.pfd-conc-final b { color: var(--verde-med); font-size: 19px; }
+
+/* Timeline do pedido cancelado (reaproveita .hist-timeline/.hist-evento) */
+.pfd-timeline-dot { background: var(--grad-verde); font-size: 13px; }
+.pfd-timeline-dot-cancelado { background: var(--bad); }
+.pfd-override-textarea { width: 100%; margin-top: 8px; min-height: 70px; padding: 9px 12px; border: 1.5px solid var(--linha); border-radius: 9px; background: var(--campo-bg); color: var(--texto); font: inherit; resize: vertical; }
+
+@media (max-width: 700px) {
+  .pfd-periodo-setas { margin-left: 0; width: 100%; justify-content: space-between; }
+}

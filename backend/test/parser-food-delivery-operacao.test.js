@@ -20,10 +20,12 @@ test("classificarOperacao é tolerante a acento/caixa (açaí, Acai, AÇAÍ)", (
   assert.equal(classificarOperacao({ detalhesPedido: "1x COPO DE AÇAÍ TRADICIONAL" }).operacao, OPERACAO.ACAI_NO_GRAU);
 });
 
-test("classificarOperacao reconhece os exemplos do pedido: Pote, Paleta, Brownie", () => {
-  assert.equal(classificarOperacao({ detalhesPedido: "1x Pote 500ml" }).operacao, OPERACAO.ACAI_NO_GRAU);
-  assert.equal(classificarOperacao({ detalhesPedido: "1x Paleta de morango" }).operacao, OPERACAO.ACAI_NO_GRAU);
-  assert.equal(classificarOperacao({ detalhesPedido: "1x Brownie de chocolate" }).operacao, OPERACAO.ACAI_NO_GRAU);
+test("classificarOperacao não usa termos genéricos isolados como prova de Açaí", () => {
+  assert.equal(classificarOperacao({ detalhesPedido: "1x Brownie do Subway" }).operacao, OPERACAO.SUBWAY);
+  assert.equal(classificarOperacao({ detalhesPedido: "1x Pote de cookies Subway" }).operacao, OPERACAO.SUBWAY);
+  assert.equal(classificarOperacao({ detalhesPedido: "1x Paleta de morango" }).operacao, OPERACAO.REVISAO_NECESSARIA);
+  assert.equal(classificarOperacao({ detalhesPedido: "1x Pote de açaí premium com brownie" }).operacao, OPERACAO.ACAI_NO_GRAU);
+  assert.equal(classificarOperacao({ detalhesPedido: "1x Paleta Morango com Leite Condesado" }).operacao, OPERACAO.ACAI_NO_GRAU);
 });
 
 // ---------- proteção contra falso positivo ----------

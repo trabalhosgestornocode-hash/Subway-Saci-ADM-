@@ -8,11 +8,13 @@ export const parserFoodDeliveryRouter = Router();
 const ver = requirePermissao(PERMISSOES.PARSER_FD_VER);
 const importar = requirePermissao(PERMISSOES.PARSER_FD_IMPORTAR);
 const excluir = requirePermissao(PERMISSOES.PARSER_FD_EXCLUIR);
+const classificar = requirePermissao(PERMISSOES.PARSER_FD_CLASSIFICAR);
 
 parserFoodDeliveryRouter.get("/importacoes", ver, controller.importacoes);
 parserFoodDeliveryRouter.get("/importacoes/:id", ver, controller.importacaoDetalhe);
 parserFoodDeliveryRouter.get("/importacoes/:id/arquivo", ver, controller.arquivoImportacao);
 parserFoodDeliveryRouter.post("/importacoes/:id/codigos-sem-taxa", importar, controller.editarCodigos);
+parserFoodDeliveryRouter.post("/importacoes/:id/pedidos/:pedidoId/classificacao", classificar, controller.alterarClassificacao);
 parserFoodDeliveryRouter.post("/importacoes/:id/excluir", excluir, controller.excluirImportacao);
 
 // Importação: prévia (dry-run) do arquivo -> prévia da conciliação -> confirmação.

@@ -38,10 +38,19 @@ const OPERACOES_CONHECIDAS = [
   },
   {
     id: OPERACAO.ACAI_NO_GRAU, nome: "Açaí no Grau", principal: false,
-    termos: ["acai", "pote", "paleta", "brownie"],
+    // Só termos distintivos podem excluir automaticamente da operação
+    // principal. Pote, paleta e brownie são produtos genéricos e precisam de
+    // contexto (ou de revisão), pois também podem existir no cardápio Subway.
+    termos: [
+      "acai",
+      // Combinação observada no relatório real: é específica o bastante para
+      // identificar a operação, ao contrário de "paleta" isoladamente.
+      "paleta morango com leite condesado", "paleta morango com leite condensado",
+    ],
   },
 ];
 const OPERACAO_PRINCIPAL = OPERACOES_CONHECIDAS.find((o) => o.principal);
+const TERMOS_AMBIGUOS_ACAI = ["pote", "paleta", "brownie"];
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Casa `termo` como palavra inteira (evita "sub" pegar dentro de "substituto"). */
@@ -85,6 +94,14 @@ export function classificarOperacao(pedido) {
 
   if (secundarias.length === 0) {
     const principal = encontrados.find((r) => r.op.principal);
+    const ambiguos = TERMOS_AMBIGUOS_ACAI.filter((t) => contemTermo(texto, t));
+    if (!principal && ambiguos.length) {
+      return {
+        operacao: OPERACAO.REVISAO_NECESSARIA,
+        motivo: `Encontrei termo(s) ambíguo(s) (${ambiguos.join(", ")}) sem identificador claro da operação. Confira manualmente.`,
+        termosEncontrados: ambiguos,
+      };
+    }
     return { operacao: OPERACAO_PRINCIPAL.id, motivo: null, termosEncontrados: principal?.termos ?? [] };
   }
   if (secundarias.length === 1 && encontrados.length === 1) {

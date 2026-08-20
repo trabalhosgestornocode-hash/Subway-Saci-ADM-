@@ -64,6 +64,25 @@ test("lerRelatorio tolera cabeçalho com acentuação/maiúsculas diferentes", a
   assert.equal(r.pedidos[0].entregador, "Carla");
 });
 
+test("lerRelatorio converte datas seriais nativas do Excel em todos os timestamps", async () => {
+  const cabecalho = [
+    "N Pedido", "Data e hora", "Situação", "Entregador", "Taxa do entregador",
+    "Data e horario (despachado)", "Data e horario (aceito)", "Data e horario (coletado)",
+    "Data da chegada para entrega", "Data e horario (cancelado)",
+  ];
+  const buf = await bufferDeMatriz([
+    cabecalho,
+    ["0012", 46000.5, "Cancelado", "Ana", 10, 46000.51, 46000.52, 46000.53, 46000.54, 46000.55],
+  ]);
+  const { pedidos: [pedido] } = await lerRelatorio(buf, "serial.xlsx");
+  assert.equal(pedido.dataHora, "2025-12-09T12:00:00");
+  assert.equal(pedido.dataDespachado, "2025-12-09T12:14:24");
+  assert.equal(pedido.dataAceito, "2025-12-09T12:28:48");
+  assert.equal(pedido.dataColetado, "2025-12-09T12:43:12");
+  assert.equal(pedido.dataChegadaEntrega, "2025-12-09T12:57:36");
+  assert.equal(pedido.dataCancelado, "2025-12-09T13:12:00");
+});
+
 test("lerRelatorio ignora linhas totalmente vazias e sem número de pedido", async () => {
   const buf = await bufferDeMatriz([
     CABECALHO,

@@ -6,8 +6,12 @@ import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
 import { lerRelatorio, decodificarArquivo } from "./parserFoodDelivery.parser.js";
-import { classificarPedido, resumoConciliacao, agruparPorEntregador, validarCodigo, temEntregador } from "./parserFoodDelivery.calc.js";
+import {
+  classificarPedido, resumoConciliacao, agruparPorEntregador, validarCodigo, temEntregador,
+  ehCancelado, resolverStatusConciliacao, STATUS_CONCILIACAO,
+} from "./parserFoodDelivery.calc.js";
 import { classificarOperacao, OPERACAO, rotuloOperacao } from "./parserFoodDelivery.operacao.js";
+import { classificarCancelamento, CLASSIFICACAO_CANCELAMENTO } from "./parserFoodDelivery.classificacao.js";
 
 const TABELA_IMPORT = "parser_fd_importacoes";
 const TABELA_PEDIDOS = "parser_fd_pedidos";
@@ -30,6 +34,13 @@ const COLUNAS_PEDIDO_LEITURA = [
   "justificativa_cancelamento", "data_entregue", "data_finalizado", "data_cancelado",
   "origem", "sem_taxa_informado", "status_conciliacao", "operacao", "operacao_motivo",
   "detalhes_pedido", "criado_em",
+  // Timeline (motor de classificação de cancelamentos, ver
+  // parserFoodDelivery.classificacao.js) + resultado da classificação
+  // automática + override manual — colunas novas da reformulação.
+  "data_pronto", "data_despachado", "data_aceito", "data_coletado", "data_chegada_entrega",
+  "data_rejeitado", "razao_rejeicao", "justificativa_rejeicao",
+  "classificacao_cancelamento", "classificacao_motivo", "classificacao_nivel_confianca", "classificacao_regra",
+  "classificacao_original", "classificacao_override_usuario_nome", "classificacao_override_motivo", "classificacao_override_em",
 ].join(", ");
 
 /** Number(x), mas preserva null/undefined — "não informado" nunca vira 0. */
@@ -61,6 +72,7 @@ function paraApiImportacao(row) {
     colunaDetalhesEncontrada: row.coluna_detalhes_encontrada,
     entregues: row.entregues, cancelados: row.cancelados,
     canceladosComTaxa: row.cancelados_com_taxa, canceladosSemTaxa: row.cancelados_sem_taxa,
+    canceladosRecebemTaxa: row.cancelados_recebem_taxa, canceladosNaoRecebemTaxa: row.cancelados_nao_recebem_taxa, canceladosRevisao: row.cancelados_revisao,
     taxasBrutas: numOuNulo(row.taxas_brutas), taxasDescartadas: numOuNulo(row.taxas_descartadas), taxasValidas: numOuNulo(row.taxas_validas),
     codigosSemTaxa: row.codigos_sem_taxa || [],
     status: row.status, mensagemErro: row.mensagem_erro,
@@ -84,6 +96,28 @@ function paraApiPedido(row) {
     operacaoMotivo: row.operacao_motivo ?? row.operacaoMotivo ?? null,
     semTaxaInformado: row.semTaxaInformado ?? !!row.sem_taxa_informado,
     statusConciliacao: row.statusConciliacao ?? row.status_conciliacao ?? null,
+    // Timeline do pedido (item 14 — motor de classificação + timeline visual
+    // da aba Cancelamentos). Ausente em relatórios antigos: fica null.
+    dataPronto: row.data_pronto ?? row.dataPronto ?? null,
+    dataDespachado: row.data_despachado ?? row.dataDespachado ?? null,
+    dataAceito: row.data_aceito ?? row.dataAceito ?? null,
+    dataColetado: row.data_coletado ?? row.dataColetado ?? null,
+    dataChegadaEntrega: row.data_chegada_entrega ?? row.dataChegadaEntrega ?? null,
+    dataEntregue: row.data_entregue ?? row.dataEntregue ?? null,
+    dataFinalizado: row.data_finalizado ?? row.dataFinalizado ?? null,
+    dataCancelado: row.data_cancelado ?? row.dataCancelado ?? null,
+    dataRejeitado: row.data_rejeitado ?? row.dataRejeitado ?? null,
+    razaoRejeicao: row.razao_rejeicao ?? row.razaoRejeicao ?? null,
+    justificativaRejeicao: row.justificativa_rejeicao ?? row.justificativaRejeicao ?? null,
+    // Classificação automática do cancelamento + override manual (seção 29).
+    classificacaoCancelamento: row.classificacao_cancelamento ?? row.classificacaoCancelamento ?? null,
+    classificacaoMotivo: row.classificacao_motivo ?? row.classificacaoMotivo ?? null,
+    classificacaoNivelConfianca: row.classificacao_nivel_confianca ?? row.classificacaoNivelConfianca ?? null,
+    classificacaoRegra: row.classificacao_regra ?? row.classificacaoRegra ?? null,
+    classificacaoOriginal: row.classificacao_original ?? row.classificacaoOriginal ?? null,
+    classificacaoOverrideUsuarioNome: row.classificacao_override_usuario_nome ?? null,
+    classificacaoOverrideMotivo: row.classificacao_override_motivo ?? null,
+    classificacaoOverrideEm: row.classificacao_override_em ?? null,
   };
 }
 
@@ -133,6 +167,32 @@ function classificarOperacoes(pedidos, colunaDetalhesEncontrada) {
     const r = classificarOperacao(p);
     return { ...p, operacao: r.operacao, operacaoMotivo: r.motivo };
   });
+}
+
+/**
+ * Classifica UM pedido já elegível (Subway + com entregador) com o motor
+ * automático de cancelamentos (parserFoodDelivery.classificacao.js) — a
+ * fonte PRIMÁRIA da decisão desde a reformulação. `codigosSemTaxa` continua
+ * aceito só por compatibilidade com o mecanismo manual antigo: se o código
+ * do pedido está na lista, ele sempre vence sobre a decisão automática
+ * (usado hoje só pelo endpoint legado `editarCodigosSemTaxa`/importações
+ * feitas antes desta reformulação — o wizard novo nunca envia códigos).
+ * Pedido não cancelado nem passa pelo motor: sempre incluído.
+ * @param {object} p pedido já com operação resolvida
+ * @param {Set<string>} codigosSemTaxa
+ */
+function classificarComMotor(p, codigosSemTaxa) {
+  if (!ehCancelado(p.situacao)) {
+    return { ...p, statusConciliacao: STATUS_CONCILIACAO.INCLUIDO, semTaxaInformado: false, classificacaoCancelamento: null, classificacaoMotivo: null, classificacaoNivelConfianca: null, classificacaoRegra: null };
+  }
+  const r = classificarCancelamento(p);
+  const semTaxaManual = codigosSemTaxa.has(p.numeroPedido);
+  const statusConciliacao = semTaxaManual ? STATUS_CONCILIACAO.EXCLUIDO : resolverStatusConciliacao(r.classificacao);
+  return {
+    ...p, statusConciliacao, semTaxaInformado: semTaxaManual,
+    classificacaoCancelamento: r.classificacao, classificacaoMotivo: r.motivo,
+    classificacaoNivelConfianca: r.nivelConfianca, classificacaoRegra: r.regra,
+  };
 }
 
 /**
@@ -214,10 +274,11 @@ export async function conciliarPreview({ organizacaoId, unidadeId, arquivo, codi
   const validacaoCodigos = [...codigosSet].map((c) => validarCodigo(c, pedidosPorNumero));
 
   // Conciliação + cálculos de taxas + desempenho dos entregadores: só nos
-  // pedidos elegíveis (Subway + com entregador).
-  const classificados = pedidosElegiveis.map((p) => ({
-    ...p, statusConciliacao: classificarPedido(p, codigosSet), semTaxaInformado: codigosSet.has(p.numeroPedido),
-  }));
+  // pedidos elegíveis (Subway + com entregador). A decisão de cada
+  // cancelamento vem do motor automático (classificarComMotor) — códigos
+  // digitados manualmente (`codigosSet`) continuam funcionando como
+  // override de compatibilidade, mas o wizard novo nunca os envia.
+  const classificados = pedidosElegiveis.map((p) => classificarComMotor(p, codigosSet));
   const resumo = resumoConciliacao(classificados);
   const entregadores = agruparPorEntregador(classificados).sort((a, b) => b.taxasValidas - a.taxasValidas);
   const avisos = await avisosDuplicidade({ unidadeId, hash: relatorio.hash, periodoInicio, periodoFim });
@@ -244,12 +305,17 @@ async function uploadOriginal({ buf, unidadeId, hash, nomeArquivo }) {
   return path;
 }
 
-async function registrarAuditoria({ importacaoId, organizacaoId, unidadeId, acao, codigosAntes = null, codigosDepois = null, taxasValidasAntes = null, taxasValidasDepois = null, motivo = null, snapshot = null, usuario }) {
+async function registrarAuditoria({
+  importacaoId, organizacaoId, unidadeId, acao, codigosAntes = null, codigosDepois = null,
+  taxasValidasAntes = null, taxasValidasDepois = null, motivo = null, snapshot = null, usuario,
+  pedidoId = null, numeroPedido = null, classificacaoAntes = null, classificacaoDepois = null,
+}) {
   const { error } = await supabase.from(TABELA_AUDIT).insert({
     importacao_id: importacaoId, organizacao_id: organizacaoId, unidade_id: unidadeId, acao,
     codigos_antes: codigosAntes, codigos_depois: codigosDepois,
     taxas_validas_antes: taxasValidasAntes, taxas_validas_depois: taxasValidasDepois,
-    motivo, snapshot,
+    motivo, snapshot, pedido_id: pedidoId, numero_pedido: numeroPedido,
+    classificacao_antes: classificacaoAntes, classificacao_depois: classificacaoDepois,
     usuario_id: usuario?.id || null, usuario_nome: usuario?.nome || null, usuario_email: usuario?.email || null,
   });
   if (error) console.error("[parser-food-delivery] falha ao registrar auditoria:", error.message);
@@ -281,6 +347,17 @@ function paraLinhaPedido(p, { importacaoId, organizacaoId, unidadeId }) {
     origem: p.origem, sem_taxa_informado: p.semTaxaInformado, status_conciliacao: p.statusConciliacao ?? null,
     operacao: p.operacao, operacao_motivo: p.operacaoMotivo, detalhes_pedido: p.detalhesPedido,
     dados_brutos: p.dadosBrutos,
+    // Timeline lida do relatório (motor de classificação de cancelamentos).
+    data_pronto: p.dataPronto ?? null, data_despachado: p.dataDespachado ?? null, data_aceito: p.dataAceito ?? null,
+    data_coletado: p.dataColetado ?? null, data_chegada_entrega: p.dataChegadaEntrega ?? null,
+    data_rejeitado: p.dataRejeitado ?? null, razao_rejeicao: p.razaoRejeicao ?? null, justificativa_rejeicao: p.justificativaRejeicao ?? null,
+    // Resultado da classificação automática — `classificacao_original` é o
+    // snapshot congelado no momento do import, nunca sobrescrito por um
+    // override manual posterior (auditoria: sempre dá pra ver o que o motor
+    // decidiu originalmente).
+    classificacao_cancelamento: p.classificacaoCancelamento ?? null, classificacao_motivo: p.classificacaoMotivo ?? null,
+    classificacao_nivel_confianca: p.classificacaoNivelConfianca ?? null, classificacao_regra: p.classificacaoRegra ?? null,
+    classificacao_original: p.classificacaoCancelamento ?? null,
   };
 }
 
@@ -311,8 +388,8 @@ export async function confirmarImportacao({ organizacaoId, unidadeId, usuario, a
   const todosPedidos = classificarOperacoes(relatorio.pedidos, relatorio.colunaDetalhesEncontrada);
   const codigosSet = new Set((codigosSemTaxa || []).map((c) => String(c).trim()).filter(Boolean));
   const pedidosProcessados = todosPedidos.map((p) => (ehElegivelConciliacao(p)
-    ? { ...p, statusConciliacao: classificarPedido(p, codigosSet), semTaxaInformado: codigosSet.has(p.numeroPedido) }
-    : { ...p, statusConciliacao: null, semTaxaInformado: false }));
+    ? classificarComMotor(p, codigosSet)
+    : { ...p, statusConciliacao: null, semTaxaInformado: false, classificacaoCancelamento: null, classificacaoMotivo: null, classificacaoNivelConfianca: null, classificacaoRegra: null }));
   const pedidosElegiveis = pedidosProcessados.filter(ehElegivelConciliacao);
   const filtragem = resumoFiltragem(pedidosProcessados);
   const resumo = resumoConciliacao(pedidosElegiveis);
@@ -329,6 +406,7 @@ export async function confirmarImportacao({ organizacaoId, unidadeId, usuario, a
     coluna_detalhes_encontrada: relatorio.colunaDetalhesEncontrada,
     entregues: resumo.entregues, cancelados: resumo.cancelados,
     cancelados_com_taxa: resumo.canceladosComTaxa, cancelados_sem_taxa: resumo.canceladosSemTaxa,
+    cancelados_recebem_taxa: resumo.canceladosRecebemTaxa, cancelados_nao_recebem_taxa: resumo.canceladosNaoRecebemTaxa, cancelados_revisao: resumo.canceladosRevisao,
     taxas_brutas: resumo.taxasBrutas, taxas_descartadas: resumo.taxasDescartadas, taxas_validas: resumo.taxasValidas,
     codigos_sem_taxa: [...codigosSet], status: "concluida",
     usuario_id: usuario?.id || null, usuario_nome: usuario?.nome || null, usuario_email: usuario?.email || null,
@@ -429,12 +507,14 @@ export async function editarCodigosSemTaxa({ organizacaoId, unidadeId, importaca
 
   const resumo = resumoConciliacao(classificados.filter(ehElegivelConciliacao).map((p) => ({
     situacao: p.situacao, taxaEntregador: numOuNulo(p.taxa_entregador), statusConciliacao: p.statusConciliacao,
+    classificacaoCancelamento: p.classificacao_cancelamento ?? null,
   })));
 
   const { data: salvo, error: eImp } = await supabase.from(TABELA_IMPORT).update({
     codigos_sem_taxa: codigosDepois,
     entregues: resumo.entregues, cancelados: resumo.cancelados,
     cancelados_com_taxa: resumo.canceladosComTaxa, cancelados_sem_taxa: resumo.canceladosSemTaxa,
+    cancelados_recebem_taxa: resumo.canceladosRecebemTaxa, cancelados_nao_recebem_taxa: resumo.canceladosNaoRecebemTaxa, cancelados_revisao: resumo.canceladosRevisao,
     taxas_brutas: resumo.taxasBrutas, taxas_descartadas: resumo.taxasDescartadas, taxas_validas: resumo.taxasValidas,
   }).eq("id", importacaoId).select("*").single();
   if (eImp) throw ApiError.badRequest(eImp.message);
@@ -452,6 +532,68 @@ export async function editarCodigosSemTaxa({ organizacaoId, unidadeId, importaca
   const pedidosElegiveisApi = pedidosApi.filter(ehElegivelConciliacao);
   const pedidosIgnoradosApi = pedidosApi.filter((p) => !ehElegivelConciliacao(p)).map(paraApiPedidoIgnorado);
   const entregadores = agruparPorEntregador(pedidosElegiveisApi).sort((a, b) => b.taxasValidas - a.taxasValidas);
+  return { importacao: paraApiImportacao(salvo), resumo, entregadores, pedidos: pedidosElegiveisApi, pedidosIgnorados: pedidosIgnoradosApi };
+}
+
+// ---------------------------------------------------------------------------
+// ALTERAÇÃO MANUAL DE UMA CLASSIFICAÇÃO AUTOMÁTICA (item 29 — sempre com
+// motivo obrigatório, sempre preservando o que o motor decidiu originalmente
+// em `classificacao_cancelamento`/`classificacao_original`, nunca sobrescrito
+// aqui). REVISAR não é um destino válido de override — o override serve
+// exatamente pra RESOLVER um REVISAR (ou corrigir um recebe/não recebe) para
+// uma das duas decisões financeiras finais.
+// ---------------------------------------------------------------------------
+export async function alterarClassificacaoCancelamento({ organizacaoId, unidadeId, importacaoId, pedidoId, classificacaoFinal, motivo: motivoRaw, usuario }) {
+  const unidade = await resolverUnidade({ organizacaoId, unidadeId });
+  if (![CLASSIFICACAO_CANCELAMENTO.RECEBE_TAXA, CLASSIFICACAO_CANCELAMENTO.NAO_RECEBE_TAXA].includes(classificacaoFinal)) {
+    throw ApiError.badRequest('Classificação inválida — informe "recebe_taxa" ou "nao_recebe_taxa".');
+  }
+  const motivo = v.texto(motivoRaw, "Motivo da alteração", { min: 3, max: 500 });
+
+  const { data: importacao, error: eImp } = await supabase.from(TABELA_IMPORT).select("*").eq("unidade_id", unidade.id).eq("id", importacaoId).maybeSingle();
+  if (eImp) throw ApiError.internal(eImp.message);
+  if (!importacao) throw ApiError.notFound("Importação não encontrada.");
+
+  const { data: pedido, error: ePed } = await supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA).eq("id", pedidoId).eq("importacao_id", importacaoId).maybeSingle();
+  if (ePed) throw ApiError.internal(ePed.message);
+  if (!pedido) throw ApiError.notFound("Pedido não encontrado nesta importação.");
+  if (!ehCancelado(pedido.situacao)) throw ApiError.badRequest("Só é possível alterar a classificação de pedidos cancelados.");
+  if (!temEntregador(pedido.entregador)) throw ApiError.badRequest("Este pedido não tem entregador atribuído — não faz parte da conciliação.");
+
+  const classificacaoAntes = pedido.status_conciliacao;
+  const statusConciliacao = resolverStatusConciliacao(classificacaoFinal);
+
+  const { error: eUp } = await supabase.from(TABELA_PEDIDOS).update({
+    status_conciliacao: statusConciliacao,
+    classificacao_override_usuario_id: usuario?.id || null, classificacao_override_usuario_nome: usuario?.nome || null,
+    classificacao_override_usuario_email: usuario?.email || null, classificacao_override_motivo: motivo,
+    classificacao_override_em: new Date().toISOString(),
+  }).eq("id", pedidoId);
+  if (eUp) throw ApiError.internal(`Falha ao alterar classificação: ${eUp.message}`);
+
+  await registrarAuditoria({
+    importacaoId, organizacaoId, unidadeId: unidade.id, acao: "classificacao_alterada",
+    pedidoId, numeroPedido: pedido.numero_pedido, classificacaoAntes, classificacaoDepois: statusConciliacao,
+    taxasValidasAntes: numOuNulo(importacao.taxas_validas), motivo, usuario,
+  });
+
+  // Recalcula o resumo da importação inteira (mesma técnica de editarCodigosSemTaxa).
+  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA).eq("importacao_id", importacaoId);
+  if (e2) throw ApiError.internal(e2.message);
+  const pedidosApi = (pedidosRows || []).map(paraApiPedido);
+  const pedidosElegiveisApi = pedidosApi.filter(ehElegivelConciliacao);
+  const pedidosIgnoradosApi = pedidosApi.filter((p) => !ehElegivelConciliacao(p)).map(paraApiPedidoIgnorado);
+  const resumo = resumoConciliacao(pedidosElegiveisApi);
+  const entregadores = agruparPorEntregador(pedidosElegiveisApi).sort((a, b) => b.taxasValidas - a.taxasValidas);
+
+  const { data: salvo, error: eImp2 } = await supabase.from(TABELA_IMPORT).update({
+    entregues: resumo.entregues, cancelados: resumo.cancelados,
+    cancelados_com_taxa: resumo.canceladosComTaxa, cancelados_sem_taxa: resumo.canceladosSemTaxa,
+    cancelados_recebem_taxa: resumo.canceladosRecebemTaxa, cancelados_nao_recebem_taxa: resumo.canceladosNaoRecebemTaxa, cancelados_revisao: resumo.canceladosRevisao,
+    taxas_brutas: resumo.taxasBrutas, taxas_descartadas: resumo.taxasDescartadas, taxas_validas: resumo.taxasValidas,
+  }).eq("id", importacaoId).select("*").single();
+  if (eImp2) throw ApiError.badRequest(eImp2.message);
+
   return { importacao: paraApiImportacao(salvo), resumo, entregadores, pedidos: pedidosElegiveisApi, pedidosIgnorados: pedidosIgnoradosApi };
 }
 

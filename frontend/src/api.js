@@ -284,6 +284,8 @@ export const pfdImportarPreview = (payload) => postJson(`${PFD}/importar/preview
 export const pfdConciliarPreview = (payload) => postJson(`${PFD}/conciliar/preview`, payload);
 export const pfdConciliarConfirmar = (payload) => postJson(`${PFD}/conciliar/confirmar`, payload);
 export const pfdEditarCodigos = (id, codigosSemTaxa) => postJson(`${PFD}/importacoes/${id}/codigos-sem-taxa`, { codigosSemTaxa });
+export const pfdAlterarClassificacao = (id, pedidoId, { classificacaoFinal, motivo }) =>
+  postJson(`${PFD}/importacoes/${id}/pedidos/${pedidoId}/classificacao`, { classificacaoFinal, motivo });
 export const pfdExcluirImportacao = (id, motivo) => postJson(`${PFD}/importacoes/${id}/excluir`, { motivo });
 
 // ---------- Martin Brower (integração com o portal da distribuidora) ----------

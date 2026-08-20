@@ -8,6 +8,7 @@ import {
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
   totalDeducoes, receitaAposDeducoes, saldoPercentual, projecaoMensal,
   snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros, listaDesempenhoDiario, ultimoDesempenhoConhecido,
+  desempenhoParaTicketMedio,
   confiabilidadeProjecao, validarOutrasDeducoes,
   inconsistencias, STATUS_DIA, indicadorAplicavel, statusIndicador, saldoMeta,
   distribuirValorMensal, distribuirQuantidadeMensal, recalcularDistribuicaoMensal,
@@ -304,6 +305,9 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   // (`linhas`, não `linhasComDados` — nunca escondemos um snapshot já salvo
   // mesmo que o dia em si não conte como "resolvido com dados").
   const snapshot = snapshotFinanceiroMaisRecente(linhas);
+  // Par (valor bruto, pedidos) pra Ticket Médio — mesma fonte única de
+  // Lançamentos/Histórico (ver cards.ticketMedio, abaixo).
+  const parTicketMedio = desempenhoParaTicketMedio(linhas);
   const cardValores = {
     valorVendasIfood: snapshot ? Number(snapshot.valor_vendas_ifood) : null,
     taxasComissoes: snapshot?.taxas_comissoes != null ? Number(snapshot.taxas_comissoes) : null,
@@ -344,6 +348,12 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     servicosPromocoes: { valor: cardValores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, saldo: saldos.servicos_promocoes, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
     totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, saldo: saldos.total_deducoes, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
     receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
+    // Ticket médio (Desempenho) — indicador OPERACIONAL, nunca deriva do
+    // Financeiro. Usa o par mais confiável do mês inteiro (diário real
+    // acumulado, ou soma das fatias do Lançamento Mensal quando não há
+    // nenhum lançamento diário real — ver dashboardExecutivo.calc.js#
+    // desempenhoParaTicketMedio), nunca um dia isolado.
+    ticketMedio: { valor: ticketMedio(parTicketMedio?.valorVendasBruto ?? null, parTicketMedio?.qtdVendas ?? null) },
   };
 
   // Projeção: o snapshot já É o acumulado de dia 1 até `data_lancamento` —
@@ -527,6 +537,16 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   const snapshotsPorUnidade = [...linhasPorUnidade.values()]
     .map((linhasDaUnidade) => snapshotFinanceiroMaisRecente(linhasDaUnidade))
     .filter(Boolean);
+  // Ticket médio agregado = soma dos totais (valor bruto e pedidos) do par
+  // mais confiável DE CADA UNIDADE, dividida no fim — nunca a média dos
+  // tickets médios de cada unidade (mesmo raciocínio de "soma dos totais,
+  // não média de médias" usado pro Financeiro acima).
+  const paresTicketPorUnidade = [...linhasPorUnidade.values()]
+    .map((linhasDaUnidade) => desempenhoParaTicketMedio(linhasDaUnidade))
+    .filter(Boolean);
+  const somarPares = (campo) => (paresTicketPorUnidade.length
+    ? paresTicketPorUnidade.reduce((s, p) => s + p[campo], 0) : null);
+  const ticketMedioAgregado = ticketMedio(somarPares("valorVendasBruto"), somarPares("qtdVendas"));
   const somaEntreUnidades = (campo) => {
     const valoresCampo = snapshotsPorUnidade.map((s) => s[campo]).filter((v) => v != null);
     return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
@@ -596,6 +616,7 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
       servicosPromocoes: { valor: valores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
       totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
       receitaAposDeducoes: { valor: base != null ? receitaAposDeducoes(base, totalDed) : null, percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
+      ticketMedio: { valor: ticketMedioAgregado },
     },
     indicadoresRentabilidade: Object.fromEntries(
       Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, {
@@ -1075,7 +1096,6 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
   for (let mes = 1; mes <= 12; mes++) {
     const dias = diasDoMes(ano, mes);
     const linhasMes = (data ?? []).filter((r) => r.data_lancamento >= dias[0] && r.data_lancamento <= dias[dias.length - 1]);
-    const linhasComDados = linhasMes.filter((r) => r.status === "finalizado" && r.situacao !== "sem_operacao");
     const linhasFinalizadas = linhasMes.filter((r) => r.status === "finalizado");
     // Faturamento = Financeiro (fonte de verdade) = snapshot acumulado mais
     // recente do mês, nunca soma entre dias (um dia finalizado pode não ter
@@ -1095,18 +1115,15 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     const diasVencidosNoMes = dias.filter((d) => d <= hojeIso).length;
     const diasPendentes = Math.max(diasVencidosNoMes - diasFinalizados - diasRascunho, 0);
 
-    // Ticket médio: Desempenho também é ACUMULADO do mês agora (mesma
-    // lógica do Financeiro) — nunca soma entre dias (somaria acumulado
-    // sobre acumulado, mesmo bug que o Financeiro já teve). Pega o par
-    // mais recente (qtd + valor bruto conhecidos NO MESMO dia) — a razão
-    // entre dois acumulados é o ticket médio válido do mês até ali. Um mês
-    // de puro lançamento mensal (sem Desempenho nenhum, campos sempre null
-    // nessas linhas) resulta corretamente em `null`, não em "R$ 0,00".
-    const parDesempenhoMaisRecente = linhasComDados
-      .filter((r) => r.qtd_vendas != null && r.valor_vendas_bruto != null)
-      .reduce((mais, r) => (!mais || r.data_lancamento > mais.data_lancamento ? r : mais), null);
-    const qtdVendas = parDesempenhoMaisRecente ? Number(parDesempenhoMaisRecente.qtd_vendas) : null;
-    const valorVendasBrutoPareado = parDesempenhoMaisRecente ? Number(parDesempenhoMaisRecente.valor_vendas_bruto) : null;
+    // Ticket médio: mesma fonte única de Lançamentos/Visão Geral (ver
+    // dashboardExecutivo.calc.js#desempenhoParaTicketMedio) — prioriza o
+    // lançamento diário real mais recente com os dois lados conhecidos (já
+    // é o ACUMULADO do mês até ali); sem nenhum, soma de volta as fatias do
+    // Lançamento Mensal (nunca pega uma fatia isolada, nunca faz média de
+    // tickets diários). Um mês sem nenhum dado de Desempenho resulta
+    // corretamente em `null`, não em "R$ 0,00".
+    const parTicketMedio = desempenhoParaTicketMedio(linhasMes);
+    const qtdVendas = parTicketMedio?.qtdVendas ?? null;
 
     // Média diária: o snapshot já é o acumulado de dia 1 até `data_lancamento`
     // — divide por quantos dias ele cobre, nunca por "dias com dados" (ver
@@ -1124,7 +1141,7 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
       mes, ano, status: statusMesRotulo,
       diasPreenchidos: diasFinalizados, diasPendentes, diasRascunho,
       faturamento, qtdVendas,
-      ticketMedio: ticketMedio(qtdVendas != null ? valorVendasBrutoPareado : null, qtdVendas),
+      ticketMedio: ticketMedio(parTicketMedio?.valorVendasBruto ?? null, qtdVendas),
       totalDeducoes: totalDed,
       percentualDeducoes: percentual(totalDed, faturamento),
       receitaAposDeducoes: faturamento != null ? receitaAposDeducoes(faturamento, totalDed) : null,
@@ -1251,6 +1268,12 @@ function montarResumoLoteMensal(lote, linhasDoLote) {
     valorMedioAproximado: lote.dias_distribuidos > 0 ? valorTotalMensal / lote.dias_distribuidos : null,
     diasCriados: linhasDoLote.map((r) => r.data_lancamento).sort(),
     extras,
+    // Ticket médio do mês (Desempenho) = valor bruto de vendas ÷ quantidade
+    // de pedidos, MESMA função central do diário (ver
+    // dashboardExecutivo.calc.js#ticketMedio) — nunca um campo manual, e
+    // nunca deriva do Financeiro. Sem os dois totais informados, fica null
+    // ("Não informado" no frontend), nunca 0.
+    ticketMedio: ticketMedio(extras.valorVendasBrutoTotal, extras.qtdVendasTotal),
     camposPendentes,
     criadoEm: lote.created_at,
     criadoPor: { id: lote.usuario_id ?? null, nome: lote.usuario_nome ?? null, email: lote.usuario_email ?? null },

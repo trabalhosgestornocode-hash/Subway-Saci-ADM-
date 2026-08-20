@@ -13,7 +13,7 @@ import {
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
   recalcularDistribuicaoMensal, snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros,
-  listaDesempenhoDiario, ultimoDesempenhoConhecido,
+  listaDesempenhoDiario, ultimoDesempenhoConhecido, desempenhoParaTicketMedio,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -373,6 +373,73 @@ describe("snapshotFinanceiroMaisRecente", () => {
     const snap = snapshotFinanceiroMaisRecente(linhas);
     assert.equal(snap.valor_vendas_ifood, 500);
     assert.equal(snap.data_lancamento, "2026-08-01");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// desempenhoParaTicketMedio — fonte única do par (valor bruto, pedidos) pro
+// Ticket Médio em Lançamentos, Visão Geral (unidade e agregado) e Histórico.
+// Mesma prioridade de snapshotFinanceiroMaisRecente, adaptada pro Desempenho:
+// diário real acumulado primeiro; soma das fatias do Lançamento Mensal só
+// como último recurso; nunca mistura as duas fontes; nunca faz média de
+// tickets médios diários (item 6 do pedido: "evitar média de médias").
+// ---------------------------------------------------------------------------
+describe("desempenhoParaTicketMedio", () => {
+  test("sem nenhum dado de Desempenho => null (nunca R$0,00 fingido)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", qtd_vendas: null, valor_vendas_bruto: null },
+    ];
+    assert.equal(desempenhoParaTicketMedio(linhas), null);
+  });
+
+  test("pega o par diário real MAIS RECENTE (já é o acumulado do mês até ali) — não soma entre dias", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", qtd_vendas: 50, valor_vendas_bruto: 4000 },
+      { data_lancamento: "2026-08-11", qtd_vendas: 108, valor_vendas_bruto: 4668.53 },
+    ];
+    const par = desempenhoParaTicketMedio(linhas);
+    assert.equal(par.qtdVendas, 108);
+    assert.ok(perto(par.valorVendasBruto, 4668.53, 0.01));
+  });
+
+  test("dia com só um dos dois lados é ignorado na busca pelo par mais recente", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", qtd_vendas: 50, valor_vendas_bruto: 4000 },
+      { data_lancamento: "2026-08-11", qtd_vendas: 120, valor_vendas_bruto: null }, // só um lado — não conta
+    ];
+    const par = desempenhoParaTicketMedio(linhas);
+    assert.equal(par.qtdVendas, 50);
+    assert.equal(par.valorVendasBruto, 4000);
+  });
+
+  test("sem lançamento diário real, soma as fatias do Lançamento Mensal (total ÷ total, nunca fatia isolada)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", origem_lancamento: "distribuicao_mensal", qtd_vendas: 53, valor_vendas_bruto: 2580.65 },
+      { data_lancamento: "2026-08-02", origem_lancamento: "distribuicao_mensal", qtd_vendas: 53, valor_vendas_bruto: 2580.65 },
+      { data_lancamento: "2026-08-03", origem_lancamento: "distribuicao_mensal", qtd_vendas: 54, valor_vendas_bruto: 2580.65 },
+    ];
+    const par = desempenhoParaTicketMedio(linhas);
+    assert.equal(par.qtdVendas, 160); // 53+53+54 — NUNCA a fatia de um dia isolado
+    assert.ok(perto(par.valorVendasBruto, 7741.95, 0.01));
+  });
+
+  test("Lançamento Mensal com só um dos dois totais informado => null (nunca mistura um lado ausente)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", origem_lancamento: "distribuicao_mensal", qtd_vendas: 53, valor_vendas_bruto: null },
+      { data_lancamento: "2026-08-02", origem_lancamento: "distribuicao_mensal", qtd_vendas: 53, valor_vendas_bruto: null },
+    ];
+    assert.equal(desempenhoParaTicketMedio(linhas), null);
+  });
+
+  test("lançamento diário real sempre vence a distribuição mensal, mesmo mais antigo (nunca mistura as duas fontes)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-10", origem_lancamento: "distribuicao_mensal", qtd_vendas: 53, valor_vendas_bruto: 2580.65 },
+      { data_lancamento: "2026-08-15", origem_lancamento: "distribuicao_mensal", qtd_vendas: 53, valor_vendas_bruto: 2580.65 },
+      { data_lancamento: "2026-08-05", qtd_vendas: 108, valor_vendas_bruto: 4668.53 },
+    ];
+    const par = desempenhoParaTicketMedio(linhas);
+    assert.equal(par.qtdVendas, 108);
+    assert.ok(perto(par.valorVendasBruto, 4668.53, 0.01));
   });
 });
 

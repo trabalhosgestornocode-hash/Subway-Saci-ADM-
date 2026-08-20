@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  classificarPedido, resumoConciliacao, agruparPorEntregador, validarCodigo, extrairCodigos, temEntregador, STATUS_CONCILIACAO,
+  classificarPedido, resumoConciliacao, agruparPorEntregador, validarCodigo, extrairCodigos, temEntregador, ehCancelado, STATUS_CONCILIACAO,
+  resolverStatusConciliacao,
 } from "../src/modules/parser-food-delivery/parserFoodDelivery.calc.js";
+import { CLASSIFICACAO_CANCELAMENTO } from "../src/modules/parser-food-delivery/parserFoodDelivery.classificacao.js";
 
 // ---------- a regra de conciliação (item 3 do pedido) ----------
 test("classificarPedido: não cancelado é sempre incluído", () => {
@@ -16,6 +18,12 @@ test("classificarPedido: cancelado, COM entregador, com código informado descar
 });
 test("classificarPedido: situação é comparada sem acento/caixa", () => {
   assert.equal(classificarPedido({ numeroPedido: "1", situacao: "CANCELADO", entregador: "Ana" }, new Set(["1"])), STATUS_CONCILIACAO.EXCLUIDO);
+});
+
+test("ehCancelado reconhece somente variantes explícitas e normalizadas", () => {
+  assert.equal(ehCancelado(" Cancelado pelo restaurante "), true);
+  assert.equal(ehCancelado("CANCELADA"), true);
+  assert.equal(ehCancelado("cancelamento em análise"), false);
 });
 
 // ---------- complemento: pedido sem entregador não entra em NADA da conta ----------
@@ -81,6 +89,17 @@ test("agruparPorEntregador: pedido sem entregador não aparece no ranking de tax
   assert.equal(g.some((e) => e.entregador === "—"), false);
 });
 
+test("agruparPorEntregador unifica variações seguras de caixa, acento e espaços", () => {
+  const r = agruparPorEntregador([
+    { entregador: "Ana  Silva", situacao: "Finalizado", taxaEntregador: 10, statusConciliacao: "incluido" },
+    { entregador: "ANA SILVA", situacao: "Finalizado", taxaEntregador: 12, statusConciliacao: "incluido" },
+    { entregador: "Ána Silva", situacao: "Finalizado", taxaEntregador: 8, statusConciliacao: "incluido" },
+  ]);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].entregador, "Ana Silva");
+  assert.equal(r[0].taxasValidas, 30);
+});
+
 // ---------- validação de código digitado (item 2 do pedido) ----------
 test("validarCodigo cobre encontrado/não encontrado/não cancelado", () => {
   const mapa = new Map([["1", { situacao: "Cancelado", entregador: "Ana" }], ["2", { situacao: "Finalizado", entregador: "Ana" }]]);
@@ -115,4 +134,50 @@ test("validarCodigo avisa quando o pedido não tem entregador, em vez de tratar 
 
 test("extrairCodigos separa por vírgula, espaço e quebra de linha, sem duplicar", () => {
   assert.deepEqual(extrairCodigos("111, 222 333\n111"), ["111", "222", "333"]);
+});
+
+// ---------- resolverStatusConciliacao: ponte entre o motor automático e a conciliação financeira ----------
+test("resolverStatusConciliacao: recebe_taxa mantém a taxa (cancelado_com_taxa)", () => {
+  assert.equal(resolverStatusConciliacao(CLASSIFICACAO_CANCELAMENTO.RECEBE_TAXA), STATUS_CONCILIACAO.CANCELADO_COM_TAXA);
+});
+test("resolverStatusConciliacao: nao_recebe_taxa descarta a taxa (excluido)", () => {
+  assert.equal(resolverStatusConciliacao(CLASSIFICACAO_CANCELAMENTO.NAO_RECEBE_TAXA), STATUS_CONCILIACAO.EXCLUIDO);
+});
+test("resolverStatusConciliacao: revisar MANTÉM a taxa por padrão (decisão do usuário — nunca retém pagamento em revisão)", () => {
+  assert.equal(resolverStatusConciliacao(CLASSIFICACAO_CANCELAMENTO.REVISAR), STATUS_CONCILIACAO.CANCELADO_COM_TAXA);
+});
+
+// ---------- resumoConciliacao: contadores da análise automática (seção 25/53 do pedido) ----------
+test("resumoConciliacao conta recebe/não recebe/revisão separadamente da conciliação financeira", () => {
+  const pedidos = [
+    { situacao: "Finalizado", taxaEntregador: 10, statusConciliacao: "incluido" },
+    { situacao: "Cancelado", taxaEntregador: 11, statusConciliacao: "cancelado_com_taxa", classificacaoCancelamento: "recebe_taxa" },
+    { situacao: "Cancelado", taxaEntregador: 8, statusConciliacao: "excluido", classificacaoCancelamento: "nao_recebe_taxa" },
+    { situacao: "Cancelado", taxaEntregador: 16, statusConciliacao: "cancelado_com_taxa", classificacaoCancelamento: "revisar" },
+  ];
+  const r = resumoConciliacao(pedidos);
+  assert.equal(r.canceladosRecebemTaxa, 1);
+  assert.equal(r.canceladosNaoRecebemTaxa, 1);
+  assert.equal(r.canceladosRevisao, 1);
+  // revisar mantém a taxa -> entra em canceladosComTaxa/taxasValidas normalmente
+  assert.equal(r.canceladosComTaxa, 2);
+  assert.equal(r.canceladosSemTaxa, 1);
+  assert.equal(r.taxasValidas, 10 + 11 + 16);
+});
+
+// ---------- item 53 do pedido: consistência financeira entre resumo/entregadores/conciliação ----------
+test("consistência financeira: soma dos entregadores bate com taxasValidas do resumo, incluindo um pedido em revisão", () => {
+  const pedidos = [
+    { entregador: "Ana", situacao: "Finalizado", taxaEntregador: 20, statusConciliacao: "incluido", classificacaoCancelamento: null },
+    { entregador: "Ana", situacao: "Cancelado", taxaEntregador: 11, statusConciliacao: "cancelado_com_taxa", classificacaoCancelamento: "recebe_taxa" },
+    { entregador: "Bruno", situacao: "Cancelado", taxaEntregador: 8, statusConciliacao: "excluido", classificacaoCancelamento: "nao_recebe_taxa" },
+    { entregador: "Bruno", situacao: "Cancelado", taxaEntregador: 16, statusConciliacao: "cancelado_com_taxa", classificacaoCancelamento: "revisar" },
+  ];
+  const resumo = resumoConciliacao(pedidos);
+  const entregadores = agruparPorEntregador(pedidos);
+  const somaEntregadores = entregadores.reduce((acc, e) => acc + e.taxasValidas, 0);
+  assert.equal(Math.round(somaEntregadores * 100) / 100, resumo.taxasValidas);
+  assert.equal(resumo.taxasValidas, 20 + 11 + 16);
+  const bruno = entregadores.find((e) => e.entregador === "Bruno");
+  assert.equal(bruno.canceladosRevisao, 1);
 });

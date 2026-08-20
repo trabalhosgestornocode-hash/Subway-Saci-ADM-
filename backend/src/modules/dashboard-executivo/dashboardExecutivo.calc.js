@@ -398,6 +398,45 @@ export function snapshotFinanceiroMaisRecente(linhas, ateDataIso = null) {
 }
 
 /**
+ * Par (valorVendasBruto, qtdVendas) do mês pra calcular o TICKET MÉDIO —
+ * fonte única usada por Lançamentos (histórico), Visão Geral (unidade e
+ * agregado) e visão anual. Mesma prioridade que `snapshotFinanceiroMaisRecente`
+ * já usa pro Financeiro, adaptada pro par de Desempenho:
+ *
+ * 1) Lançamento diário REAL (não fatia de Lançamento Mensal) mais recente
+ *    com os dois lados conhecidos — já é o ACUMULADO do mês até aquele dia
+ *    (o franqueado informa assim, ver dashboardExecutivoForm.js).
+ * 2) Sem nenhum lançamento diário real com o par completo: soma de volta as
+ *    fatias do Lançamento Mensal (`origem_lancamento === 'distribuicao_mensal'`)
+ *    — nunca pega a fatia de UM dia isolado (que é só uma divisão
+ *    proporcional do total, não um ticket médio de verdade).
+ *
+ * Nunca mistura as duas fontes no mesmo cálculo, e nunca faz média de
+ * tickets médios diários — sempre "soma dos totais, dividida no fim" (ver
+ * `ticketMedio`, acima).
+ * @param {Array<{data_lancamento: string, origem_lancamento?: string|null, qtd_vendas?: number|null, valor_vendas_bruto?: number|null}>} linhas
+ * @returns {{valorVendasBruto: number, qtdVendas: number}|null}
+ */
+export function desempenhoParaTicketMedio(linhas) {
+  const reais = (linhas ?? []).filter((r) =>
+    r.origem_lancamento !== "distribuicao_mensal" && r.qtd_vendas != null && r.valor_vendas_bruto != null);
+  const maisRecente = reais.reduce((mais, r) => (!mais || r.data_lancamento > mais.data_lancamento ? r : mais), null);
+  if (maisRecente) {
+    return { valorVendasBruto: Number(maisRecente.valor_vendas_bruto), qtdVendas: Number(maisRecente.qtd_vendas) };
+  }
+
+  const distribuidas = (linhas ?? []).filter((r) => r.origem_lancamento === "distribuicao_mensal");
+  const somar = (campo) => {
+    const valores = distribuidas.map((r) => r[campo]).filter((v) => v != null);
+    return valores.length ? valores.reduce((s, v) => s + Number(v), 0) : null;
+  };
+  const somaValor = somar("valor_vendas_bruto");
+  const somaQtd = somar("qtd_vendas");
+  if (somaValor == null || somaQtd == null) return null;
+  return { valorVendasBruto: somaValor, qtdVendas: somaQtd };
+}
+
+/**
  * Série do mês inteiro (um ponto por dia, mesmo formato de
  * `desempenhoOperacional.evolucaoDiaria`) só com os dias que têm snapshot
  * financeiro REAL — mesmo filtro de `snapshotFinanceiroMaisRecente`

@@ -3,14 +3,36 @@
 // escrita, para poder testar a regra sozinha.
 import { norm } from "./parserFoodDelivery.parser.js";
 import { OPERACAO, rotuloOperacao } from "./parserFoodDelivery.operacao.js";
+import { CLASSIFICACAO_CANCELAMENTO } from "./parserFoodDelivery.classificacao.js";
 
 export const STATUS_CONCILIACAO = {
   INCLUIDO: "incluido",             // taxa válida (entregue/finalizado ou qualquer situação não-cancelada)
-  EXCLUIDO: "excluido",             // cancelado E o usuário marcou como "sem taxa" -> taxa descartada
-  CANCELADO_COM_TAXA: "cancelado_com_taxa", // cancelado mas NÃO está na lista -> taxa continua válida
+  EXCLUIDO: "excluido",             // cancelado E não recebe taxa (motor automático ou override manual) -> taxa descartada
+  CANCELADO_COM_TAXA: "cancelado_com_taxa", // cancelado mas recebe taxa ou está em revisão -> taxa continua válida
 };
 
-export const ehCancelado = (situacao) => norm(situacao) === "cancelado";
+/**
+ * Traduz o resultado do motor de classificação automática
+ * (parserFoodDelivery.classificacao.js) pro status de conciliação
+ * financeira. REVISAR mantém a taxa por padrão — mesmo espírito do
+ * comportamento antigo ("cancelado sem código informado mantém a taxa") —
+ * só fica destacado como pendente na UI até alguém confirmar/reverter.
+ * @param {string} classificacaoCancelamento um de CLASSIFICACAO_CANCELAMENTO
+ * @returns {string} um de STATUS_CONCILIACAO
+ */
+export function resolverStatusConciliacao(classificacaoCancelamento) {
+  return classificacaoCancelamento === CLASSIFICACAO_CANCELAMENTO.NAO_RECEBE_TAXA
+    ? STATUS_CONCILIACAO.EXCLUIDO
+    : STATUS_CONCILIACAO.CANCELADO_COM_TAXA;
+}
+
+// Catálogo deliberadamente fechado: evita transformar qualquer texto parecido
+// em cancelamento, mas aceita as variantes reais mais comuns dos relatórios.
+const STATUS_CANCELADOS = new Set([
+  "cancelado", "cancelada", "cancelado pelo restaurante",
+  "cancelado pelo cliente", "cancelado pelo entregador",
+]);
+export const ehCancelado = (situacao) => STATUS_CANCELADOS.has(norm(situacao));
 /**
  * Pedido sem nome de entregador não entra em NADA da conciliação (item novo
  * do pedido) — não é o `classificarPedido` que decide isso: é filtrado uma
@@ -20,6 +42,9 @@ export const ehCancelado = (situacao) => norm(situacao) === "cancelado";
  * `classificarPedido` já garante que só chega pedido com entregador.
  */
 export const temEntregador = (entregador) => typeof entregador === "string" && entregador.trim() !== "";
+/** Chave de agregação segura: não tenta aproximar nomes diferentes, só remove variações de digitação. */
+export const chaveEntregador = (entregador) => norm(entregador).replace(/\s+/g, " ");
+const nomeExibicaoEntregador = (entregador) => String(entregador).trim().replace(/\s+/g, " ");
 
 /**
  * A ÚNICA regra de negócio da CONCILIAÇÃO em si (item 3 do pedido) — já
@@ -38,10 +63,12 @@ export function classificarPedido(pedido, codigosSemTaxa) {
 }
 
 /**
- * @param {Array<{numeroPedido:string, situacao:string|null, taxaEntregador:number|null, statusConciliacao:string}>} pedidos já classificados
+ * @param {Array<{numeroPedido:string, situacao:string|null, taxaEntregador:number|null, statusConciliacao:string,
+ *   classificacaoCancelamento?:string|null}>} pedidos já classificados
  */
 export function resumoConciliacao(pedidos) {
   let entregues = 0, cancelados = 0, canceladosComTaxa = 0, canceladosSemTaxa = 0;
+  let canceladosRecebemTaxa = 0, canceladosNaoRecebemTaxa = 0, canceladosRevisao = 0;
   let taxasBrutas = 0, taxasDescartadas = 0;
   for (const p of pedidos) {
     const taxa = p.taxaEntregador || 0;
@@ -50,6 +77,12 @@ export function resumoConciliacao(pedidos) {
       cancelados++;
       if (p.statusConciliacao === STATUS_CONCILIACAO.EXCLUIDO) { canceladosSemTaxa++; taxasDescartadas += taxa; }
       else canceladosComTaxa++;
+      // Contadores da ANÁLISE automática — só contam pedidos que já
+      // passaram pelo motor (importações antigas ficam com o campo nulo e
+      // simplesmente não entram aqui, sem quebrar o resumo).
+      if (p.classificacaoCancelamento === CLASSIFICACAO_CANCELAMENTO.RECEBE_TAXA) canceladosRecebemTaxa++;
+      else if (p.classificacaoCancelamento === CLASSIFICACAO_CANCELAMENTO.NAO_RECEBE_TAXA) canceladosNaoRecebemTaxa++;
+      else if (p.classificacaoCancelamento === CLASSIFICACAO_CANCELAMENTO.REVISAR) canceladosRevisao++;
     } else {
       entregues++;
     }
@@ -57,6 +90,7 @@ export function resumoConciliacao(pedidos) {
   const taxasValidas = taxasBrutas - taxasDescartadas;
   return {
     totalPedidos: pedidos.length, entregues, cancelados, canceladosComTaxa, canceladosSemTaxa,
+    canceladosRecebemTaxa, canceladosNaoRecebemTaxa, canceladosRevisao,
     taxasBrutas: arredondar(taxasBrutas), taxasDescartadas: arredondar(taxasDescartadas), taxasValidas: arredondar(taxasValidas),
   };
 }
@@ -73,16 +107,17 @@ export function agruparPorEntregador(pedidos) {
   const porNome = new Map();
   for (const p of pedidos) {
     if (!temEntregador(p.entregador)) continue;
-    const nome = p.entregador;
-    if (!porNome.has(nome)) {
-      porNome.set(nome, { entregador: nome, totalPedidos: 0, entregues: 0, canceladosComTaxa: 0, canceladosSemTaxa: 0, taxasValidas: 0 });
+    const chave = chaveEntregador(p.entregador);
+    if (!porNome.has(chave)) {
+      porNome.set(chave, { entregador: nomeExibicaoEntregador(p.entregador), totalPedidos: 0, entregues: 0, canceladosComTaxa: 0, canceladosSemTaxa: 0, canceladosRevisao: 0, taxasValidas: 0 });
     }
-    const g = porNome.get(nome);
+    const g = porNome.get(chave);
     g.totalPedidos++;
     const taxa = p.taxaEntregador || 0;
     if (ehCancelado(p.situacao)) {
       if (p.statusConciliacao === STATUS_CONCILIACAO.EXCLUIDO) g.canceladosSemTaxa++;
       else { g.canceladosComTaxa++; g.taxasValidas += taxa; }
+      if (p.classificacaoCancelamento === CLASSIFICACAO_CANCELAMENTO.REVISAR) g.canceladosRevisao++;
     } else {
       g.entregues++;
       g.taxasValidas += taxa;

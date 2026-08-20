@@ -51,6 +51,16 @@ export const editarCodigos = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
+// Alteração manual de UMA classificação automática de cancelamento (item 29).
+export const alterarClassificacao = asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const data = await service.alterarClassificacaoCancelamento({
+    ...tenant(req), importacaoId: req.params.id, pedidoId: req.params.pedidoId,
+    classificacaoFinal: body.classificacaoFinal, motivo: body.motivo, usuario: req.user,
+  });
+  res.json({ data });
+});
+
 export const excluirImportacao = asyncHandler(async (req, res) => {
   const data = await service.excluirImportacao({
     ...tenant(req), importacaoId: req.params.id, motivo: req.body?.motivo, usuario: req.user,

@@ -33,6 +33,18 @@ const ALIASES = {
   dataEntregue: ["data e horario entregue"],
   dataFinalizado: ["data e horario finalizado"],
   dataCancelado: ["data e horario cancelado"],
+  // Timeline logística do pedido (item 14/motor de classificação de
+  // cancelamentos, ver parserFoodDelivery.classificacao.js) — nenhuma entra
+  // em OBRIGATORIOS: relatório antigo sem essas colunas continua sendo lido
+  // normalmente, só que o motor cai em REVISAR por falta de evidência.
+  dataPronto: ["data e horario pronto"],
+  dataDespachado: ["data e horario despachado"],
+  dataAceito: ["data e horario aceito"],
+  dataColetado: ["data e horario coletado"],
+  dataChegadaEntrega: ["data da chegada para entrega", "data e horario chegada para entrega", "data chegada para entrega"],
+  dataRejeitado: ["data e horario rejeitado"],
+  razaoRejeicao: ["razao da rejeicao"],
+  justificativaRejeicao: ["justificativa da rejeicao"],
   origem: ["origem"],
   // Campo de composição/produtos do pedido — fonte principal da identificação
   // de operação (Subway x Açaí no Grau x outras), ver parserFoodDelivery.operacao.js.
@@ -45,6 +57,10 @@ const ROTULO = {
   razaoCancelamento: "Razão do cancelamento", justificativaCancelamento: "Justificativa do cancelamento",
   dataEntregue: "Data e horario (entregue)", dataFinalizado: "Data e horario (finalizado)",
   dataCancelado: "Data e horario (cancelado)", origem: "Origem", detalhesPedido: "Detalhes do pedido",
+  dataPronto: "Data e horario (pronto)", dataDespachado: "Data e horario (despachado)",
+  dataAceito: "Data e horario (aceito)", dataColetado: "Data e horario (coletado)",
+  dataChegadaEntrega: "Data da chegada para entrega", dataRejeitado: "Data e horario (rejeitado)",
+  razaoRejeicao: "Razão da rejeição", justificativaRejeicao: "Justificativa da rejeição",
 };
 // Colunas sem as quais o parser recusa o arquivo (a conciliação depende delas).
 const OBRIGATORIOS = ["numeroPedido", "dataHora", "situacao", "entregador", "taxaEntregador"];
@@ -84,6 +100,16 @@ function parseNumero(v) {
 /** "01/08/2026 00:15:35" (ou Date, se a planilha guardou como data real) -> ISO local, sem shift de fuso. */
 function parseDataHoraBr(v) {
   if (v == null || v === "") return null;
+  // `xlsx` entrega datas nativas como número serial quando a célula não foi
+  // marcada como date. Convertemos em UTC apenas para fazer a aritmética do
+  // calendário; o retorno continua sem sufixo de fuso, como as strings do
+  // relatório, preservando a hora local informada pela operação.
+  if (typeof v === "number" && Number.isFinite(v)) {
+    const segundos = Math.round(v * 86400);
+    const d = new Date(Date.UTC(1899, 11, 30) + segundos * 1000); // calendário Excel (inclui o ajuste de 1900)
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+  }
   if (v instanceof Date && !Number.isNaN(v.getTime())) {
     const p = (n) => String(n).padStart(2, "0");
     return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}T${p(v.getHours())}:${p(v.getMinutes())}:${p(v.getSeconds())}`;
@@ -160,6 +186,14 @@ export async function lerRelatorio(buf, nomeArquivo) {
       dataEntregue: indicePorCampo.dataEntregue != null ? parseDataHoraBr(linha[indicePorCampo.dataEntregue]) : null,
       dataFinalizado: indicePorCampo.dataFinalizado != null ? parseDataHoraBr(linha[indicePorCampo.dataFinalizado]) : null,
       dataCancelado: indicePorCampo.dataCancelado != null ? parseDataHoraBr(linha[indicePorCampo.dataCancelado]) : null,
+      dataPronto: indicePorCampo.dataPronto != null ? parseDataHoraBr(linha[indicePorCampo.dataPronto]) : null,
+      dataDespachado: indicePorCampo.dataDespachado != null ? parseDataHoraBr(linha[indicePorCampo.dataDespachado]) : null,
+      dataAceito: indicePorCampo.dataAceito != null ? parseDataHoraBr(linha[indicePorCampo.dataAceito]) : null,
+      dataColetado: indicePorCampo.dataColetado != null ? parseDataHoraBr(linha[indicePorCampo.dataColetado]) : null,
+      dataChegadaEntrega: indicePorCampo.dataChegadaEntrega != null ? parseDataHoraBr(linha[indicePorCampo.dataChegadaEntrega]) : null,
+      dataRejeitado: indicePorCampo.dataRejeitado != null ? parseDataHoraBr(linha[indicePorCampo.dataRejeitado]) : null,
+      razaoRejeicao: indicePorCampo.razaoRejeicao != null && linha[indicePorCampo.razaoRejeicao] != null ? String(linha[indicePorCampo.razaoRejeicao]).trim() : null,
+      justificativaRejeicao: indicePorCampo.justificativaRejeicao != null && linha[indicePorCampo.justificativaRejeicao] != null ? String(linha[indicePorCampo.justificativaRejeicao]).trim() : null,
       origem: indicePorCampo.origem != null && linha[indicePorCampo.origem] != null ? String(linha[indicePorCampo.origem]).trim() : null,
       detalhesPedido: indicePorCampo.detalhesPedido != null && linha[indicePorCampo.detalhesPedido] != null ? String(linha[indicePorCampo.detalhesPedido]) : null,
       dadosBrutos,

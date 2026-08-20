@@ -135,9 +135,35 @@ function extrasInputsHtml(grupo) {
     <label class="cfg-campo"><span>${c.label}</span>
       <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="Não informado"></label>`).join("");
 }
+
+// Ticket médio do mês = valor bruto de vendas ÷ quantidade de pedidos —
+// MESMA fórmula central do diário e do backend (ver
+// dashboardExecutivo.calc.js#ticketMedio); aqui só uma prévia responsiva
+// durante a digitação, sem round-trip por tecla (mesmo espírito de
+// ticketMedioPreview em dashboardExecutivoForm.js). O valor salvo é sempre
+// o que o backend recalcula (ver montarResumoLoteMensal -> lote.ticketMedio).
+// Nunca assume zero: falta um dos dois lados -> null.
+function ticketMedioPreview(valorBruto, qtd) {
+  const v = valorBruto === "" || valorBruto == null ? null : Number(valorBruto);
+  const q = qtd === "" || qtd == null ? null : Number(qtd);
+  if (v == null || q == null || !(q > 0)) return null;
+  return v / q;
+}
+/** Campo somente-leitura do Ticket Médio, dentro do mesmo grid dos outros campos de Desempenho (item 8 do pedido). */
+function campoTicketMedioHtml(valor) {
+  return `<label class="cfg-campo"><span>Ticket médio do mês (calculado)</span><input type="text" id="lm-ticket-medio" value="${valor == null ? "—" : fmtMoeda(valor)}" disabled></label>`;
+}
+/** Atualiza o campo somente-leitura do Ticket Médio ao vivo — vira no-op fora do passo Desempenho/Edição, onde o campo não existe no DOM. */
+function atualizarTicketMedioPreview(m, extras) {
+  const campo = m.querySelector("#lm-ticket-medio");
+  if (!campo) return;
+  const valor = ticketMedioPreview(extras.valorVendasBrutoTotal, extras.qtdVendasTotal);
+  campo.value = valor == null ? "—" : fmtMoeda(valor);
+}
 function wireExtrasInputs(m) {
   m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
     lm.extras[e.target.dataset.extra] = e.target.value;
+    atualizarTicketMedioPreview(m, lm.extras);
   }));
 }
 
@@ -167,10 +193,11 @@ function renderPeriodo(m) {
 // campos/nomenclatura do Desempenho diário, só que consolidados no total do
 // período: qtd_vendas, valor_vendas_bruto, novos_clientes).
 function renderDesempenho(m) {
+  const ticket = ticketMedioPreview(lm.extras.valorVendasBrutoTotal, lm.extras.qtdVendasTotal);
   m.innerHTML = `
     ${cabecalhoPasso(`Desempenho — ${MESES[lm.mes - 1]}/${lm.ano}`)}
     <p class="dex-form-info">Dados operacionais do mês. Preencha caso tenha acesso a esses totais — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
-    <div class="cfg-form-grid">${extrasInputsHtml("desempenho")}</div>
+    <div class="cfg-form-grid">${extrasInputsHtml("desempenho")}${campoTicketMedioHtml(ticket)}</div>
     <div class="ed-acoes dex-form-acoes">
       <button class="btn btn-ghost" id="lm-voltar">Voltar</button>
       <button class="btn btn-primary" id="lm-avancar">Continuar</button>
@@ -237,6 +264,10 @@ function linhaExtraResumo(c, valorBruto) {
   const html = vazio ? `<span class="dex-lm-nao-informado">Não informado</span>` : (c.tipo === "money" ? fmtMoeda(Number(valorBruto)) : String(Number(valorBruto)));
   return linhaResumo(ROTULO_EXTRA[c.campo], html);
 }
+/** Mesmo formatador "valor ou Não informado" acima, mas pro Ticket Médio (item 1/7 do pedido: nunca R$ 0,00 quando falta um dos dois lados). */
+function ticketMedioResumoHtml(valor) {
+  return valor == null ? `<span class="dex-lm-nao-informado">Não informado</span>` : fmtMoeda(valor);
+}
 
 // PASSO 4 — Conferência: mesma prévia que o backend já calculava
 // (dashExecPreviewLancamentoMensal), só que agora em dois blocos separados
@@ -262,6 +293,7 @@ function renderConferencia(m, preview) {
     <div class="modal-sec-titulo">${icon("bar-chart", { size: 14 })} Desempenho <small>dados operacionais</small></div>
     <div class="dex-conf-grid">
       ${extrasDesempenho.length ? extrasDesempenho.map((c) => linhaExtraResumo(c, lm.extras[c.campo])).join("") : `<p class="dex-diag-vazio">Nenhum dado de Desempenho informado.</p>`}
+      ${linhaResumo("Ticket médio do mês (calculado)", ticketMedioResumoHtml(ticketMedioPreview(lm.extras.valorVendasBrutoTotal, lm.extras.qtdVendasTotal)))}
     </div>
     <div class="dex-form-info">
       Esses valores serão registrados como <b>distribuição estimada de faturamento mensal</b> — não como faturamento diário real. A grade de lançamentos vai marcar esses dias como "Estimado".
@@ -325,6 +357,7 @@ function renderGerenciamento(m) {
     <div class="modal-sec-titulo">${icon("bar-chart", { size: 14 })} Desempenho <small>dados operacionais</small></div>
     <div class="dex-conf-grid">
       ${extrasDesempenho.length ? extrasDesempenho.map((c) => linhaExtraResumo(c, lote.extras[c.campo])).join("") : `<p class="dex-diag-vazio">Nenhum dado de Desempenho informado.</p>`}
+      ${linhaResumo("Ticket médio do mês (calculado)", ticketMedioResumoHtml(lote.ticketMedio))}
     </div>
     ${lote.camposPendentes.length ? `<div class="dex-avisos"><b>${icon("paperclip", { size: 13 })} Dados complementares pendentes:</b> ${lote.camposPendentes.map((c) => escapeHtml(ROTULO_EXTRA[c])).join(", ")}. Use "Editar" para completar sem refazer o lançamento.</div>` : ""}
     <p class="dex-form-info">${rodape}</p>
@@ -357,6 +390,7 @@ function renderEdicao(m) {
   const inputsExtras = (grupo) => camposDoGrupo(grupo).map((c) => `
     <label class="cfg-campo"><span>${c.label}</span>
       <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="Não informado"></label>`).join("");
+  const ticket = ticketMedioPreview(ed.extras.valorVendasBrutoTotal, ed.extras.qtdVendasTotal);
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
     <div class="modal-head"><h2>${icon("pencil", { size: 13 })} Editar lançamento mensal — ${MESES[lote.mes - 1]}/${lote.ano}</h2></div>
@@ -369,7 +403,7 @@ function renderEdicao(m) {
     </div>
     <p class="dex-form-info">${icon("alert-triangle", { size: 13 })} Alterar o faturamento recalcula a distribuição pelos mesmos ${lote.diasDistribuidos} dia(s) já lançados — a soma continua batendo exatamente com o novo valor.</p>
     <div class="modal-sec-titulo">${icon("bar-chart", { size: 14 })} Desempenho <small>dados operacionais</small></div>
-    <div class="cfg-form-grid">${inputsExtras("desempenho")}</div>
+    <div class="cfg-form-grid">${inputsExtras("desempenho")}${campoTicketMedioHtml(ticket)}</div>
     <div class="ed-acoes dex-form-acoes">
       <button class="btn btn-ghost" id="lm-ed-cancelar">Cancelar</button>
       <button class="btn btn-primary" id="lm-ed-salvar">Salvar alterações</button>
@@ -384,6 +418,7 @@ function renderEdicao(m) {
 function wireExtrasInputsEdicao(m, ed) {
   m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
     ed.extras[e.target.dataset.extra] = e.target.value;
+    atualizarTicketMedioPreview(m, ed.extras);
   }));
 }
 
