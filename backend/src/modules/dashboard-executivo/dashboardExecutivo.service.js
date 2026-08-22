@@ -348,13 +348,14 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     servicosPromocoes: { valor: cardValores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, saldo: saldos.servicos_promocoes, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
     // Faltavam na Visão Geral (só entravam somados dentro de totalDeducoes,
     // sem card próprio) — quem conferia a conta de cabeça via só os 2 cards
-    // acima não batia com o Total de Deduções. Taxas de Entregadores tem
-    // meta configurável (só se aplica ao modelo marketplace — sem meta pro
-    // resto, statusIndicador/metaBarraHtml tratam isso como "sem dados"
-    // normalmente). Outras Deduções é um ajuste livre sem meta — só valor e
-    // % das vendas, sem pill/barra (mesmo padrão do card Receita Após
-    // Deduções, que também não tem meta).
-    taxasEntregadores: { valor: cardValores.taxasEntregadores, percentual: indicadoresRentabilidade.taxas_entregadores, meta: metas.taxas_entregadores ?? null, saldo: saldos.taxas_entregadores, status: statusIndicador(indicadoresRentabilidade.taxas_entregadores, metas.taxas_entregadores) },
+    // acima não batia com o Total de Deduções. Taxas de Entregadores só se
+    // aplica ao modelo Marketplace (Full Service não usa entregadores
+    // próprios do iFood) — `naoAplicavel` some com o card inteiro nesse
+    // caso (mesma regra de INDICADORES_POR_MODELO já usada no diagnóstico,
+    // não "sem dados": o indicador não existe pra esse modelo, ponto).
+    // Outras Deduções é um ajuste livre sem meta — só valor e % das vendas,
+    // sem pill/barra (mesmo padrão do card Receita Após Deduções).
+    taxasEntregadores: { valor: cardValores.taxasEntregadores, percentual: indicadoresRentabilidade.taxas_entregadores, meta: metas.taxas_entregadores ?? null, saldo: saldos.taxas_entregadores, status: statusIndicador(indicadoresRentabilidade.taxas_entregadores, metas.taxas_entregadores), naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, "taxas_entregadores") },
     outrasDeducoes: { valor: cardValores.outrasDeducoes, percentual: percentual(cardValores.outrasDeducoes, base) },
     totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, saldo: saldos.total_deducoes, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
     receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
@@ -547,6 +548,19 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   const snapshotsPorUnidade = [...linhasPorUnidade.values()]
     .map((linhasDaUnidade) => snapshotFinanceiroMaisRecente(linhasDaUnidade))
     .filter(Boolean);
+  // Taxas de Entregadores só se aplica ao modelo Marketplace — na visão
+  // agregada, unidades diferentes podem estar em modelos diferentes, então
+  // só escondemos o card quando NENHUMA unidade com dado no mês é
+  // Marketplace (card genuinamente vazio pra todo mundo). Se pelo menos uma
+  // for Marketplace, o card fica (é relevante pra ela, mesmo que outras
+  // unidades não o usem).
+  const idsUnidadesComDado = [...linhasPorUnidade.keys()];
+  const { data: unidadesComDado, error: erroUnidades } = idsUnidadesComDado.length
+    ? await supabase.from("unidades").select("id, modelo_logistico_ifood").in("id", idsUnidadesComDado)
+    : { data: [], error: null };
+  if (erroUnidades) throw ApiError.internal(erroUnidades.message);
+  const taxasEntregadoresNaoAplicavel = idsUnidadesComDado.length > 0
+    && !(unidadesComDado ?? []).some((u) => indicadorAplicavel(u.modelo_logistico_ifood, "taxas_entregadores"));
   // Ticket médio agregado = soma dos totais (valor bruto e pedidos) do par
   // mais confiável DE CADA UNIDADE, dividida no fim — nunca a média dos
   // tickets médios de cada unidade (mesmo raciocínio de "soma dos totais,
@@ -624,7 +638,7 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
       },
       taxasComissoes: { valor: valores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_comissoes, metas.taxas_comissoes) },
       servicosPromocoes: { valor: valores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
-      taxasEntregadores: { valor: valores.taxasEntregadores, percentual: indicadoresRentabilidade.taxas_entregadores, meta: metas.taxas_entregadores ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_entregadores, metas.taxas_entregadores) },
+      taxasEntregadores: { valor: valores.taxasEntregadores, percentual: indicadoresRentabilidade.taxas_entregadores, meta: metas.taxas_entregadores ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_entregadores, metas.taxas_entregadores), naoAplicavel: taxasEntregadoresNaoAplicavel },
       outrasDeducoes: { valor: valores.outrasDeducoes, percentual: percentual(valores.outrasDeducoes, base) },
       totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
       receitaAposDeducoes: { valor: base != null ? receitaAposDeducoes(base, totalDed) : null, percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
