@@ -516,6 +516,16 @@ function metaBarraHtml(cardIndicador) {
 function cardsPrincipais(cards) {
   const s1 = cards.taxasComissoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   const s2 = cards.servicosPromocoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
+  // Taxas de Entregadores e Outras Deduções só entravam somadas dentro do
+  // Total de Deduções, sem card próprio — quem conferia a conta de cabeça
+  // via só Taxas e Comissões + Serviços e Promoções não batia com o Total.
+  // Taxas de Entregadores só se aplica ao modelo marketplace (sem meta
+  // configurada pro resto — statusIndicador já devolve "sem_dados" nesse
+  // caso, sem precisar de tratamento especial aqui). Outras Deduções é um
+  // ajuste livre sem meta associada, então não tem pill de status nem
+  // barra — só valor e % das vendas, mesmo padrão do card Receita Após
+  // Deduções (que também não tem meta).
+  const s4 = cards.taxasEntregadores?.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   const s3 = cards.totalDeducoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   return [
     cardDef("Financeiro oficial (iFood)", fmtMoeda(cards.faturamento.valor),
@@ -526,6 +536,8 @@ function cardsPrincipais(cards) {
       "Valor bruto de vendas ÷ quantidade de pedidos do mês (Desempenho — indicador operacional). Nunca deriva do Financeiro nem soma tickets médios diários."),
     cardDef("Taxas e Comissões", fmtMoeda(cards.taxasComissoes.valor), `${fmtPct(cards.taxasComissoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s1.chave]}">${s1.label}</span>`, "Comissão iFood + taxa de transação de pagamento online.", "", metaBarraHtml(cards.taxasComissoes)),
     cardDef("Serviços e Promoções", fmtMoeda(cards.servicosPromocoes.valor), `${fmtPct(cards.servicosPromocoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s2.chave]}">${s2.label}</span>`, "Custo de campanhas e promoções ativas no iFood.", "", metaBarraHtml(cards.servicosPromocoes)),
+    cardDef("Taxas de Entregadores", fmtMoeda(cards.taxasEntregadores?.valor), `${fmtPct(cards.taxasEntregadores?.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s4.chave]}">${s4.label}</span>`, "Repasse aos entregadores parceiros — só se aplica ao modelo logístico Marketplace.", "", metaBarraHtml(cards.taxasEntregadores ?? {})),
+    cardDef("Outras Deduções", fmtMoeda(cards.outrasDeducoes?.valor), `${fmtPct(cards.outrasDeducoes?.percentual)} das vendas`, "Ajustes diversos lançados no Financeiro (positivos ou negativos) — não tem meta própria."),
     cardDef("Total de Deduções", fmtMoeda(cards.totalDeducoes.valor), `${fmtPct(cards.totalDeducoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s3.chave]}">${s3.label}</span>`, "Taxas e comissões + serviços e promoções + taxas de entregadores + outras deduções.", "", metaBarraHtml(cards.totalDeducoes)),
     cardDef("Receita Após Deduções", fmtMoeda(cards.receitaAposDeducoes.valor), `${fmtPct(cards.receitaAposDeducoes.percentual)} das vendas`, "Valor das vendas menos o total de deduções.", "destaque"),
   ].join("");
