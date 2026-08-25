@@ -8,7 +8,8 @@ import * as v from "../../shared/validar.js";
 import { lerRelatorio, decodificarArquivo } from "./parserFoodDelivery.parser.js";
 import {
   classificarPedido, resumoConciliacao, agruparPorEntregador, validarCodigo, temEntregador,
-  ehCancelado, resolverStatusConciliacao, STATUS_CONCILIACAO,
+  ehCancelado, resolverStatusConciliacao, STATUS_CONCILIACAO, somarResumosPeriodo,
+  limitesDoMes, inicioMesSeguinte, resolverCandidatoPedido, explicarCancelamento,
 } from "./parserFoodDelivery.calc.js";
 import { classificarOperacao, OPERACAO, rotuloOperacao } from "./parserFoodDelivery.operacao.js";
 import { classificarCancelamento, CLASSIFICACAO_CANCELAMENTO } from "./parserFoodDelivery.classificacao.js";
@@ -629,4 +630,127 @@ export async function excluirImportacao({ organizacaoId, unidadeId, importacaoId
   if (eDel) throw ApiError.badRequest(eDel.message);
 
   return { excluido: true, importacaoId };
+}
+
+// ---------------------------------------------------------------------------
+// AGENTE CRESCER (Etapa D) — leitura agregada/pontual para as tools do
+// agente. Nenhuma reclassificação aqui: a decisão de cada cancelamento já
+// foi tomada pelo motor determinístico (classificacao.js) no momento da
+// importação — estas funções só leem/somam/filtram o que já existe.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resumo AGREGADO de cancelamentos/taxas de um MÊS inteiro — soma os
+ * resumos já calculados de todas as importações CONCLUÍDAS cujo período de
+ * referência está TOTALMENTE contido no mês pedido (decisão explícita:
+ * nunca soma parcialmente uma importação que atravessa a virada do mês, o
+ * que poderia contar um pedido só "meio" dentro do período perguntado).
+ * Responde "quantos pedidos foram cancelados este mês", "qual o valor das
+ * taxas envolvidas", "quantos recebem/não recebem taxa", "quantos precisam
+ * de revisão".
+ * @param {{organizacaoId: string, unidadeId: string, ano: number, mes: number}} p
+ */
+export async function resumoCancelamentosPeriodo({ organizacaoId, unidadeId, ano, mes }) {
+  await resolverUnidade({ organizacaoId, unidadeId });
+  const { inicio, fim } = limitesDoMes(ano, mes);
+
+  const { data, error } = await supabase.from(TABELA_IMPORT).select("*")
+    .eq("unidade_id", unidadeId).eq("status", "concluida")
+    .gte("periodo_inicio", inicio).lte("periodo_fim", fim);
+  if (error) throw ApiError.internal(error.message);
+
+  const importacoes = (data ?? []).map(paraApiImportacao);
+  return {
+    periodo: { ano, mes },
+    ...somarResumosPeriodo(importacoes),
+    importacoesConsideradas: importacoes.map((i) => ({
+      id: i.id, nomeArquivo: i.nomeArquivo, periodoInicio: i.periodoInicio, periodoFim: i.periodoFim,
+    })),
+  };
+}
+
+export const MAX_CANCELAMENTOS_TOOL = 30;
+const LIMITE_CANCELAMENTOS_PADRAO = 15;
+
+/**
+ * Lista os cancelamentos (individuais) de um MÊS, já classificados pelo
+ * motor automático — nunca reclassifica, só filtra/pagina o que já está
+ * gravado. Filtra por `data_hora` do PEDIDO (não pelo período da
+ * importação): um pedido só entra se ele mesmo aconteceu dentro do mês
+ * pedido, com `classificacao_cancelamento` preenchido (== cancelado E
+ * elegível para conciliação — pedidos fora da conciliação ou de
+ * importações anteriores ao motor automático nunca têm esse campo).
+ * Responde "quais cancelamentos precisam da minha atenção" (classificacao:
+ * "revisar") e "quais têm confiança muito alta" (nivelConfianca).
+ * @param {{organizacaoId: string, unidadeId: string, ano: number, mes: number,
+ *   classificacao?: string, nivelConfianca?: string, limite?: number}} p
+ */
+export async function listarCancelamentosPeriodo({ organizacaoId, unidadeId, ano, mes, classificacao, nivelConfianca, limite }) {
+  await resolverUnidade({ organizacaoId, unidadeId });
+  const { inicio } = limitesDoMes(ano, mes);
+  const fimExclusivo = inicioMesSeguinte(ano, mes);
+
+  let q = supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA)
+    .eq("unidade_id", unidadeId)
+    .not("classificacao_cancelamento", "is", null)
+    .gte("data_hora", inicio).lt("data_hora", fimExclusivo);
+  if (classificacao) q = q.eq("classificacao_cancelamento", classificacao);
+  if (nivelConfianca) q = q.eq("classificacao_nivel_confianca", nivelConfianca);
+
+  const limiteAplicado = Math.min(MAX_CANCELAMENTOS_TOOL, Math.max(1, Number(limite) || LIMITE_CANCELAMENTOS_PADRAO));
+  const { data, error } = await q.order("data_hora", { ascending: false }).limit(limiteAplicado + 1);
+  if (error) throw ApiError.internal(error.message);
+
+  const linhas = data ?? [];
+  const truncado = linhas.length > limiteAplicado;
+  return {
+    periodo: { ano, mes },
+    itens: linhas.slice(0, limiteAplicado).map(paraResumoCancelamento),
+    limiteAplicado, truncado,
+  };
+}
+
+/** Recorte enxuto de 1 linha de pedido cancelado — usado tanto na listagem quanto na explicação individual. */
+function paraResumoCancelamento(row) {
+  const p = paraApiPedido(row);
+  return {
+    numeroPedido: p.numeroPedido, dataHora: p.dataHora, taxaEntregador: p.taxaEntregador,
+    classificacaoCancelamento: p.classificacaoCancelamento, classificacaoMotivo: p.classificacaoMotivo,
+    classificacaoNivelConfianca: p.classificacaoNivelConfianca, classificacaoRegra: p.classificacaoRegra,
+    statusConciliacao: p.statusConciliacao,
+    correcaoManual: p.classificacaoOverrideEm ? {
+      usuarioNome: p.classificacaoOverrideUsuarioNome, motivo: p.classificacaoOverrideMotivo, em: p.classificacaoOverrideEm,
+    } : null,
+  };
+}
+
+/**
+ * Explica UM pedido específico — "por que o pedido #XXXX recebe/não recebe
+ * taxa?". Busca por `numeroPedido` dentro da unidade; se houver mais de um
+ * candidato (o mesmo número pode repetir em relatórios de meses diferentes),
+ * `ano`/`mes` desambiguam pelo mês do pedido — sem eles, mais de 1 resultado
+ * volta como "ambiguo" (nunca escolhe sozinho). A decisão de candidato e a
+ * montagem da explicação são funções PURAS (calc.js) — aqui só a consulta.
+ * @param {{organizacaoId: string, unidadeId: string, numeroPedido: string, ano?: number, mes?: number}} p
+ */
+export async function consultarCancelamento({ organizacaoId, unidadeId, numeroPedido, ano, mes }) {
+  await resolverUnidade({ organizacaoId, unidadeId });
+  const numero = String(numeroPedido ?? "").trim();
+  if (!numero) throw ApiError.badRequest("Informe o número do pedido.");
+
+  const { data, error } = await supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA)
+    .eq("unidade_id", unidadeId).eq("numero_pedido", numero);
+  if (error) throw ApiError.internal(error.message);
+
+  const candidatos = (data ?? []).map(paraApiPedido);
+  const escolha = resolverCandidatoPedido(candidatos, { ano, mes });
+
+  if (escolha.status === "nao_encontrado") return { encontrado: false, motivo: "nao_encontrado", numeroPedido: numero };
+  if (escolha.status === "ambiguo") {
+    return {
+      encontrado: false, motivo: "ambiguo", numeroPedido: numero,
+      candidatos: escolha.candidatos.map((p) => ({ dataHora: p.dataHora, situacao: p.situacao })),
+    };
+  }
+  return explicarCancelamento(escolha.candidato);
 }

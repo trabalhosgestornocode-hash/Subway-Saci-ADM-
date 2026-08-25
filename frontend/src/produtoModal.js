@@ -10,6 +10,7 @@ import { UNIDADES_BASE, CATEGORIA_INSUMO_ROTULO } from "./config.js";
 import { fmtMoeda, fmtPct, fmtTexto, escapeHtml, statusCmv, toast } from "./utils.js";
 import { registrarResetDeContexto } from "./contextoEscopo.js";
 import { icon } from "./icons.js";
+import { botaoContextualHtml, ligarBotoesContextuais, sincronizarContextoPainel } from "./agentePainel.js";
 
 const CAT_LABEL = {
   sanduiche: "Sanduíche", salada: "Salada", bebida: "Bebida", sobremesa: "Sobremesa",
@@ -29,7 +30,13 @@ function fmtQtd(q, un) {
 
 let overlay = null;
 let insumosCache = null; // lista de insumos ativos (para o seletor)
-function fechar() { overlay?.remove(); overlay = null; insumosCache = null; document.removeEventListener("keydown", onKey); }
+function fechar() {
+  overlay?.remove(); overlay = null; insumosCache = null;
+  document.removeEventListener("keydown", onKey);
+  // "produto aberto" deixou de existir — Page Context do Agente Crescer volta pra "lista".
+  state.detalheAberto.produto = null;
+  sincronizarContextoPainel();
+}
 function onKey(e) { if (e.key === "Escape") fechar(); }
 
 // Trocar de empresa/unidade com o modal aberto fecha o modal e joga fora o
@@ -54,6 +61,27 @@ export async function abrirProdutoModal(produtoId) {
       `<button class="modal-close" aria-label="Fechar">×</button><div class="estado erro"><span class="estado-ic">${icon("alert-triangle", { size: 22 })}</span><h3>Erro ao carregar</h3><p>${escapeHtml(e.message)}</p></div>`;
     overlay.querySelector(".modal-close").addEventListener("click", fechar);
   }
+}
+
+/**
+ * Abre o produto pelo NOME — usada pela action "product_detail" do Agente
+ * Crescer (Etapa F.1). Nunca recebe um id do Claude: procura na lista de
+ * CMV já carregada (`state.linhas`, a MESMA que alimenta a tela Produtos/
+ * CMV) e só então chama `abrirProdutoModal` com o id real encontrado. Se o
+ * nome não bater com nada carregado, avisa e não abre nada — nunca inventa
+ * um produto.
+ * @param {string} nome
+ */
+export async function abrirProdutoPorNome(nome) {
+  const alvo = String(nome ?? "").trim().toLowerCase();
+  if (!alvo) return;
+  const linha = (state.linhas ?? []).find((r) => String(r.nome ?? "").trim().toLowerCase() === alvo)
+    ?? (state.linhas ?? []).find((r) => String(r.nome ?? "").trim().toLowerCase().includes(alvo));
+  if (!linha?.produto_id) {
+    toast(`Não encontrei "${nome}" na lista de produtos carregada.`);
+    return;
+  }
+  await abrirProdutoModal(linha.produto_id);
 }
 
 const STATUS_CLASSE = { completa: "ok", sem_componentes: "muted", insumo_sem_custo: "bad", insumo_inativo: "warn", sem_preco: "warn" };
@@ -92,6 +120,7 @@ function render(p) {
         ${p.ativo ? "" : '<span class="pill muted">Inativo</span>'}
         <span class="pill ${STATUS_CLASSE[st.chave] ?? "muted"}">${escapeHtml(st.label)}</span>
       </div>
+      ${botaoContextualHtml("products_cmv_produto")}
     </div>
 
     <div class="modal-cmv-grid">
@@ -120,8 +149,15 @@ function render(p) {
     <p class="rodape">CMV = custo da ficha ÷ preço de venda. Não inclui taxas de canal (mostradas no simulador).</p>
   `;
 
+  // "produto aberto" pro Page Context do Agente Crescer — só o NOME, nunca
+  // custo/preço/id (ver state.js#detalheAberto). Atualiza mesmo em
+  // re-renders (após editar a ficha): o nome não muda, é idempotente.
+  state.detalheAberto.produto = p.nome;
+  sincronizarContextoPainel();
+
   const m = overlay.querySelector(".modal");
   m.querySelector(".modal-close").addEventListener("click", fechar);
+  ligarBotoesContextuais(m);
   if (editar) {
     m.querySelector("#pm-add-btn")?.addEventListener("click", () => abrirAddForm(p));
     m.querySelectorAll("[data-ficha-acao]").forEach((btn) =>

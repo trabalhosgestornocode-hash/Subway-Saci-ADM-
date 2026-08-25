@@ -30,6 +30,11 @@ export function createApp() {
   // necessário (relatórios do SW em base64) em vez de valer para a API toda.
   // A primeira chamada que casar vence — express.json não reprocessa req.body.
   app.use("/api/v1/vendas/importar", express.json({ limit: LIMITES_CORPO.vendasImportacao }));
+  // Cobre /importar/preview, /conciliar/preview e /conciliar/confirmar (todas
+  // levam o relatório .xls/.xlsx inteiro em base64 no corpo) — sem isto caía
+  // no limite `padrao` de 1 MB e falhava em qualquer relatório maior que uma
+  // amostra pequena (achado real ao testar um relatório de ~3 MB/1578 pedidos).
+  app.use("/api/v1/parser-food-delivery", express.json({ limit: LIMITES_CORPO.parserFoodDeliveryImportacao }));
   app.use("/api/v1/integracoes/martin-brower/import-manual", express.json({ limit: LIMITES_CORPO.martinBrowerImportacao }));
   // Cobre /bonificacao-mensal/importar E /bonificacao-mensal/importar/preview
   // (prefixo casa os dois) — os 2 PDFs da Visio vão nesse corpo.

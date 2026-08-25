@@ -12,27 +12,35 @@ import {
   mediaDiaria, somaValida, ticketMedioPonderado, projecaoFaturamento, ritmoNecessario, participacaoLoja, mesmaUnidadeVisio,
 } from "./bonificacaoMensal.calc.js";
 import { evaluateBonusMetric, resolverMetaVigente, totalBonificacao } from "./bonificacaoMensal.metas.js";
+import { avaliarElegibilidadeBonificacao, avaliarSuperRestaurante } from "./bonificacaoMensal.elegibilidade.js";
 
 const TABELA = "bonificacao_lancamentos_diarios";
 const TABELA_IMPORT = "bonificacao_importacoes";
 const TABELA_METAS = "bonificacao_metas";
 const TABELA_FAIXAS = "bonificacao_metas_faixas";
+const TABELA_REV_MENSAL = "bonificacao_rev_mensal";
 const BUCKET = "bonificacao-visio";
 
 // Indicadores sem fonte automática (item 76-B): lançamento manual próprio,
 // mas MESMA granularidade diária da Visio (item corrigido — a 1ª versão
 // usava uma tabela mensal à parte; migrations 042/043 criaram e reverteram
 // isso no mesmo dia). O valor mora nas colunas de sempre em
-// bonificacao_lancamentos_diarios (rev_nota, pesquisas_qtd, avaliacao_ifood,
+// bonificacao_lancamentos_diarios (pesquisas_qtd, avaliacao_ifood,
 // pedidos_chamado_pct — migration 028), uma por dia, agregadas no mês do
 // mesmo jeito que sempre foram (CAMPOS_INDICADOR abaixo).
 // Cancelamentos entrou nesta lista em 15/08/2026 (auditoria) — sem fonte
 // automática comprovada até hoje, mesmo tratamento dos outros 4.
-const INDICADORES_MANUAIS = ["rev", "pesquisas", "avaliacao_ifood", "pedidos_chamado", "cancelamentos"];
+//
+// REV SAIU DAQUI (virou mensal, migration 052): diferente de
+// Pesquisas/Nota iFood/Chamados/Cancelamentos, REV não é uma contagem ou
+// média que evolui dia a dia — é uma nota publicada pela operação UMA VEZ
+// por competência. Passou a morar em bonificacao_rev_mensal (ver
+// obterRevMensal/salvarRevMensal abaixo), granularidade unidade+ano+mês.
+const INDICADORES_MANUAIS = ["pesquisas", "avaliacao_ifood", "pedidos_chamado", "cancelamentos"];
 // campo da API (paraApiLancamento) por indicador manual — usado pro
 // calendário/lançamento por dia (obterCalendarioIndicador/salvarValorDiaIndicador).
 const CAMPO_API_INDICADOR_MANUAL = {
-  rev: "revNota", pesquisas: "pesquisasQtd", avaliacao_ifood: "avaliacaoIfood",
+  pesquisas: "pesquisasQtd", avaliacao_ifood: "avaliacaoIfood",
   pedidos_chamado: "pedidosChamadoPct", cancelamentos: "cancelamentosPct",
 };
 // Todos os indicadores com meta (espelha o check constraint de bonificacao_metas.indicador).
@@ -67,7 +75,9 @@ const CAMPOS_INDICADOR = {
   cancelamentos: (m) => mediaDiaria(m.lancamentos.map((l) => l.cancelamentosPct)),
   avaliacao_ifood: (m) => mediaDiaria(m.lancamentos.map((l) => l.avaliacaoIfood)),
   pedidos_chamado: (m) => mediaDiaria(m.lancamentos.map((l) => l.pedidosChamadoPct)),
-  rev: (m) => mediaDiaria(m.lancamentos.map((l) => l.revNota)),
+  // REV não é mais média de dias — é o valor ÚNICO da competência (migration
+  // 052). `m.revMensal` vem de bonificacao_rev_mensal, resolvido em obterMes().
+  rev: (m) => m.revMensal?.valor ?? null,
   // Pesquisas é CONTAGEM acumulada no mês, não média (item 34) — cada dia
   // informa quantas pesquisas novas chegaram.
   pesquisas: (m) => somaValida(m.lancamentos.map((l) => l.pesquisasQtd)),
@@ -302,7 +312,65 @@ export async function salvarMeta({ organizacaoId, unidadeId, usuario, indicador,
 }
 
 // ---------------------------------------------------------------------------
-// INDICADORES MANUAIS (REV/Pesquisas/Avaliação iFood/Pedidos com chamado) —
+// REV MENSAL (migration 052): 1 valor por unidade+mês,
+// nunca um por dia. Mesmo padrão de auditoria de salvarValorDiaIndicador,
+// só que sem o recorte "um dia" — a granularidade JÁ é o mês inteiro.
+// ---------------------------------------------------------------------------
+
+/** @param {{organizacaoId:string, unidadeId:string, ano:number, mes:number}} p */
+export async function obterRevMensal({ organizacaoId, unidadeId, ano, mes }) {
+  await resolverUnidade({ organizacaoId, unidadeId });
+  const { data, error } = await supabase.from(TABELA_REV_MENSAL).select("*")
+    .eq("unidade_id", unidadeId).eq("ano", ano).eq("mes", mes).maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  if (!data) return null;
+  return { valor: numOuNulo(data.valor), usuarioNome: data.usuario_nome ?? null, atualizadoEm: data.atualizado_em };
+}
+
+/**
+ * Lança/corrige o REV do mês. Upsert por (unidade, ano, mes) — nunca cria um
+ * segundo registro pro mesmo período (unique constraint da migration 052 é
+ * quem garante isso na última instância; aqui só refletimos o mesmo
+ * contrato pra dar um erro claro em vez de estourar 23505 cru).
+ * @param {{organizacaoId:string, unidadeId:string, usuario:object, ano:unknown, mes:unknown, valor:unknown}} p
+ */
+export async function salvarRevMensal({ organizacaoId, unidadeId, usuario, ano, mes, valor }) {
+  const unidade = await resolverUnidade({ organizacaoId, unidadeId });
+  const anoNum = Number(ano), mesNum = Number(mes);
+  if (!Number.isInteger(anoNum) || !Number.isInteger(mesNum) || mesNum < 1 || mesNum > 12) {
+    throw ApiError.badRequest("Informe ano e mês válidos.");
+  }
+  const valorNum = v.numeroOpcionalNulo(valor, "REV");
+  if (valorNum == null) throw ApiError.badRequest("Informe o valor de REV do mês.");
+  if (valorNum < 0) throw ApiError.badRequest("REV não pode ser negativo.");
+
+  const anterior = await obterRevMensal({ organizacaoId, unidadeId, ano: anoNum, mes: mesNum });
+
+  const { data: salvo, error } = await supabase.from(TABELA_REV_MENSAL)
+    .upsert({
+      organizacao_id: organizacaoId, unidade_id: unidadeId, ano: anoNum, mes: mesNum, valor: valorNum,
+      usuario_id: usuario?.id || null, usuario_nome: usuario?.nome || null,
+    }, { onConflict: "unidade_id,ano,mes" })
+    .select("*").single();
+  if (error) throw ApiError.badRequest(error.message);
+
+  await auditar({
+    atorId: usuario?.id ?? null, atorEmail: usuario?.email ?? null, atorTipo: "usuario",
+    acao: ACOES.BONIFICACAO_INDICADOR_LANCADO, entidade: "bonificacao_rev_mensal", entidadeId: salvo.id, organizacaoId,
+    detalhes: {
+      unidadeId, unidadeNome: unidade.nome, indicador: "rev", ano: anoNum, mes: mesNum,
+      valorAnterior: anterior?.valor ?? null, valorNovo: valorNum,
+      resumo: anterior?.valor != null
+        ? `REV de ${mesNum}/${anoNum} atualizado de ${anterior.valor} para ${valorNum}`
+        : `REV de ${mesNum}/${anoNum} lançado: ${valorNum}`,
+    },
+  });
+
+  return { valor: numOuNulo(salvo.valor), usuarioNome: salvo.usuario_nome ?? null, atualizadoEm: salvo.atualizado_em };
+}
+
+// ---------------------------------------------------------------------------
+// INDICADORES MANUAIS (Pesquisas/Avaliação iFood/Pedidos com chamado) —
 // acompanhamento DIÁRIO, igual à Visio (item corrigido a pedido do usuário:
 // a 1ª versão era mensal, ver migrations 042/043). O valor mora nas mesmas
 // colunas de sempre em bonificacao_lancamentos_diarios; estas funções só
@@ -393,9 +461,14 @@ export async function obterMes({ organizacaoId, unidadeId, ano, mes }) {
   const dias = diasDoMes(anoNum, mesNum);
   const primeiroDia = dias[0], ultimoDia = dias[dias.length - 1];
 
-  const [{ data: rows, error }, metasRaw] = await Promise.all([
+  const mesAtualIso = hojeIso.slice(0, 7);
+  const consultaIso = `${anoNum}-${String(mesNum).padStart(2, "0")}`;
+  const mesFechado = consultaIso < mesAtualIso;
+
+  const [{ data: rows, error }, metasRaw, revMensal] = await Promise.all([
     supabase.from(TABELA).select("*").eq("unidade_id", unidadeId).gte("data", primeiroDia).lte("data", ultimoDia).order("data"),
     carregarMetas({ unidadeId }),
+    obterRevMensal({ organizacaoId, unidadeId, ano: anoNum, mes: mesNum }),
   ]);
   if (error) throw ApiError.internal(error.message);
 
@@ -410,7 +483,7 @@ export async function obterMes({ organizacaoId, unidadeId, ano, mes }) {
   const projecao = projecaoFaturamento({ lancamentos, ano: anoNum, mes: mesNum, hojeIso });
 
   const metasVigentes = metasVigentesPorIndicador(metasRaw, primeiroDia);
-  const valorMensal = { mix, lancamentos };
+  const valorMensal = { mix, lancamentos, revMensal };
   const indicadores = {};
   for (const [indicador, calcular] of Object.entries(CAMPOS_INDICADOR)) {
     const valor = indicador === "faturamento" ? projecao.acumulado : calcular(valorMensal);
@@ -418,9 +491,40 @@ export async function obterMes({ organizacaoId, unidadeId, ano, mes }) {
   }
   const bonificacao = totalBonificacao(indicadores);
 
-  const mesAtualIso = hojeIso.slice(0, 7);
-  const consultaIso = `${anoNum}-${String(mesNum).padStart(2, "0")}`;
-  const mesFechado = consultaIso < mesAtualIso;
+  // ---- ELEGIBILIDADE DA BONIFICAÇÃO — critérios obrigatórios ------------
+  // Nota iFood, REV e Pesquisas NÃO contribuem R$ parcial (suas faixas em
+  // bonificacao_metas_faixas têm bonus=null desde a migration 052) — são um
+  // portão de tudo-ou-nada sobre a soma dos DEMAIS indicadores. O mínimo de
+  // cada um vem da MESMA fonte de sempre (bonificacao_metas), nunca
+  // hardcoded — se a unidade não tem a meta cadastrada, o critério fica de
+  // fora da decisão (ver bonificacaoMensal.elegibilidade.js).
+  const minimoDe = (indicador) => {
+    const f = metasVigentes[indicador]?.faixas?.[0];
+    return f ? (f.valorMin ?? f.valorMax ?? null) : null;
+  };
+  const elegibilidade = avaliarElegibilidadeBonificacao({
+    notaIfood: { valor: indicadores.avaliacao_ifood.valorAtual, minimo: minimoDe("avaliacao_ifood") },
+    rev: { valor: indicadores.rev.valorAtual, minimo: minimoDe("rev") },
+    pesquisas: { valor: indicadores.pesquisas.valorAtual, minimo: minimoDe("pesquisas") },
+    mesFechado,
+  });
+  // A bonificação BRUTA (soma das faixas dos indicadores comerciais/
+  // operacionais) fica preservada pra transparência — "seria R$X, mas..."
+  // (nunca esconder a consequência, mas também nunca confundir "calculado"
+  // com "pago"). O valor PAGÁVEL é que zera integralmente.
+  const bonificacaoBruta = bonificacao.atual;
+  if (elegibilidade.status === "nao_elegivel") bonificacao.atual = 0;
+
+  // ---- SUPER RESTAURANTE — agrupamento "Ifood: Super Restaurante" da ----
+  // planilha (Avaliação + Cancelamentos + Pedidos com Chamado). É SÓ o
+  // agrupamento visual — não é um portão de elegibilidade (isso é o bloco
+  // acima), não tem pontuação própria: apenas contagem de quantos dos 3
+  // estão dentro da própria meta.
+  const superRestaurante = avaliarSuperRestaurante({
+    avaliacaoIfood: { valor: indicadores.avaliacao_ifood.valorAtual, minimo: minimoDe("avaliacao_ifood") },
+    cancelamentos: { valor: indicadores.cancelamentos.valorAtual, minimo: minimoDe("cancelamentos") },
+    pedidosChamado: { valor: indicadores.pedidos_chamado.valorAtual, minimo: minimoDe("pedidos_chamado") },
+  });
 
   // próxima faixa de faturamento + ritmo necessário (itens 42-43)
   const fatIndicador = indicadores.faturamento;
@@ -440,6 +544,7 @@ export async function obterMes({ organizacaoId, unidadeId, ano, mes }) {
     calendario,
     resumo: {
       bonificacaoAtual: bonificacao.atual,
+      bonificacaoBruta,
       bonificacaoMaxima: bonificacao.maximo,
       metasAtingidas: bonificacao.metasAtingidas,
       metasComRegra: bonificacao.metasComRegra,
@@ -448,6 +553,9 @@ export async function obterMes({ organizacaoId, unidadeId, ano, mes }) {
     faturamento: { ...projecao, ritmoNecessarioProximaFaixa: ritmoFaturamento },
     mix,
     indicadores,
+    revMensal,
+    elegibilidade,
+    superRestaurante,
     diasPendentes,
     indicadoresAtencao: indicadoresAtencao.map((i) => i.indicador),
   };
@@ -472,16 +580,20 @@ export async function obterLancamentoPorData({ organizacaoId, unidadeId, data })
 // ---------------------------------------------------------------------------
 // LANÇAMENTO MANUAL (criação direta ou correção pós-importação — item 73)
 // ---------------------------------------------------------------------------
+// `revNota`/`rev_nota` SAI daqui de propósito (migration 052, Super
+// Restaurante): REV não é mais editável por dia, então não é mais um campo
+// gravável por este caminho — usa salvarRevMensal(). A coluna continua no
+// banco (dado legado, nunca apagado), só deixa de ser escrita.
 const CAMPOS_EDITAVEIS = [
   "faturamentoGeral", "ppdGeral", "faturamentoLoja", "ppdLoja", "qtdSanduichesLoja", "qtdBebidasLoja",
   "qtdAdicionaisLoja", "qtdDiversosLoja", "cmvPct", "ticketMedio", "avaliacaoIfood", "cancelamentosPct",
-  "pedidosChamadoPct", "revNota", "pesquisasQtd",
+  "pedidosChamadoPct", "pesquisasQtd",
 ];
 const CAMPO_DB = {
   faturamentoGeral: "faturamento_geral", ppdGeral: "ppd_geral", faturamentoLoja: "faturamento_loja", ppdLoja: "ppd_loja",
   qtdSanduichesLoja: "qtd_sanduiches_loja", qtdBebidasLoja: "qtd_bebidas_loja", qtdAdicionaisLoja: "qtd_adicionais_loja",
   qtdDiversosLoja: "qtd_diversos_loja", cmvPct: "cmv_pct", ticketMedio: "ticket_medio", avaliacaoIfood: "avaliacao_ifood",
-  cancelamentosPct: "cancelamentos_pct", pedidosChamadoPct: "pedidos_chamado_pct", revNota: "rev_nota", pesquisasQtd: "pesquisas_qtd",
+  cancelamentosPct: "cancelamentos_pct", pedidosChamadoPct: "pedidos_chamado_pct", pesquisasQtd: "pesquisas_qtd",
 };
 
 export async function upsertLancamentoManual({ organizacaoId, unidadeId, usuario, dados }) {
@@ -749,7 +861,7 @@ export async function processarImportacaoVisio({ organizacaoId, unidadeId, usuar
   // fresco que `camposVisio` acabou de gravar em `linha`, alguns campos
   // acima, com um valor desatualizado).
   if (existente) {
-    for (const dbKey of ["cmv_pct", "avaliacao_ifood", "cancelamentos_pct", "pedidos_chamado_pct", "rev_nota", "pesquisas_qtd"]) linha[dbKey] = existente[dbKey];
+    for (const dbKey of ["cmv_pct", "avaliacao_ifood", "cancelamentos_pct", "pedidos_chamado_pct", "pesquisas_qtd"]) linha[dbKey] = existente[dbKey];
     if (!parsedGeral) linha.ticket_medio = existente.ticket_medio;
   }
 
@@ -848,9 +960,15 @@ export async function listarHistoricoMeses({ organizacaoId, unidadeId, ano }) {
     const r = await obterMes({ organizacaoId, unidadeId, ano: anoNum, mes });
     meses.push({
       ano: anoNum, mes, mesFechado: r.mesFechado,
-      bonificacaoAtual: r.resumo.bonificacaoAtual, bonificacaoMaxima: r.resumo.bonificacaoMaxima,
+      bonificacaoAtual: r.resumo.bonificacaoAtual, bonificacaoBruta: r.resumo.bonificacaoBruta, bonificacaoMaxima: r.resumo.bonificacaoMaxima,
       metasAtingidas: r.resumo.metasAtingidas, metasComRegra: r.resumo.metasComRegra,
       faturamentoAcumulado: r.faturamento.acumulado,
+      // Elegibilidade da bonificação mensal (Nota iFood + REV + Pesquisas).
+      notaIfood: r.indicadores.avaliacao_ifood.valorAtual, rev: r.revMensal?.valor ?? null, pesquisas: r.indicadores.pesquisas.valorAtual,
+      elegibilidade: r.elegibilidade.status,
+      // Super Restaurante = Avaliação + Cancelamentos + Pedidos com Chamado.
+      cancelamentos: r.indicadores.cancelamentos.valorAtual, pedidosChamado: r.indicadores.pedidos_chamado.valorAtual,
+      superRestauranteDentroDaMeta: r.superRestaurante.dentroDaMeta, superRestauranteTotalComMeta: r.superRestaurante.totalComMeta,
     });
   }
   return meses.reverse();

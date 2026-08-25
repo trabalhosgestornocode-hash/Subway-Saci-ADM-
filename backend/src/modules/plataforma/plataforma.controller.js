@@ -15,6 +15,7 @@ import * as financeiro from "./plataforma.financeiro.service.js";
 import * as monitoramento from "./plataforma.monitoramento.service.js";
 import * as auditoria from "./plataforma.auditoria.service.js";
 import * as configuracao from "./plataforma.config.service.js";
+import * as agenteUso from "./plataforma.agenteUso.service.js";
 import { buscar } from "./plataforma.repo.js";
 
 const ok = (res, data, status = 200) => res.status(status).json({ data });
@@ -228,8 +229,9 @@ export const atualizacoes = asyncHandler(async (_req, res) => {
 });
 
 // ------------------------------------------------------------------------ IA
-// Idem: o que é verificável é se há chave configurada. O consumo real (tokens,
-// custo) só existe nas APIs da OpenAI/Anthropic, que exigem chamada própria.
+// O Agente Crescer está em produção (Fase 1/1.5) — consumo real (tokens,
+// custo estimado) agora vem de agente_uso (migration 049), medido a cada
+// interação, não das APIs de billing dos provedores.
 export const ia = asyncHandler(async (_req, res) => {
   const { grupos } = await configuracao.listarConfiguracoes();
   const apis = grupos.find((g) => g.chave === "api")?.itens ?? [];
@@ -244,13 +246,21 @@ export const ia = asyncHandler(async (_req, res) => {
       "Detecção de anomalias de CMV e desperdício",
       "Resumo diário da operação por unidade",
     ],
-    consumo: {
-      disponivel: false,
-      origem: "APIs de billing da OpenAI / Anthropic — exigem chamada própria com a chave da conta.",
-    },
-    observacao: "Nenhum agente está em execução. As chaves acima habilitam os recursos quando implementados.",
+    observacao: "Agente Crescer em produção (Dashboard Executivo + Diagnóstico + consulta diária). Consumo detalhado abaixo, medido por interação real.",
   });
 });
+
+// ---- Consumo do Agente Crescer (tokens/custo) — só medição, sem bloqueio.
+const filtroPeriodo = (req) => ({ periodo: req.query.periodo, desde: req.query.desde, ate: req.query.ate });
+
+export const consumoAgente = asyncHandler(async (req, res) =>
+  ok(res, await agenteUso.resumoConsumoAgente(filtroPeriodo(req))));
+
+export const consumoAgentePorOrganizacao = asyncHandler(async (req, res) =>
+  ok(res, await agenteUso.consumoAgentePorOrganizacao({ ...filtroPeriodo(req), pagina: req.query.pagina, porPagina: req.query.porPagina })));
+
+export const consumoAgentePorModelo = asyncHandler(async (req, res) =>
+  ok(res, await agenteUso.consumoAgentePorModelo(filtroPeriodo(req))));
 
 // Guarda-corpo: qualquer rota do painel que não exista devolve 404 com JSON, e
 // não a página do frontend (o static middleware já passou nesse ponto).

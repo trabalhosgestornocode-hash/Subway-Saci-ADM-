@@ -13,6 +13,7 @@ import {
 } from "./api.js";
 import { abrirImportarFoodDeliveryModal } from "./parserFoodDeliveryImportModal.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
+import { botaoContextualHtml, ligarBotoesContextuais, sincronizarContextoPainel } from "./agentePainel.js";
 
 const ABAS = [
   { id: "visao", icon: "📊", label: "Visão Geral" },
@@ -95,7 +96,25 @@ const fmtDataBr = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 const fmtPeriodo = (ini, fim) => (!ini ? "—" : ini === fim ? fmtDataBr(ini) : `${fmtDataBr(ini)} até ${fmtDataBr(fim)}`);
 const arred = (n) => Math.round(n * 100) / 100;
 
-export async function renderParserFoodDelivery() {
+// Rastreia o carregamento em andamento — usado por `abrirParserPedidoPorNumero`/
+// `abrirParserCancelamentos` (Etapa F.1) pra esperar `pfd.atual` estar
+// populado antes de procurar um pedido, já que `irPara()` (router.js) NUNCA
+// espera a view terminar de carregar (fire-and-forget). Sem isso, uma action
+// que navega e imediatamente procura um pedido quase sempre "não encontraria
+// nada", mesmo quando o pedido existe — só ainda não tinha chegado.
+let carregamentoAtual = Promise.resolve();
+
+export function renderParserFoodDelivery() {
+  carregamentoAtual = executarRenderParserFoodDelivery();
+  return carregamentoAtual;
+}
+
+/** Resolve quando o carregamento MAIS RECENTE da tela termina — ver comentário acima. */
+export async function aguardarCarregamentoParser() {
+  await carregamentoAtual;
+}
+
+async function executarRenderParserFoodDelivery() {
   const g = geracaoContexto();
   const view = el("#view");
   if (!view) return;
@@ -140,6 +159,27 @@ function irParaAba(aba) {
   pfd.aba = aba;
   el("#view")?.querySelectorAll(".dex-tab").forEach((b) => b.classList.toggle("ativo", b.dataset.aba === aba));
   renderAbaAtual();
+}
+
+/** Usada pela action "parser_cancelamentos" do Agente Crescer (Etapa F.1). */
+export function abrirParserCancelamentos() {
+  irParaAba("cancelamentos");
+}
+
+/**
+ * Usada pela action "parser_order" do Agente Crescer (Etapa F.1). Abre a
+ * aba de Cancelamentos e, se o pedido estiver na importação ATUALMENTE
+ * carregada, abre o drawer dele — nunca busca em outro período (isso exigiria
+ * uma consulta nova; se não achar, avisa em vez de inventar).
+ * @param {string} numero
+ */
+export async function abrirParserPedidoPorNumero(numero) {
+  irParaAba("cancelamentos");
+  const alvo = String(numero ?? "").trim();
+  if (!alvo) return;
+  const p = (pfd.atual?.pedidos ?? []).find((x) => x.numeroPedido === alvo);
+  if (!p) { toast(`O pedido #${alvo} não está no período atualmente carregado no Parser.`); return; }
+  abrirDrawerCancelamento(p.id);
 }
 
 async function aoConfirmarImportacao(resultado) {
@@ -187,7 +227,16 @@ async function abrirImportacao(id, { silencioso = false } = {}) {
   }
 }
 
+/** Espelha aba + período atuais em `state` pro Agente Crescer montar o Page Context (ver agentePageContext.js) — nunca lido de volta aqui. */
+function sincronizarEstadoAgente() {
+  const dataRef = pfd.periodo.ini || pfd.atual?.importacao?.periodoInicio || null;
+  const [ano, mes] = dataRef ? dataRef.split("-").map(Number) : [null, null];
+  state.contextoParser = { aba: pfd.aba, ano: ano || null, mes: mes || null };
+  sincronizarContextoPainel();
+}
+
 function renderAbaAtual() {
+  sincronizarEstadoAgente();
   const box = el("#pfd-conteudo");
   if (!box) return;
   if (pfd.aba === "historico") { box.innerHTML = skeletonTabela(); renderHistorico(box); atualizarPeriodoNav(); return; }
@@ -359,6 +408,10 @@ function fecharPfdDrawer() {
   setTimeout(() => alvo.remove(), 220);
   pfdDrawerEl = null;
   document.removeEventListener("keydown", onEscPfdDrawer);
+  // Fecha tanto o drawer de relatório quanto o de cancelamento — só este
+  // último preenche "pedido aberto", mas limpar sempre é seguro (idempotente).
+  state.detalheAberto.pedido = null;
+  sincronizarContextoPainel();
 }
 function onEscPfdDrawer(e) { if (e.key === "Escape") fecharPfdDrawer(); }
 function abrirPfdDrawer(html) {
@@ -626,6 +679,7 @@ function renderCancelamentos(box) {
       <div class="vd-f-bloco"><span class="vd-f-lbl">Classificação</span><div class="vd-chips">
         ${FILTROS_CANCELAMENTO.map(([v, l]) => `<button class="vd-chip ${v === pfd.filtrosCancelamentos.status ? "ativo" : ""}" data-status-canc="${v}">${l}</button>`).join("")}
       </div></div>
+      ${botaoContextualHtml("parser_food_delivery")}
     </div>
     <div id="pfd-tabela-cancelamentos"></div>`;
   el("#pfd-canc-busca").addEventListener("input", (e) => { pfd.filtrosCancelamentos.busca = e.target.value; renderTabelaCancelamentos(); });
@@ -634,6 +688,7 @@ function renderCancelamentos(box) {
     box.querySelectorAll("[data-status-canc]").forEach((x) => x.classList.toggle("ativo", x === b));
     renderTabelaCancelamentos();
   }));
+  ligarBotoesContextuais(box);
   renderTabelaCancelamentos();
 }
 
@@ -687,6 +742,10 @@ function abrirDrawerCancelamento(pedidoId) {
   if (!p) return;
   abrirPfdDrawer(drawerCancelamentoHtml(p));
   wireDrawerCancelamento(p);
+  // "pedido aberto" pro Page Context do Agente Crescer — só o número (ver
+  // state.js#detalheAberto), nunca valor/taxa/classificação.
+  state.detalheAberto.pedido = p.numeroPedido;
+  sincronizarContextoPainel();
 }
 
 function drawerCancelamentoHtml(p) {

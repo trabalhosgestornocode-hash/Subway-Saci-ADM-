@@ -93,6 +93,12 @@ export const helmetOptions = {
 export const LIMITES_CORPO = {
   padrao: "1mb",
   vendasImportacao: "30mb",   // relatórios CSV/Excel/PDF em base64
+  // Relatório de pedidos .xls/.xlsx em base64 (mesmo formato de vendasImportacao)
+  // — decodificarArquivo já capa o arquivo cru em 15 MB (parserFoodDelivery.parser.js),
+  // que vira ~20,5 MB em base64; 30 MB dá a mesma folga usada em vendasImportacao
+  // pro mesmo tipo de payload. Sem isto a rota caía no limite `padrao` de 1 MB e
+  // falhava com "Arquivo(s) grande(s) demais" em qualquer relatório acima de ~730 KB.
+  parserFoodDeliveryImportacao: "30mb",
   martinBrowerImportacao: "8mb", // JSON do loadItens colado pelo admin
   // Bonificação Mensal manda os DOIS PDFs da Visio (Geral + Loja) no mesmo
   // corpo — até 15 MB cada (ver MAX_ARQUIVO em visio-parser.js), +33% do

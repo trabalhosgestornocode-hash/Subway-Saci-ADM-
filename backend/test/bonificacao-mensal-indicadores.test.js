@@ -1,7 +1,9 @@
-// Testes dos indicadores manuais (REV/Pesquisas/Avaliação iFood/Pedidos com
-// chamado) — acompanhamento DIÁRIO, igual à Visio (item corrigido a pedido
-// do usuário; migrations 042/043 criaram e reverteram uma versão mensal no
-// mesmo dia). Roda contra o Supabase de produção (mesma ressalva das
+// Testes dos indicadores manuais (Pesquisas/Avaliação iFood/Pedidos com
+// chamado/Cancelamentos) — acompanhamento DIÁRIO, igual à Visio (item
+// corrigido a pedido do usuário; migrations 042/043 criaram e reverteram
+// uma versão mensal no mesmo dia). REV SAIU desta lista na migration 052 —
+// virou mensal de verdade, ver bonificacao-mensal-rev-mensal.test.js.
+// Roda contra o Supabase de produção (mesma ressalva das
 // demais suítes), por isso usa SEMPRE a unidade de teste isolada (migration
 // 041) — nunca a Subway Saci real — e uma data (2026-08-10) que não colide
 // com a data de fixture (2026-08-01/02) usada por bonificacao-mensal-
@@ -61,10 +63,10 @@ describe("Indicadores manuais — lançar, editar, calendário e histórico", ()
   });
 
   test("editar o mesmo dia atualiza (não cria 2ª linha) e preserva os outros campos do dia", async () => {
-    await salvarValorDiaIndicador({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "rev", data: DATA_TESTE, valor: 88 });
+    await salvarValorDiaIndicador({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "cancelamentos", data: DATA_TESTE, valor: 0.8 });
     const r = await salvarValorDiaIndicador({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "pesquisas", data: DATA_TESTE, valor: 9 });
     assert.equal(r.pesquisasQtd, 9);
-    assert.equal(r.revNota, 88, "lançar pesquisas não pode apagar o REV do mesmo dia");
+    assert.equal(r.cancelamentosPct, 0.8, "lançar pesquisas não pode apagar o Cancelamentos do mesmo dia");
 
     const { data: linhas } = await supabase.from("bonificacao_lancamentos_diarios").select("id").eq("unidade_id", SACI_UNIDADE_ID).eq("data", DATA_TESTE);
     assert.equal(linhas.length, 1, "continua sendo UMA linha do dia, não duplicou");
@@ -95,8 +97,15 @@ describe("Indicadores manuais — lançar, editar, calendário e histórico", ()
 
   test("valor negativo é rejeitado", async () => {
     await assert.rejects(
-      () => salvarValorDiaIndicador({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "rev", data: DATA_TESTE, valor: -1 }),
+      () => salvarValorDiaIndicador({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "cancelamentos", data: DATA_TESTE, valor: -1 }),
       (err) => { assert.match(err.message, /não pode ser negativo/i); return true; },
+    );
+  });
+
+  test("'rev' não é mais um indicador manual diário (migration 052 — virou mensal)", async () => {
+    await assert.rejects(
+      () => salvarValorDiaIndicador({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "rev", data: DATA_TESTE, valor: 88 }),
+      (err) => { assert.match(err.message, /indicador manual inválido/i); return true; },
     );
   });
 });

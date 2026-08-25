@@ -15,10 +15,9 @@ const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julh
 
 /** Metadado de exibição de cada indicador manual — fonte única aqui, não espalhar pelo componente. */
 const CAMPO_INFO = {
-  rev: {
-    label: "REV", icon: "📶", tipo: "nota", step: "0.1", placeholder: "Ex.: 92,5",
-    ajuda: "Nota diária da régua de excelência (REV) da Visio. O mês soma como MÉDIA dos dias lançados.",
-  },
+  // 'rev' saiu daqui na migration 052 — virou mensal de verdade, tem aba
+  // própria em bonificacaoMensal.js (renderRevMensal), não usa mais este
+  // renderer diário.
   pesquisas: {
     label: "Pesquisas", icon: "📝", tipo: "int", step: "1", placeholder: "Ex.: 6",
     ajuda: "Quantidade de pesquisas respondidas NESTE DIA. O mês soma como TOTAL acumulado dos dias lançados.",

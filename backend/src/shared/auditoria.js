@@ -41,6 +41,11 @@ export const ACOES = {
   UNIDADE_MODULO_HABILITADO: "unidade.modulo_habilitado",
   UNIDADE_MODULO_DESABILITADO: "unidade.modulo_desabilitado",
   UNIDADE_EXCLUIDA: "unidade.excluida",
+  // Troca da tabela comercial OFICIAL (balcão/iFood) — nunca gravada por
+  // "modo de comparação" (isso é só estado de frontend). Ver migration 051
+  // (unidade_tabela_comercial_historico), onde o antes/depois fica gravado
+  // junto — esta linha em plataforma_auditoria é o espelho geral.
+  UNIDADE_TABELA_COMERCIAL_ALTERADA: "unidade.tabela_comercial_alterada",
 
   // usuários e vínculos
   USUARIO_CRIADO: "usuario.criado",
@@ -60,6 +65,11 @@ export const ACOES = {
   // Bonificação Mensal
   BONIFICACAO_META_ALTERADA: "bonificacao_mensal.meta_alterada",
   BONIFICACAO_INDICADOR_LANCADO: "bonificacao_mensal.indicador_lancado",
+
+  // Agente Crescer (assistente de IA) — uma linha por mensagem processada,
+  // sucesso ou erro (ver detalhes.sucesso). Nunca grava o texto da mensagem
+  // nem da resposta, só metadados de uso (ver agente/agente.service.js).
+  AGENTE_MENSAGEM_ENVIADA: "agente.mensagem_enviada",
 };
 
 /**

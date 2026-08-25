@@ -102,6 +102,11 @@ plataformaRouter.put("/configuracoes", c.salvarConfiguracoes);
 // ---- Atualizações e IA
 plataformaRouter.get("/atualizacoes", c.atualizacoes);
 plataformaRouter.get("/ia", c.ia);
+// Consumo do Agente Crescer (tokens/custo/tools) — observabilidade, sem
+// bloqueio (ver database/migrations/049_agente_uso.sql).
+plataformaRouter.get("/ia/consumo", c.consumoAgente);
+plataformaRouter.get("/ia/consumo/organizacoes", c.consumoAgentePorOrganizacao);
+plataformaRouter.get("/ia/consumo/modelos", c.consumoAgentePorModelo);
 
 // Qualquer outra coisa sob /plataforma é 404 em JSON.
 plataformaRouter.use(c.naoEncontrado);

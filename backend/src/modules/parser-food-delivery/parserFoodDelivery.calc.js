@@ -4,6 +4,10 @@
 import { norm } from "./parserFoodDelivery.parser.js";
 import { OPERACAO, rotuloOperacao } from "./parserFoodDelivery.operacao.js";
 import { CLASSIFICACAO_CANCELAMENTO } from "./parserFoodDelivery.classificacao.js";
+// Reaproveitado só para os limites de calendário (primeiro/último dia do
+// mês) — puro, sem lógica de negócio nova. Nenhuma fórmula financeira cruza
+// daqui pra lá nem de lá pra cá.
+import { diasDoMes } from "../dashboard-executivo/dashboardExecutivo.calc.js";
 
 export const STATUS_CONCILIACAO = {
   INCLUIDO: "incluido",             // taxa válida (entregue/finalizado ou qualquer situação não-cancelada)
@@ -165,6 +169,128 @@ export function validarCodigo(codigo, pedidosPorNumero) {
 /** Divide texto colado (vírgula, espaço ou quebra de linha) numa lista de códigos únicos. */
 export function extrairCodigos(texto) {
   return [...new Set(String(texto || "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))];
+}
+
+/**
+ * Soma os resumos JÁ CALCULADOS de várias importações de um mesmo período
+ * (Agente Crescer, Etapa D — "quantos cancelamentos este mês"). Nenhuma
+ * reclassificação aqui, só aritmética pura sobre números que o motor
+ * determinístico (parserFoodDelivery.classificacao.js) já decidiu no
+ * momento de cada importação — mesmo espírito de resumoConciliacao, mas
+ * agregando IMPORTAÇÕES já resumidas em vez de PEDIDOS individuais.
+ * @param {Array<{totalPedidos?:number, entregues?:number, cancelados?:number,
+ *   canceladosComTaxa?:number, canceladosSemTaxa?:number, canceladosRecebemTaxa?:number,
+ *   canceladosNaoRecebemTaxa?:number, canceladosRevisao?:number,
+ *   taxasBrutas?:number, taxasDescartadas?:number, taxasValidas?:number}>} importacoes
+ */
+export function somarResumosPeriodo(importacoes) {
+  const soma = (campo) => (importacoes ?? []).reduce((s, i) => s + (Number(i[campo]) || 0), 0);
+  return {
+    totalImportacoes: (importacoes ?? []).length,
+    totalPedidos: soma("totalPedidos"),
+    entregues: soma("entregues"),
+    cancelados: soma("cancelados"),
+    canceladosComTaxa: soma("canceladosComTaxa"),
+    canceladosSemTaxa: soma("canceladosSemTaxa"),
+    canceladosRecebemTaxa: soma("canceladosRecebemTaxa"),
+    canceladosNaoRecebemTaxa: soma("canceladosNaoRecebemTaxa"),
+    canceladosRevisao: soma("canceladosRevisao"),
+    taxasBrutas: arredondar(soma("taxasBrutas")),
+    taxasDescartadas: arredondar(soma("taxasDescartadas")),
+    taxasValidas: arredondar(soma("taxasValidas")),
+  };
+}
+
+/**
+ * Primeiro e último dia (ISO AAAA-MM-DD) de um mês — via diasDoMes(), sem
+ * lógica de data nova.
+ * @param {number} ano @param {number} mes 1-indexado
+ */
+export function limitesDoMes(ano, mes) {
+  const dias = diasDoMes(ano, mes);
+  return { inicio: dias[0], fim: dias[dias.length - 1] };
+}
+
+/** Primeiro dia (ISO) do mês SEGUINTE — usado como limite EXCLUSIVO em filtros de timestamp. */
+export function inicioMesSeguinte(ano, mes) {
+  const proximo = mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 };
+  return diasDoMes(proximo.ano, proximo.mes)[0];
+}
+
+/**
+ * Decide entre candidatos de um `numeroPedido` já carregados do banco (a
+ * consulta em si mora em parserFoodDelivery.service.js) — pura, sem I/O.
+ * Quando `ano`/`mes` são informados, filtra pelo mês do próprio pedido
+ * (`dataHora`) ANTES de decidir. NUNCA escolhe sozinho entre 2+ candidatos
+ * que sobrarem — mesmo espírito de escolherCandidato (agente/tools/produtosCmvBusca.js),
+ * só que aqui a busca é por CÓDIGO exato, não por nome (sem tolerância a erro
+ * de digitação: um número de pedido não se aproxima por edição de texto).
+ * @param {Array<{dataHora: string|null}>} candidatos
+ * @param {{ano?: number, mes?: number}} [filtro]
+ * @returns {{status: 'unico', candidato: object} | {status: 'ambiguo', candidatos: object[]} | {status: 'nao_encontrado'}}
+ */
+export function resolverCandidatoPedido(candidatos, { ano, mes } = {}) {
+  let lista = candidatos ?? [];
+  if (ano && mes) {
+    const prefixo = `${ano}-${String(mes).padStart(2, "0")}`;
+    lista = lista.filter((p) => typeof p.dataHora === "string" && p.dataHora.startsWith(prefixo));
+  }
+  if (!lista.length) return { status: "nao_encontrado" };
+  if (lista.length > 1) return { status: "ambiguo", candidatos: lista };
+  return { status: "unico", candidato: lista[0] };
+}
+
+/**
+ * Monta a explicação de UM pedido já identificado (candidato único resolvido
+ * por `resolverCandidatoPedido`) para "por que este pedido recebe/não recebe
+ * taxa" — pura, sem I/O. NUNCA decide nada: só organiza o que já está
+ * gravado (classificação do motor determinístico, timeline, eventual
+ * correção manual) numa resposta honesta sobre o que é/não é aplicável a
+ * este pedido específico.
+ * @param {object} pedido já no formato da API (paraApiPedido/paraResumoCancelamento do service)
+ */
+export function explicarCancelamento(pedido) {
+  const base = { encontrado: true, numeroPedido: pedido.numeroPedido, dataHora: pedido.dataHora };
+
+  if (!ehCancelado(pedido.situacao)) {
+    return { ...base, cancelado: false, situacao: pedido.situacao };
+  }
+  if (pedido.operacao && pedido.operacao !== OPERACAO.SUBWAY) {
+    return {
+      ...base, cancelado: true, elegivelConciliacao: false,
+      motivoNaoElegivel: `Este pedido foi identificado como pertencente a outra operação (${rotuloOperacao(pedido.operacao)}) — não faz parte da conciliação de taxas de entregador.`,
+    };
+  }
+  if (!temEntregador(pedido.entregador)) {
+    return {
+      ...base, cancelado: true, elegivelConciliacao: false,
+      motivoNaoElegivel: "Este pedido não tem entregador atribuído — não faz parte da conciliação de taxas.",
+    };
+  }
+  if (!pedido.classificacaoCancelamento) {
+    return {
+      ...base, cancelado: true, elegivelConciliacao: true, classificacaoDisponivel: false,
+      motivo: "Esta importação é anterior à classificação automática de cancelamentos — não há classificação nem timeline registrada para este pedido.",
+    };
+  }
+  return {
+    ...base, cancelado: true, elegivelConciliacao: true, classificacaoDisponivel: true,
+    classificacaoAutomatica: {
+      decisao: pedido.classificacaoCancelamento, motivo: pedido.classificacaoMotivo,
+      nivelConfianca: pedido.classificacaoNivelConfianca, regra: pedido.classificacaoRegra,
+    },
+    statusFinanceiroAtual: pedido.statusConciliacao,
+    emRevisao: pedido.classificacaoCancelamento === CLASSIFICACAO_CANCELAMENTO.REVISAR,
+    // Presente só quando um humano corrigiu a decisão automática — nunca
+    // sobrescreve classificacaoAutomatica (essa é sempre o que o MOTOR disse).
+    correcaoManual: pedido.classificacaoOverrideEm ? {
+      usuarioNome: pedido.classificacaoOverrideUsuarioNome, motivo: pedido.classificacaoOverrideMotivo, em: pedido.classificacaoOverrideEm,
+    } : null,
+    timeline: {
+      dataDespachado: pedido.dataDespachado, dataAceito: pedido.dataAceito, dataColetado: pedido.dataColetado,
+      dataChegadaEntrega: pedido.dataChegadaEntrega, dataCancelado: pedido.dataCancelado,
+    },
+  };
 }
 
 const arredondar = (n) => Math.round(n * 100) / 100;

@@ -272,6 +272,17 @@ export async function atualizarUnidade(req, idBruto, body) {
   if (body.tabelaIfood !== undefined) patch.tabela_ifood = v.textoOpcional(body.tabelaIfood, "Tabela iFood", { max: 20 });
   if (!Object.keys(patch).length) throw ApiError.badRequest("Nada para atualizar.");
 
+  // Tabela comercial muda de identidade (não só um campo de cadastro) — para
+  // manter o antes/depois no histórico dedicado (migration 051, mesmo padrão
+  // de unidade_modelo_logistico_historico), precisa saber o valor ANTES do
+  // update. Só busca quando o patch de fato mexe em tabela_balcao/tabela_ifood.
+  const mexeTabelaComercial = "tabela_balcao" in patch || "tabela_ifood" in patch;
+  let antesTabelas = null;
+  if (mexeTabelaComercial) {
+    const { data: antes } = await supabase.from("unidades").select("tabela_balcao, tabela_ifood").eq("id", id).maybeSingle();
+    antesTabelas = antes;
+  }
+
   const { data, error } = await supabase.from("unidades")
     .update(patch).eq("id", id).select("id, nome, organizacao_id").single();
   if (error || !data) throw ApiError.notFound("Unidade não encontrada.");
@@ -281,6 +292,32 @@ export async function atualizarUnidade(req, idBruto, body) {
     acao: ACOES.UNIDADE_EDITADA, entidade: "unidade", entidadeId: id, organizacaoId: data.organizacao_id,
     detalhes: { campos: Object.keys(patch), unidade: data.nome }, ...origemDe(req),
   });
+
+  if (mexeTabelaComercial && antesTabelas) {
+    const trocas = [
+      "tabela_balcao" in patch && patch.tabela_balcao !== antesTabelas.tabela_balcao
+        ? { canal: "balcao", tabelaAnterior: antesTabelas.tabela_balcao, tabelaNova: patch.tabela_balcao }
+        : null,
+      "tabela_ifood" in patch && patch.tabela_ifood !== antesTabelas.tabela_ifood
+        ? { canal: "ifood", tabelaAnterior: antesTabelas.tabela_ifood, tabelaNova: patch.tabela_ifood }
+        : null,
+    ].filter(Boolean);
+
+    for (const troca of trocas) {
+      await supabase.from("unidade_tabela_comercial_historico").insert({
+        unidade_id: id, organizacao_id: data.organizacao_id, canal: troca.canal,
+        tabela_anterior: troca.tabelaAnterior, tabela_nova: troca.tabelaNova,
+        usuario_id: req.user.id, usuario_nome: req.user.nome ?? null, usuario_email: req.user.email,
+        origem: "superadmin",
+      });
+      await auditar({
+        atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
+        acao: ACOES.UNIDADE_TABELA_COMERCIAL_ALTERADA, entidade: "unidade", entidadeId: id, organizacaoId: data.organizacao_id,
+        detalhes: { unidade: data.nome, ...troca }, ...origemDe(req),
+      });
+    }
+  }
+
   return { id, nome: data.nome };
 }
 

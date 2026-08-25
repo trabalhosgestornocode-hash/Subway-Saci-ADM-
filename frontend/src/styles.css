@@ -338,6 +338,18 @@ body {
 .spinner { width: 28px; height: 28px; border: 3px solid var(--linha); border-top-color: var(--verde-vivo); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 10px; }
 .banner-erro { background: var(--bad-bg); color: var(--bad); padding: 11px 15px; border-radius: 11px; font-size: 14px; margin-bottom: 14px; border: 1px solid rgba(219,59,59,.2); animation: fadeInUp .3s; }
 
+/* Banner Canal · Tabela (Dashboard comum + Produtos/CMV) — distinção
+   EXPLÍCITA entre "tabela oficial da unidade" e "modo de comparação", não só
+   uma mudança sutil de cor: borda tracejada + rótulo textual + a tabela
+   oficial sempre visível ao lado, mesmo enquanto comparando outra. */
+.banner-tabela { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 15px; border-radius: 11px; margin-bottom: 14px; border: 1px solid var(--linha); }
+.banner-tabela-txt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.banner-tabela-canal { font-weight: 700; font-size: 14px; }
+.banner-tabela-badge { font-size: 11.5px; }
+.banner-tabela-oficial { font-size: 12.5px; color: var(--cinza); }
+.banner-tabela--oficial { background: var(--ok-bg); border-color: rgba(14,157,87,.18); }
+.banner-tabela--comparacao { background: var(--warn-bg); border: 1px dashed var(--warn); }
+
 /* ===================== INTEGRAÇÕES ===================== */
 .integra-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 15px; }
 .integra-card {
@@ -585,6 +597,7 @@ body {
 .sync-status[data-estado="ok"] .sync-dot { background: var(--ok); box-shadow: 0 0 0 3px rgba(14,157,87,.2); }
 .sync-status[data-estado="erro"] .sync-dot { background: var(--bad); box-shadow: 0 0 0 3px rgba(219,59,59,.2); }
 .sync-status[data-estado="sync"] .sync-dot { background: var(--amarelo); animation: pulseDot 1s ease-in-out infinite; }
+.sync-status[data-estado="aviso"] .sync-dot { background: var(--amarelo); box-shadow: 0 0 0 3px rgba(230,168,23,.2); }
 
 .icon-btn2 {
   position: relative; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px;
@@ -725,6 +738,11 @@ body {
 .cfg-user-perfil { padding: 7px 10px; border: 1.5px solid var(--linha); border-radius: 9px; background: var(--campo-bg); color: var(--texto); font-size: 13px; }
 .cfg-user-del { flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--linha); background: var(--card); border-radius: 9px; cursor: pointer; font-size: 14px; line-height: 1; transition: background var(--t), border-color var(--t); }
 .cfg-user-del:hover { background: var(--bad-bg); border-color: var(--bad); }
+.cfg-tabela-explicacao { font-size: 12.5px; color: var(--cinza); line-height: 1.5; }
+.cfg-tabela-linha .cfg-user-info { flex-basis: 90px; }
+.cfg-campo-fixo { font-size: 14px; font-weight: 600; padding: 9px 0; }
+.cfg-aviso-alteracao { font-size: 12.5px; color: var(--warn); background: var(--warn-bg); border: 1px solid rgba(196,138,18,.2); border-radius: 10px; padding: 10px 12px; }
+
 .cfg-senha-wrap { display: flex; gap: 8px; align-items: stretch; }
 .cfg-senha-wrap input { flex: 1; min-width: 0; }
 .cfg-senha-wrap .btn { flex-shrink: 0; }
@@ -1653,6 +1671,8 @@ body {
 .adm-tabela tbody tr:hover { background: var(--superficie-2); }
 .adm-tabela small { color: var(--cinza); font-size: 11.5px; }
 
+.adm-paginacao { display: flex; align-items: center; justify-content: center; gap: 14px; padding-top: 14px; font-size: 13px; color: var(--cinza); }
+
 .adm-cel-empresa { display: flex; align-items: center; gap: 10px; min-width: 190px; }
 .adm-cel-empresa > span { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
 .adm-logo { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; flex: 0 0 auto; display: grid; place-items: center; }
@@ -2115,6 +2135,7 @@ tr.dex-linha-na { opacity: .65; }
 .dex-acao-corpo { flex: 1; min-width: 0; }
 .dex-acao-titulo { display: block; font-size: 13.5px; margin-bottom: 4px; }
 .dex-acao-desc { font-size: 12.5px; color: var(--cinza); line-height: 1.5; margin-bottom: 8px; }
+.dex-acao-corpo .btn { margin-right: 6px; margin-bottom: 6px; }
 .dex-acao-detalhe { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--linha); }
 .dex-acao-vazia { border-left-color: var(--ok); }
 .dex-acao-vazia p { font-size: 12.5px; color: var(--cinza); margin-top: 4px; }
@@ -2475,6 +2496,50 @@ tr.dex-linha-na { opacity: .65; }
 .bm-empty p { color: var(--cinza); max-width: 460px; margin: 0 auto 18px; font-size: 13.5px; line-height: 1.6; }
 
 /* ---------------------------------------------------------------------
+   ELEGIBILIDADE DA BONIFICAÇÃO (.bm-elegibilidade) e agrupamento SUPER
+   RESTAURANTE (.bm-criterio-card/.bm-super-resumo) — dois conceitos
+   diferentes que reaproveitam a mesma paleta (item 2 do topo do arquivo):
+   "não elegível"/"fora da meta" usa atenção (laranja), nunca crítico/
+   vermelho (evitar cor de alerta agressiva num resultado consultivo).
+   --------------------------------------------------------------------- */
+.bm-hero-nota { font-size: 12.5px; color: var(--cinza); margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--linha); line-height: 1.5; }
+
+.bm-elegibilidade { border-left: 4px solid var(--linha); }
+.bm-elegibilidade-titulo { font-size: 22px; font-weight: 800; margin: 2px 0 6px; }
+.bm-elegibilidade.sucesso { border-left-color: var(--ok); background: linear-gradient(135deg, var(--card), color-mix(in srgb, var(--card) 94%, var(--ok))); }
+.bm-elegibilidade.sucesso .bm-elegibilidade-titulo { color: var(--ok); }
+.bm-elegibilidade.atencao { border-left-color: var(--warn); background: linear-gradient(135deg, var(--card), color-mix(in srgb, var(--card) 94%, var(--warn))); }
+.bm-elegibilidade.atencao .bm-elegibilidade-titulo { color: var(--warn); }
+.bm-elegibilidade.institucional { border-left-color: var(--info); background: linear-gradient(135deg, var(--card), color-mix(in srgb, var(--card) 94%, var(--info))); }
+.bm-elegibilidade.institucional .bm-elegibilidade-titulo { color: var(--info); }
+
+.bm-motivos { margin: 8px 0 4px; padding-left: 18px; font-size: 13px; color: var(--texto); line-height: 1.7; }
+.bm-motivos li::marker { color: var(--warn); }
+.bm-motivos-nota { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--linha); font-style: italic; }
+
+.bm-criterio-card { border-left: 3px solid var(--linha); }
+.bm-criterio-card.sucesso { border-left-color: var(--ok); }
+.bm-criterio-card.sucesso .bm-gauge-valor { color: var(--ok); }
+.bm-criterio-card.atencao { border-left-color: var(--warn); }
+.bm-criterio-card.atencao .bm-gauge-valor { color: var(--warn); }
+.bm-criterio-card.neutro { border-left-color: var(--linha); opacity: .82; }
+.bm-criterio-card[data-criterio] { cursor: pointer; }
+.bm-criterio-card[data-criterio]:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+
+/* Resumo do agrupamento Super Restaurante ("X de 3 indicadores dentro da
+   meta") — texto simples, nunca um card/banner com pontuação própria (o
+   agrupamento não tem média nem percentual geral, só a contagem). */
+.bm-super-resumo { font-size: 14px; font-weight: 700; margin: 10px 0 2px; }
+.bm-super-resumo.sucesso { color: var(--ok); }
+.bm-super-resumo.atencao { color: var(--warn); }
+.bm-super-resumo.neutro { color: var(--cinza); }
+
+/* Drawer largo — reaproveita o calendário diário (bonificacaoMensalIndicadorManual.js)
+   dentro do drawer em vez de aba própria; precisa de mais espaço que o drawer padrão. */
+.bm-drawer-largo { width: min(620px, 100vw); }
+@media (max-width: 700px) { .bm-drawer-largo { width: 100vw; } }
+
+/* ---------------------------------------------------------------------
    HISTÓRICO
    --------------------------------------------------------------------- */
 .bm-historico-card { text-align: left; }
@@ -2583,4 +2648,102 @@ tr.dex-linha-na { opacity: .65; }
 
 @media (max-width: 700px) {
   .pfd-periodo-setas { margin-left: 0; width: 100%; justify-content: space-between; }
+}
+
+/* ===================== AGENTE CRESCER (chat) ===================== */
+.agente { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px; }
+.agente-cabecalho { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--linha); margin-bottom: 14px; }
+.agente-ic { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: var(--vermelho-tint); color: var(--verde-med); flex-shrink: 0; }
+.agente-cabecalho h2 { font-size: 17px; font-weight: 800; margin: 0 0 2px; }
+.agente-cabecalho p { font-size: 13px; color: var(--cinza); margin: 0; max-width: 560px; }
+.agente-cab-acoes { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.agente-log { flex: 1; overflow-y: auto; padding: 4px 2px 12px; display: flex; flex-direction: column; gap: 12px; }
+.agente-msg { display: flex; flex-direction: column; max-width: 78%; }
+.agente-msg-usuario { align-self: flex-end; align-items: flex-end; }
+.agente-msg-agente { align-self: flex-start; align-items: flex-start; }
+.agente-bolha {
+  padding: 11px 15px; border-radius: var(--raio); font-size: 14px; line-height: 1.5; white-space: pre-wrap;
+  box-shadow: var(--sombra-sm); animation: fadeInUp .25s ease both;
+}
+.agente-msg-usuario .agente-bolha { background: var(--grad-verde, var(--verde)); color: #fff; border-bottom-right-radius: 4px; }
+.agente-msg-agente .agente-bolha { background: var(--card); border: 1px solid var(--linha); color: var(--texto); border-bottom-left-radius: 4px; }
+.agente-bolha.agente-erro { background: var(--bad-bg); color: var(--bad); border-color: rgba(219,59,59,.2); }
+.agente-bolha.agente-carregando { color: var(--cinza); font-style: italic; }
+/* Markdown mínimo renderizado dentro da bolha do agente (ver markdown.js) */
+.agente-bolha strong { font-weight: 750; }
+.agente-bolha strong.md-titulo { display: block; font-size: 14.5px; margin: 2px 0; }
+.agente-bolha code { background: var(--superficie-2); padding: 1px 5px; border-radius: 5px; font-size: .92em; }
+.agente-bolha ul { margin: 4px 0 4px 18px; padding: 0; }
+.agente-bolha li { margin: 2px 0; }
+.agente-tools { font-size: 11.5px; color: var(--cinza-claro); margin-top: 4px; display: flex; align-items: center; gap: 5px; padding: 0 4px; }
+
+/* Ações de navegação sugeridas (Etapa F.1) — nunca links HTML soltos, sempre botões. */
+.agente-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.agente-acao-btn { color: var(--verde-med); border-color: var(--verde-med); }
+.agente-acao-btn:disabled { opacity: .6; cursor: default; }
+
+.agente-sugestoes { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+.agente-chip {
+  border: 1.5px solid var(--linha); background: var(--card); color: var(--texto); font-size: 13px;
+  padding: 7px 13px; border-radius: 999px; cursor: pointer; transition: border-color var(--t), background var(--t);
+}
+.agente-chip:hover { border-color: var(--verde-vivo); background: var(--vermelho-tint); }
+
+.agente-form { display: flex; gap: 10px; align-items: flex-end; padding-top: 12px; border-top: 1px solid var(--linha); }
+.agente-form textarea {
+  flex: 1; resize: none; min-height: 42px; max-height: 140px; padding: 10px 14px; border: 1.5px solid var(--linha);
+  border-radius: var(--raio-sm); background: var(--campo-bg); color: var(--texto); font: inherit;
+}
+.agente-form textarea:focus { outline: none; border-color: var(--verde-vivo); }
+.agente-form button { flex-shrink: 0; }
+
+@media (max-width: 700px) {
+  .agente { height: calc(100vh - 190px); }
+  .agente-msg { max-width: 92%; }
+}
+
+/* Botão do topbar — discreto, mesma família visual dos demais ícones de ação (btn-refresh/btn-notif). */
+.agente-btn-topbar span { font-size: 17px; line-height: 1; font-weight: 700; color: var(--verde-med); }
+
+/* Botão contextual dentro das telas ("✦ Analisar..." — dashboardExecutivo.js/views.js/insumos.js/parserFoodDelivery.js/produtoModal.js/insumoModal.js). */
+.agente-btn-contextual { color: var(--verde-med); border-color: var(--verde-med); }
+
+/* Indicador de contexto do painel — "Analisando: X · MM/AAAA" / "Contexto: Y". */
+.agente-contexto {
+  font-size: 12px; color: var(--verde-med); background: var(--vermelho-tint); border-radius: 999px;
+  padding: 5px 12px; margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px;
+  width: fit-content; flex-shrink: 0;
+}
+
+/* ===================== AGENTE CRESCER — PAINEL GLOBAL (drawer persistente) =====================
+   Mesmo padrão técnico/visual do drawer já usado em Bonificação Mensal e no
+   Parser Food Delivery (.bm-drawer/.bm-drawer-overlay) — não copiado
+   cegamente: ESTE drawer nunca é removido do DOM ao fechar (ver
+   agentePainel.js) porque é a MESMA conversa persistente, não um conteúdo
+   novo a cada abertura. */
+.agente-painel-overlay {
+  position: fixed; inset: 0; z-index: 170;
+  /* Desktop: SEM overlay bloqueando a tela por trás, mesmo aberto — o
+     objetivo é conversar com o Agente enquanto se observa o sistema (não é
+     um modal). Só o drawer em si intercepta clique; o resto da tela
+     continua 100% utilizável. */
+  background: transparent; pointer-events: none;
+}
+.agente-painel {
+  position: absolute; top: 0; right: 0; height: 100%; width: min(440px, 100vw);
+  background: var(--card); box-shadow: -8px 0 32px rgba(0,0,0,.16); pointer-events: auto;
+  transform: translateX(100%); transition: transform .22s cubic-bezier(.2,.8,.2,1);
+  display: flex; flex-direction: column; padding: 20px 20px 16px;
+}
+.agente-painel-overlay.aberto .agente-painel { transform: translateX(0); }
+.agente-painel .agente-cabecalho, .agente-painel .agente-form { flex-shrink: 0; }
+.agente-painel .agente-log { flex: 1; min-height: 0; }
+.agente-fechar { position: static; width: 30px; height: 30px; font-size: 18px; }
+
+@media (max-width: 620px) {
+  /* Mobile: painel quase/full-screen -> volta a se comportar como um drawer
+     normal (overlay real, fecha ao clicar fora). */
+  .agente-painel-overlay.aberto { background: rgba(6,40,25,.45); pointer-events: auto; }
+  .agente-painel { width: 100vw; }
 }

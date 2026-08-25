@@ -55,7 +55,7 @@ export const MENU = [
   { id: "ifood",         label: "iFood",           icon: "truck", tipo: "integracao",  integ: "ifood",        secao: "INTEGRAÇÕES", modulo: "ifood" },
   { id: "cocacola",      label: "Coca-Cola",       icon: "tag", tipo: "integracao",  integ: "cocacola",     secao: "INTEGRAÇÕES", modulo: "coca_cola" },
   { id: "claudiahortifruti", label: "Cláudia Hortifruti", icon: "tag", tipo: "integracao", integ: "claudiahortifruti", secao: "INTEGRAÇÕES", modulo: "hortifruti" },
-  { id: "ia",            label: "Agente de IA",    icon: "bot", tipo: "integracao",  integ: "ia",           secao: "INTELIGÊNCIA" },
+  { id: "ia",            label: "Agente Crescer",  icon: "bot", tipo: "agente",      secao: "INTELIGÊNCIA", modulo: "agente_ia" },
   { id: "relatorios",    label: "Relatórios",      icon: "pie-chart", tipo: "construcao",  secao: "INTELIGÊNCIA" },
   { id: "integracoes",   label: "Integrações",     icon: "link", tipo: "integracoes", secao: "INTELIGÊNCIA" },
   { id: "configuracoes", label: "Configurações",   icon: "settings", tipo: "configuracoes", secao: "SISTEMA" },
@@ -126,9 +126,7 @@ export const INTEGRACOES = {
     desc: "Notificações automáticas (Evolution API / Baileys) do agente operacional.",
     features: ["Alertas de estoque crítico", "Aviso de CMV/margem", "Resumo diário de faturamento"],
   },
-  ia: {
-    nome: "Agente de IA", icon: "bot", status: "planejamento",
-    desc: "Monitora CMV, margem, ruptura de estoque e gera insights (OpenAI / Claude).",
-    features: ["Previsão de ruptura e compra", "Detecção de desperdício e anomalias", "Relatórios e insights automáticos"],
-  },
+  // "ia" saiu daqui: virou módulo real (ver MENU acima, item "ia" com
+  // tipo "agente") em vez de card "em planejamento" — listar os dois ao
+  // mesmo tempo (um dizendo "em breve" e outro já funcionando) confundiria.
 };

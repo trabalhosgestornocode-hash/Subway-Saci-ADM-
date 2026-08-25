@@ -63,6 +63,8 @@ const PATHS = {
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   "trending-down": '<path d="M3 7l6 6 4-4 8 8"/><path d="M15 17h6v-6"/>',
   "list-checks": '<path d="m3.5 7 1.7 1.7L9 5"/><path d="M12 6.5h9"/><path d="m3.5 15 1.7 1.7L9 13"/><path d="M12 14.5h9"/>',
+  // Agente Crescer (chat)
+  send: '<path d="m3 11 18-8-8 18-2.5-7.5L3 11z"/>',
 };
 
 /**

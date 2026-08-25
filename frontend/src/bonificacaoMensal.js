@@ -1,12 +1,27 @@
-// BONIFICAÇÃO MENSAL — Central de Performance e Bonificação da unidade.
-// Redesign visual (hero, gauges, gráficos, drawer) sobre a MESMA API/regras
-// de negócio do backend (bonificacaoMensal.calc.js/.metas.js/visio-parser.js
-// — nada disso muda aqui). Este arquivo só decide COMO mostrar o que o
-// backend já calculou.
+// BONIFICAÇÃO MENSAL — Central de Performance da unidade. Redesign visual
+// (hero, gauges, gráficos, drawer) sobre a MESMA API/regras de negócio do
+// backend (bonificacaoMensal.calc.js/.metas.js/.elegibilidade.js/
+// visio-parser.js — nada disso muda aqui). Este arquivo só decide COMO
+// mostrar o que o backend já calculou.
+//
+// "Super Restaurante" NÃO é o nome do módulo — é só um AGRUPAMENTO dentro
+// dele (correção depois de uma interpretação errada anterior). É o nome que
+// a própria operação já usa na planilha: seção "Ifood: Super Restaurante" =
+// Avaliação iFood + Cancelamentos + Pedidos com Chamado, exatos 3
+// indicadores, nada além disso (ver superRestauranteBlocoHtml). Pesquisas e
+// REV são critérios PRÓPRIOS da Bonificação Mensal, cada um com sua aba —
+// nunca dentro do agrupamento Super Restaurante.
+//
+// Os TRÊS critérios que travam a elegibilidade da bonificação do mês inteiro
+// (tudo-ou-nada) são Nota iFood + REV + Pesquisas — ver
+// bonificacaoMensal.elegibilidade.js#avaliarElegibilidadeBonificacao. Isso é
+// um conceito DIFERENTE do agrupamento visual Super Restaurante (que inclui
+// Cancelamentos/Pedidos com Chamado, que NÃO travam a elegibilidade — só
+// aparecem juntos porque a planilha já os mostra assim).
 import { el, escapeHtml, toast, fmtMoeda, fmtPct, fmtDataHora } from "./utils.js";
 import { state } from "./state.js";
 import { pode } from "./sessao.js";
-import { bonifMes, bonifMetas, bonifHistorico, bonifLancamento, bonifSalvarLancamento, bonifExcluirLancamento } from "./api.js";
+import { bonifMes, bonifMetas, bonifHistorico, bonifLancamento, bonifSalvarLancamento, bonifExcluirLancamento, bonifSalvarRevMensal } from "./api.js";
 import { abrirImportarVisioModal } from "./bonificacaoMensalImportModal.js";
 import { abrirEditarMetaModal } from "./bonificacaoMensalMetasModal.js";
 import { renderIndicadorManualTab } from "./bonificacaoMensalIndicadorManual.js";
@@ -16,25 +31,21 @@ import { gaugeSvg, sparklineSvg, tendencia, escadaFaixas, countUp } from "./boni
 import { icon } from "./icons.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-// Cada indicador sem fonte automática (item 76-B) tem sua PRÓPRIA aba — não
-// um formulário genérico com todos juntos. `INDICADOR_MANUAL_ABA` mapeia
-// aba -> indicador pra bonificacaoMensalIndicadorManual.js, que é UM
-// renderer reaproveitado pelas 4 (DRY na implementação, sem misturar as telas).
+// Nota iFood, Cancelamentos e Pedidos c/ Chamado NÃO têm mais aba própria —
+// viraram os 3 cards do agrupamento "Super Restaurante" (aba própria, e
+// também um resumo na Visão Geral); o lançamento diário de cada um continua
+// existindo, só que abre num drawer (abrirDrawerIndicadorManual) em vez de
+// uma página cheia. Pesquisas e REV continuam com aba própria — são
+// critérios da Bonificação Mensal, não do agrupamento Super Restaurante.
 const ABAS = [
   { id: "visao", icon: "📊", label: "Visão Geral" },
   { id: "visio", icon: "🗓️", label: "Visio" },
   { id: "rev", icon: "📶", label: "REV" },
   { id: "pesquisas", icon: "📝", label: "Pesquisas" },
-  { id: "nota_ifood", icon: "⭐", label: "Nota iFood" },
-  { id: "pedidos_chamado", icon: "☎️", label: "Pedidos c/ Chamado" },
-  { id: "cancelamentos", icon: "🚫", label: "Cancelamentos" },
+  { id: "super_restaurante", icon: "🌟", label: "Super Restaurante" },
   { id: "metas", icon: "🎯", label: "Metas e Bonificações" },
   { id: "historico", icon: "📚", label: "Histórico" },
 ];
-const INDICADOR_MANUAL_ABA = {
-  rev: "rev", pesquisas: "pesquisas", nota_ifood: "avaliacao_ifood",
-  pedidos_chamado: "pedidos_chamado", cancelamentos: "cancelamentos",
-};
 
 const STATUS_DIA_LEGENDA = [
   { chave: "IMPORTADO", label: "Importado", classe: "ok" },
@@ -46,11 +57,18 @@ const STATUS_DIA_LEGENDA = [
 ];
 const STATUS_DIA_ROTULO = Object.fromEntries(STATUS_DIA_LEGENDA.map((s) => [s.chave, s]));
 
-// Grupos por área (item 7) — cada indicador aparece em UM grupo.
+// Grupos por área — cada indicador aparece em UM grupo. REV saiu do grupo
+// operacional (tem seção própria agora, fora do grid genérico — ver
+// renderRevMensal). GRUPOS[2] ("cliente") só é usado pela aba Metas (pra
+// agrupar visualmente onde editar o mínimo de cada um) — NUNCA pelo
+// grupoHtml()/cardGauge() genérico da Visão Geral: lá, Nota iFood/
+// Cancelamentos/Pedidos com Chamado têm renderização própria dentro do
+// agrupamento Super Restaurante (ver superRestauranteBlocoHtml), e Pesquisas
+// tem aba própria (ver renderPesquisasTab) — nenhum dos 4 usa cardGauge.
 const GRUPOS = [
   { id: "comercial", titulo: "Performance Comercial", icon: "📈", indicadores: ["bebidas", "adicionais", "diversos", "ticket_medio"] },
-  { id: "operacional", titulo: "Eficiência Operacional", icon: "⚙️", indicadores: ["cmv", "rev"] },
-  { id: "cliente", titulo: "Experiência do Cliente", icon: "💬", indicadores: ["avaliacao_ifood", "cancelamentos", "pedidos_chamado", "pesquisas"] },
+  { id: "operacional", titulo: "Eficiência Operacional", icon: "⚙️", indicadores: ["cmv"] },
+  { id: "cliente", titulo: "Qualidade / Experiência do Cliente", icon: "👤", indicadores: ["avaliacao_ifood", "pesquisas", "cancelamentos", "pedidos_chamado"] },
 ];
 const INDICADOR = {
   faturamento:      { label: "Faturamento",         icon: "💰", tipo: "moeda", direcao: "higher_is_better" },
@@ -195,14 +213,11 @@ function renderAbaAtual() {
   destruirGraficosBonificacao();
   if (bm.aba === "visao") return renderVisaoGeral(box);
   if (bm.aba === "visio") return renderLancamentos(box);
+  if (bm.aba === "rev") return renderRevMensal(box);
+  if (bm.aba === "pesquisas") return renderPesquisasTab(box);
+  if (bm.aba === "super_restaurante") return renderSuperRestaurante(box);
   if (bm.aba === "metas") return renderMetas(box);
   if (bm.aba === "historico") return renderHistorico(box);
-  if (INDICADOR_MANUAL_ABA[bm.aba]) {
-    return renderIndicadorManualTab(box, INDICADOR_MANUAL_ABA[bm.aba], {
-      ano: bm.ano, mes: bm.mes, unidadeNome: state.sessao?.unidade?.nome, podeLancar: podeLancar(),
-      metaVigente: metaDoIndicador(INDICADOR_MANUAL_ABA[bm.aba]),
-    });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -307,12 +322,13 @@ function renderVisaoGeral(box) {
 
   box.innerHTML = `
     ${heroHtml(d)}
+    ${elegibilidadeBonificacaoHtml(d)}
+    ${superRestauranteVisaoGeralHtml(d)}
     ${evolucaoFaturamentoHtml(d)}
     ${proximasConquistasHtml(d)}
     ${grupoHtml(d, GRUPOS[0])}
     ${evolucaoMixHtml(d)}
     ${grupoHtml(d, GRUPOS[1])}
-    ${experienciaClienteHtml(d)}
     ${alertasHtml(d)}
   `;
 
@@ -325,6 +341,10 @@ function renderVisaoGeral(box) {
   requestAnimationFrame(() => { box.querySelector(".bm-hero-barra-fill")?.classList.add("preenchida"); });
 
   box.querySelector("#bm-importar-visio-2")?.addEventListener("click", () => el("#bm-importar-visio")?.click());
+  // Os 3 cards do Super Restaurante (Nota iFood/Cancelamentos/Pedidos com
+  // Chamado) não têm mais aba própria — todos abrem o lançamento diário num
+  // drawer, sem sair da Visão Geral.
+  box.querySelectorAll("[data-criterio]").forEach((elCard) => elCard.addEventListener("click", () => abrirDrawerIndicadorManual(elCard.dataset.criterio)));
 }
 
 // ---------- HERO ----------
@@ -344,6 +364,7 @@ function heroHtml(d) {
       <div class="bm-hero-topo"><span class="bm-hero-rotulo">Bonificação ${d.mesFechado ? "conquistada" : "atual"}</span>${badge}</div>
       <div class="bm-hero-valor" id="bm-hero-atual">${fmtMoeda(0)}</div>
       <div class="bm-hero-sub">de <b>${fmtMoeda(r.bonificacaoMaxima)}</b> possíveis${semRegra ? "" : ` · ${fmtPct(pct)}`}</div>
+      ${r.bonificacaoBruta > r.bonificacaoAtual ? `<p class="bm-hero-nota">Calculado pelos indicadores comerciais/operacionais: <b>${fmtMoeda(r.bonificacaoBruta)}</b> — não pago porque um ou mais critérios obrigatórios de elegibilidade (Nota iFood, REV ou Pesquisas) não foram atendidos neste período.</p>` : ""}
       <div class="bm-hero-barra"><div class="bm-hero-barra-fill" style="--pct:${Math.max(2, Math.min(100, pct))}%"></div></div>
       <div class="bm-caminho">
         <span class="bm-caminho-ponta">R$ 0</span>
@@ -531,24 +552,127 @@ function evolucaoMixHtml(d) {
   </section>`;
 }
 
-// ---------- EXPERIÊNCIA DO CLIENTE (painel compacto, item 8) ----------
-function experienciaClienteHtml(d) {
-  const chips = GRUPOS[2].indicadores.map((chave) => {
-    const info = INDICADOR[chave];
-    const res = d.indicadores[chave];
-    const meta = metaDoIndicador(chave);
-    const cor = corIndicador(res, meta);
-    const extra = chave === "pesquisas" && res.proximaFaixa ? ` / ${fmtValor(res.proximaFaixa.valorMin, "int")}` : "";
-    return `<div class="bm-chip ${cor}">
-      <span class="bm-chip-icone">${info.icon}</span>
-      <div class="bm-chip-txt"><b>${info.label}</b><span>${res.status === "sem_dados" ? "Dados não informados" : fmtValor(res.valorAtual, info.tipo) + extra}</span></div>
-      <span class="bm-chip-status">${res.status === "sem_dados" ? "—" : cor === "sucesso" ? "✓" : cor === "critico" ? "!" : "•"}</span>
-    </div>`;
-  }).join("");
+// ---------------------------------------------------------------------------
+// ELEGIBILIDADE DA BONIFICAÇÃO — tri-state (Elegível/Em acompanhamento/Não
+// elegível) dos 3 critérios obrigatórios (Nota iFood + REV + Pesquisas).
+// Conceito DIFERENTE do agrupamento visual "Super Restaurante" logo abaixo
+// (que é só Nota iFood + Cancelamentos + Pedidos com Chamado, sem travar
+// nada). Linguagem sempre consultiva — as frases prontas vêm do backend
+// (bonificacaoMensal.elegibilidade.js), fonte única da regra; aqui só se
+// decide COR e LAYOUT, nunca o texto do motivo.
+// ---------------------------------------------------------------------------
+const STATUS_ELEGIBILIDADE_TXT = {
+  elegivel: { titulo: "Elegível", classe: "sucesso", desc: "Todos os critérios obrigatórios do período foram alcançados." },
+  nao_elegivel: { titulo: "Não elegível", classe: "atencao" },
+  em_acompanhamento: { titulo: "Em acompanhamento", classe: "institucional", desc: "O mês ainda está aberto — os critérios ainda podem ser atingidos até o fechamento da competência." },
+};
+const ELEGIBILIDADE_ROTULO = { elegivel: "Elegível", em_acompanhamento: "Em acompanhamento", nao_elegivel: "Não elegível" };
+
+function elegibilidadeBonificacaoHtml(d) {
+  const el = d.elegibilidade;
+  const txt = STATUS_ELEGIBILIDADE_TXT[el.status];
+  const motivosHtml = el.motivosInelegibilidade.length
+    ? `<ul class="bm-motivos">${el.motivosInelegibilidade.map((m) => `<li>${escapeHtml(m)}</li>`).join("")}</ul>` : "";
+  const descNaoElegivel = el.status === "nao_elegivel"
+    ? `${el.motivosInelegibilidade.length} critério${el.motivosInelegibilidade.length === 1 ? "" : "s"} obrigatório${el.motivosInelegibilidade.length === 1 ? "" : "s"} não ${el.motivosInelegibilidade.length === 1 ? "foi" : "foram"} alcançado${el.motivosInelegibilidade.length === 1 ? "" : "s"} (Nota iFood, REV e Pesquisas).`
+    : txt.desc;
+
   return `<section class="bm-secao">
-    <h3 class="bm-secao-titulo">💬 Experiência do Cliente</h3>
-    <div class="bm-chips">${chips}</div>
+    <h3 class="bm-secao-titulo">🎯 Elegibilidade da Bonificação</h3>
+    <div class="bm-card bm-elegibilidade ${txt.classe}">
+      <div class="bm-card-topo"><span>Nota iFood + REV + Pesquisas</span></div>
+      <div class="bm-elegibilidade-titulo">${txt.titulo}</div>
+      <p class="bm-vazio-inline">${descNaoElegivel}</p>
+      ${motivosHtml}
+      ${el.status !== "elegivel" ? `<p class="bm-vazio-inline bm-motivos-nota">O não atingimento de qualquer critério obrigatório torna a unidade inelegível à bonificação deste período.</p>` : ""}
+    </div>
   </section>`;
+}
+
+// ---------------------------------------------------------------------------
+// SUPER RESTAURANTE — agrupamento "Ifood: Super Restaurante" da planilha:
+// Avaliação (Nota) iFood + Cancelamentos + Pedidos com Chamado, exatos 3
+// indicadores, nada além disso (Pesquisas NÃO entra aqui — é critério
+// próprio da Bonificação Mensal, ver renderPesquisasTab). Só o agrupamento
+// visual: sem pontuação própria, sem média entre os três, sem percentual
+// geral — o backend (avaliarSuperRestaurante) só devolve a contagem "X de 3
+// dentro da meta" + pontos de atenção discretos.
+// ---------------------------------------------------------------------------
+const TITULO_CARD_SUPER_RESTAURANTE = { avaliacao_ifood: "Avaliação iFood", cancelamentos: "Cancelamentos", pedidos_chamado: "Pedidos com Chamado" };
+const INDICADORES_SUPER_RESTAURANTE = ["avaliacao_ifood", "cancelamentos", "pedidos_chamado"];
+
+/** Normaliza o resultado do motor de faixas (cancelamentos/pedidos_chamado, que continuam no sistema de faixas de sempre) pro mesmo formato {valor,minimo,atingido} dos critérios de elegibilidade/Super Restaurante. */
+function criterioDeIndicador(res) {
+  const f = res.faixaAtual || res.proximaFaixa || res.faixaMaxima || null;
+  const minimo = f ? (f.valorMin ?? f.valorMax ?? null) : null;
+  const atingido = res.status === "sem_dados" || res.status === "sem_meta" ? null : res.status !== "meta_nao_atingida";
+  return { valor: res.valorAtual, minimo, atingido };
+}
+
+function cardCriterio({ chave, info, criterio, clicavel, titulo, comBarraProgresso }) {
+  const { valor, minimo, atingido } = criterio;
+  const rotuloMeta = info.direcao === "lower_is_better" ? "Meta máxima" : "Meta mínima";
+  // Nunca "crítico" (vermelho) aqui de propósito — o pior estado visual de
+  // um critério obrigatório é "atenção", nunca a cor reservada pra problema
+  // real do restante do painel.
+  const cor = atingido === true ? "sucesso" : atingido === false ? "atencao" : "neutro";
+  const statusTxt = atingido === true ? "✓ Critério atingido" : atingido === false ? "Critério não atingido" : (minimo == null ? "Sem meta cadastrada" : "Ainda sem dado no período");
+
+  // Só quem ACUMULA ao longo do mês (Pesquisas) ganha barra de progresso —
+  // os demais são um valor fechado do período; uma barra ali sugeriria um
+  // "andamento" que não existe de verdade.
+  let barra = "";
+  if (comBarraProgresso && minimo != null && valor != null && atingido !== true) {
+    const pctMeta = Math.max(0, Math.min(100, (valor / minimo) * 100));
+    barra = `<div class="bm-regua-barra"><div style="width:${pctMeta}%; background:${HEX_DA_COR[cor]}"></div></div>
+      <p class="bm-vazio-inline">${fmtPct(pctMeta)} da meta mensal · faltam ${Math.max(0, Math.ceil(minimo - valor))} pesquisas</p>`;
+  }
+
+  return `<div class="bm-card bm-criterio-card ${cor}" ${clicavel ? `data-criterio="${chave}" role="button" tabindex="0"` : ""}>
+    <div class="bm-card-topo"><span>${info.icon}</span> ${titulo ?? info.label}</div>
+    <div class="bm-gauge-valor">${fmtValor(valor, info.tipo)}</div>
+    ${barra}
+    <div class="bm-gauge-detalhe">
+      ${minimo != null ? `<span>${rotuloMeta}: <b>${fmtValor(minimo, info.tipo)}</b></span>` : ""}
+      <span class="pill ${PILL_DA_COR[cor]}">${statusTxt}</span>
+    </div>
+  </div>`;
+}
+
+/** Conteúdo comum aos dois pontos onde o Super Restaurante aparece (Visão Geral e a aba própria) — nunca duplicar a regra de exibição. */
+function superRestauranteBlocoHtml(d) {
+  const sr = d.superRestaurante;
+  const cards = INDICADORES_SUPER_RESTAURANTE.map((chave) => {
+    const info = INDICADOR[chave];
+    const criterio = chave === "avaliacao_ifood" ? d.elegibilidade.criterios.nota_ifood : sr.criterios[chave];
+    return cardCriterio({ chave, info, criterio, clicavel: true, titulo: TITULO_CARD_SUPER_RESTAURANTE[chave] });
+  }).join("");
+
+  const total = sr.totalComMeta || INDICADORES_SUPER_RESTAURANTE.length;
+  const resumoClasse = sr.totalComMeta > 0 && sr.dentroDaMeta === sr.totalComMeta ? "sucesso" : sr.pontosDeAtencao.length ? "atencao" : "neutro";
+  const pontosHtml = sr.pontosDeAtencao.length
+    ? `<ul class="bm-motivos">${sr.pontosDeAtencao.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "";
+
+  return `<div class="bm-grid-cards">${cards}</div>
+    <p class="bm-super-resumo ${resumoClasse}">${sr.dentroDaMeta} de ${total} indicador${total === 1 ? "" : "es"} dentro da meta</p>
+    ${pontosHtml}`;
+}
+
+function superRestauranteVisaoGeralHtml(d) {
+  return `<section class="bm-secao" id="bm-super-restaurante">
+    <h3 class="bm-secao-titulo">🌟 Super Restaurante</h3>
+    ${superRestauranteBlocoHtml(d)}
+  </section>`;
+}
+
+function renderSuperRestaurante(box) {
+  const d = bm.dadosMes;
+  box.innerHTML = `<section class="bm-secao">
+    <h3 class="bm-secao-titulo">🌟 Super Restaurante — ${MESES[d.mes - 1]}/${d.ano}</h3>
+    <p class="bm-vazio-inline">Agrupamento que a operação já usa na planilha ("Ifood: Super Restaurante"): Avaliação iFood, Cancelamentos e Pedidos com Chamado.</p>
+    ${superRestauranteBlocoHtml(d)}
+  </section>`;
+  box.querySelectorAll("[data-criterio]").forEach((elCard) => elCard.addEventListener("click", () => abrirDrawerIndicadorManual(elCard.dataset.criterio)));
 }
 
 // ---------- ALERTAS / AÇÕES ----------
@@ -602,6 +726,12 @@ function diaHtml(dia) {
 
 // ---------- DRAWER de detalhe do dia (item 17) ----------
 let drawerEl = null;
+// Só o drawer de indicador manual (Nota iFood/Pesquisas) precisa recarregar
+// a tela de trás ao fechar — pode ter lançado um dia novo, e o Hero/cards da
+// Visão Geral (por trás do drawer) ficariam com o número antigo até um
+// F5. O drawer de detalhe do dia já recarrega sozinho a cada ação (ver
+// marcarSemOperacao/excluirLancamentoDia), então não precisa disto.
+let drawerRecarregarAoFechar = false;
 function fecharDrawer() {
   if (!drawerEl) return;
   drawerEl.classList.remove("aberto");
@@ -609,8 +739,28 @@ function fecharDrawer() {
   setTimeout(() => alvo.remove(), 220);
   drawerEl = null;
   document.removeEventListener("keydown", onEscDrawer);
+  if (drawerRecarregarAoFechar) { drawerRecarregarAoFechar = false; carregarConteudo(); }
 }
 function onEscDrawer(e) { if (e.key === "Escape") fecharDrawer(); }
+
+/** Abre o calendário diário de Nota iFood/Pesquisas num drawer — mesmo renderer de sempre (bonificacaoMensalIndicadorManual.js), só que sem aba própria (item 1). */
+async function abrirDrawerIndicadorManual(indicador) {
+  fecharDrawer();
+  drawerRecarregarAoFechar = true;
+  drawerEl = document.createElement("div");
+  drawerEl.className = "bm-drawer-overlay";
+  drawerEl.innerHTML = `<aside class="bm-drawer bm-drawer-largo"><button class="modal-close" aria-label="Fechar">×</button><div class="bm-drawer-conteudo">${carregando()}</div></aside>`;
+  drawerEl.addEventListener("click", (e) => { if (e.target === drawerEl) fecharDrawer(); });
+  document.body.appendChild(drawerEl);
+  document.addEventListener("keydown", onEscDrawer);
+  requestAnimationFrame(() => drawerEl.classList.add("aberto"));
+  drawerEl.querySelector(".modal-close").addEventListener("click", fecharDrawer);
+
+  const corpo = drawerEl.querySelector(".bm-drawer-conteudo");
+  await renderIndicadorManualTab(corpo, indicador, {
+    ano: bm.ano, mes: bm.mes, unidadeNome: state.sessao?.unidade?.nome, podeLancar: podeLancar(),
+  });
+}
 
 async function abrirDrawerDia(data) {
   fecharDrawer();
@@ -698,12 +848,134 @@ async function excluirLancamentoDia(data) {
 }
 
 // ---------------------------------------------------------------------------
+// ABA "REV" — critério próprio da Bonificação Mensal (migration 052): 1
+// valor por MÊS, não mais por dia. Fica FORA do agrupamento Super
+// Restaurante — mantém espaço próprio, junto de Pesquisas.
+// ---------------------------------------------------------------------------
+function renderRevMensal(box) {
+  const d = bm.dadosMes;
+  const rev = d.revMensal;
+  const meta = metaDoIndicador("rev");
+  const minimo = meta?.faixas?.[0]?.valorMin ?? null;
+  const criterio = d.elegibilidade.criterios.rev;
+  const cor = criterio.atingido === true ? "sucesso" : criterio.atingido === false ? "atencao" : "neutro";
+  const statusTxt = criterio.atingido === true ? "✓ Critério atingido" : criterio.atingido === false ? "Critério não atingido" : (minimo == null ? "Sem meta cadastrada" : "Ainda sem dado neste período");
+
+  box.innerHTML = `
+    <section class="bm-secao">
+      <h3 class="bm-secao-titulo">📶 REV — ${MESES[d.mes - 1]}/${d.ano}</h3>
+      <p class="bm-vazio-inline">REV é publicado pela operação uma vez por competência — um valor para o mês inteiro, nunca por dia.</p>
+      <div class="bm-card bm-criterio-card ${cor}" style="max-width:360px">
+        <div class="bm-card-topo"><span>${INDICADOR.rev.icon}</span> REV do mês</div>
+        <div class="bm-gauge-valor">${rev ? fmtValor(rev.valor, "nota") : "—"}</div>
+        <div class="bm-gauge-detalhe">
+          ${minimo != null ? `<span>Meta mínima: <b>${fmtValor(minimo, "nota")}</b></span>` : ""}
+          <span class="pill ${PILL_DA_COR[cor]}">${statusTxt}</span>
+        </div>
+        ${rev ? `<p class="bm-vazio-inline">Atualizado em ${fmtDataHora(rev.atualizadoEm)}${rev.usuarioNome ? ` por ${escapeHtml(rev.usuarioNome)}` : ""}</p>` : ""}
+        ${podeLancar() ? `<div class="ed-acoes"><button class="btn btn-ghost btn-sm" id="bm-rev-editar">✏️ ${rev ? "Corrigir" : "Lançar"} REV do mês</button></div>` : ""}
+      </div>
+      <div id="bm-rev-editor"></div>
+    </section>
+    <section class="bm-secao"><h3 class="bm-secao-titulo">📚 Últimos meses</h3><div id="bm-rev-historico">${carregando()}</div></section>`;
+
+  box.querySelector("#bm-rev-editar")?.addEventListener("click", () => abrirEditorRevMensal(box, rev));
+  carregarHistoricoRev(box);
+}
+
+function abrirEditorRevMensal(box, revAtual) {
+  const area = box.querySelector("#bm-rev-editor");
+  if (!area) return;
+  area.innerHTML = `<div class="bm-card" style="max-width:360px">
+    <h4>✏️ REV — ${MESES[bm.mes - 1]}/${bm.ano}</h4>
+    <form id="bm-rev-form" class="cfg-form-grid">
+      <label class="cfg-campo"><span>Valor de REV</span>
+        <input type="number" step="0.1" min="0" id="bm-rev-valor" value="${revAtual?.valor ?? ""}" placeholder="Ex.: 86" required></label>
+      <div class="ed-acoes">
+        <button type="button" class="btn btn-ghost" id="bm-rev-cancelar">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>`;
+  area.querySelector("#bm-rev-cancelar").addEventListener("click", () => { area.innerHTML = ""; });
+  area.querySelector("#bm-rev-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const valor = area.querySelector("#bm-rev-valor").value;
+    if (valor === "") return toast("Informe o valor de REV.");
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      await bonifSalvarRevMensal({ ano: bm.ano, mes: bm.mes, valor });
+      toast("REV do mês salvo ✅");
+      await carregarConteudo();
+    } catch (err) {
+      toast("Erro: " + err.message);
+      btn.disabled = false;
+    }
+  });
+  area.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function carregarHistoricoRev(box) {
+  const alvo = box.querySelector("#bm-rev-historico");
+  if (!alvo) return;
+  const g = geracaoContexto();
+  try {
+    const { data } = await bonifHistorico({ ano: bm.ano });
+    if (contextoMudou(g)) return;
+    if (!alvo.isConnected) return; // usuário já trocou de aba antes da resposta chegar
+    if (!data.length) { alvo.innerHTML = `<p class="bm-vazio-inline">Sem histórico ainda.</p>`; return; }
+    // Sem coluna de "critério atingido" por mês de propósito: o mínimo de
+    // REV pode ter mudado de vigência entre um mês e outro (item 31 —
+    // histórico nunca muda quando a meta futura é editada), então comparar
+    // o REV de um mês antigo contra o mínimo de HOJE seria enganoso.
+    alvo.innerHTML = `<div class="tabela-wrap"><table class="grid">
+      <thead><tr><th>Mês</th><th class="num">REV</th></tr></thead>
+      <tbody>${data.map((m) => `<tr><td>${MESES[m.mes - 1]}/${m.ano}</td><td class="num">${fmtValor(m.rev, "nota")}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+  } catch (e) {
+    if (contextoMudou(g)) return;
+    alvo.innerHTML = `<p class="bm-vazio-inline">Erro ao carregar histórico: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ABA "PESQUISAS" — critério próprio da Bonificação Mensal (fora do
+// agrupamento Super Restaurante). Acumula ao longo do mês (calendário
+// diário, mesmo componente reaproveitado de sempre) — por isso ganha um
+// card-resumo do critério de elegibilidade no topo, no mesmo espírito do
+// que a aba REV já mostra, seguido do calendário diário completo.
+// ---------------------------------------------------------------------------
+function renderPesquisasTab(box) {
+  const d = bm.dadosMes;
+  const criterio = d.elegibilidade.criterios.pesquisas;
+  box.innerHTML = `
+    <section class="bm-secao">
+      <h3 class="bm-secao-titulo">📝 Elegibilidade — Pesquisas do mês</h3>
+      <div class="bm-grid-cards" style="max-width:360px">
+        ${cardCriterio({ chave: "pesquisas", info: INDICADOR.pesquisas, criterio, clicavel: false, comBarraProgresso: true })}
+      </div>
+    </section>
+    <section class="bm-secao"><div id="bm-pesquisas-detalhe"></div></section>`;
+  renderIndicadorManualTab(box.querySelector("#bm-pesquisas-detalhe"), "pesquisas", {
+    ano: bm.ano, mes: bm.mes, unidadeNome: state.sessao?.unidade?.nome, podeLancar: podeLancar(),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // ABA 3 — METAS (escada de progressão visual, item 15)
 // ---------------------------------------------------------------------------
 async function renderMetas(box) {
   const dados = bm.metas;
   if (!dados?.length) { box.innerHTML = vazio("🎯", "Nenhuma meta cadastrada", "Esta unidade ainda não tem metas de bonificação cadastradas."); return; }
-  const porGrupo = [...GRUPOS, { id: "faturamento", titulo: "Faturamento", icon: "💰", indicadores: ["faturamento"] }];
+  // REV saiu de GRUPOS (tem página própria agora, fora do grid genérico —
+  // ver renderRevMensal) mas a META dele continua editável aqui, junto das
+  // demais — só entra num grupo próprio pra não sumir da tela de metas.
+  const porGrupo = [
+    ...GRUPOS,
+    { id: "faturamento", titulo: "Faturamento", icon: "💰", indicadores: ["faturamento"] },
+    { id: "rev", titulo: "REV", icon: "📶", indicadores: ["rev"] },
+  ];
   const aviso = podeConfigurar()
     ? `O histórico de metas anteriores é preservado — editar cria uma NOVA vigência a partir da data escolhida, o mês já vivido continua avaliado pela regra antiga.`
     : `Vigente a partir de ${fmtDataBr(metaDoIndicador("faturamento")?.validFrom)}. Só quem tem a permissão "configurar bonificação" pode alterar metas.`;
@@ -763,6 +1035,32 @@ async function renderHistorico(box) {
             <span>${m.metasAtingidas} de ${m.metasComRegra} metas · faturamento ${fmtMoeda(m.faturamentoAcumulado)}</span>
           </div>
         </div>`).join("")}</div>
+    </section>
+    <section class="bm-secao"><h3 class="bm-secao-titulo">🎯 Evolução da Elegibilidade da Bonificação</h3>
+      <p class="bm-vazio-inline">Critérios obrigatórios: Nota iFood, REV e Pesquisas.</p>
+      <div class="tabela-wrap"><table class="grid">
+        <thead><tr><th>Mês</th><th class="num">Nota iFood</th><th class="num">REV</th><th class="num">Pesquisas</th><th>Elegibilidade</th></tr></thead>
+        <tbody>${data.map((m) => `<tr>
+          <td>${MESES[m.mes - 1]}/${m.ano}</td>
+          <td class="num">${fmtValor(m.notaIfood, "nota")}</td>
+          <td class="num">${fmtValor(m.rev, "nota")}</td>
+          <td class="num">${fmtValor(m.pesquisas, "int")}</td>
+          <td><span class="pill ${m.elegibilidade === "elegivel" ? "ok" : m.elegibilidade === "em_acompanhamento" ? "info" : "warn"}">${ELEGIBILIDADE_ROTULO[m.elegibilidade] ?? m.elegibilidade}</span></td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+    </section>
+    <section class="bm-secao"><h3 class="bm-secao-titulo">🌟 Evolução do Super Restaurante</h3>
+      <p class="bm-vazio-inline">Agrupamento: Avaliação iFood, Cancelamentos e Pedidos com Chamado.</p>
+      <div class="tabela-wrap"><table class="grid">
+        <thead><tr><th>Mês</th><th class="num">Avaliação</th><th class="num">Cancelamentos</th><th class="num">Pedidos c/ Chamado</th><th>Dentro da meta</th></tr></thead>
+        <tbody>${data.map((m) => `<tr>
+          <td>${MESES[m.mes - 1]}/${m.ano}</td>
+          <td class="num">${fmtValor(m.notaIfood, "nota")}</td>
+          <td class="num">${fmtValor(m.cancelamentos, "pct")}</td>
+          <td class="num">${fmtValor(m.pedidosChamado, "pct")}</td>
+          <td><span class="pill ${m.superRestauranteTotalComMeta > 0 && m.superRestauranteDentroDaMeta === m.superRestauranteTotalComMeta ? "ok" : "warn"}">${m.superRestauranteDentroDaMeta} de ${m.superRestauranteTotalComMeta || 3}</span></td>
+        </tr>`).join("")}</tbody>
+      </table></div>
     </section>`;
   } catch (e) {
     box.innerHTML = vazio("⚠️", "Erro ao carregar histórico", e.message);

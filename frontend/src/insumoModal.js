@@ -1,15 +1,44 @@
 // Modal de INSUMO: cadastro, edição (com prévia de custo em tempo real),
 // histórico de preço e lista de produtos que utilizam o insumo.
-import { obterInsumo, criarInsumo, atualizarInsumo } from "./api.js";
+import { obterInsumo, criarInsumo, atualizarInsumo, listarInsumos } from "./api.js";
 import { CATEGORIAS_INSUMO, CATEGORIA_INSUMO_ROTULO, UNIDADES_BASE, UNIDADE_ROTULO, FORMAS_COMPRA } from "./config.js";
 import { fmtMoeda, fmtPct, fmtTexto, fmtDataHora, escapeHtml, toast } from "./utils.js";
 import { icon } from "./icons.js";
+import { state } from "./state.js";
+import { botaoContextualHtml, ligarBotoesContextuais, sincronizarContextoPainel } from "./agentePainel.js";
 
 let overlay = null;
-function fechar() { overlay?.remove(); overlay = null; document.removeEventListener("keydown", onKey); }
+function fechar() {
+  overlay?.remove(); overlay = null;
+  document.removeEventListener("keydown", onKey);
+  // "insumo aberto" deixou de existir — Page Context do Agente Crescer volta pra "lista".
+  state.detalheAberto.insumo = null;
+  sincronizarContextoPainel();
+}
 function onKey(e) { if (e.key === "Escape") fechar(); }
 
 const catLabel = (c) => CATEGORIA_INSUMO_ROTULO[c] ?? fmtTexto(c);
+
+/**
+ * Abre o insumo pelo NOME — usada pela action "ingredient_detail" do Agente
+ * Crescer (Etapa F.1). Nunca recebe um id do Claude: busca no catálogo real
+ * (mesma API da tela de Insumos) e só então abre pelo id encontrado. Sem
+ * correspondência, avisa e não abre nada — nunca inventa um insumo.
+ * @param {string} nome
+ */
+export async function abrirInsumoPorNome(nome) {
+  const alvo = String(nome ?? "").trim();
+  if (!alvo) return;
+  try {
+    const { data } = await listarInsumos({ busca: alvo });
+    const itens = data?.itens ?? [];
+    const item = itens.find((i) => String(i.nome ?? "").trim().toLowerCase() === alvo.toLowerCase()) ?? itens[0];
+    if (!item?.id) { toast(`Não encontrei "${nome}" no catálogo de insumos.`); return; }
+    await abrirInsumoModal(item.id, {});
+  } catch {
+    toast(`Não foi possível abrir "${nome}".`);
+  }
+}
 
 // Prévia do custo por unidade-base (mesma fórmula do backend: preço ÷ conteúdo).
 function previaCusto(preco, rendimento) {
@@ -184,6 +213,7 @@ function renderDetalhe(i, opts) {
         ${i.codigo ? `<span class="chip">${escapeHtml(i.codigo)}</span>` : ""}
         ${i.ativo ? '<span class="pill ok">Ativo</span>' : '<span class="pill muted">Inativo</span>'}
       </div>
+      ${botaoContextualHtml("ingredients_insumo")}
     </div>
     <div class="modal-custo"><span>Custo por unidade-base</span><strong>${custo}</strong></div>
 
@@ -219,8 +249,14 @@ function renderDetalhe(i, opts) {
     </div>
   `;
 
+  // "insumo aberto" pro Page Context do Agente Crescer — só o NOME (ver
+  // state.js#detalheAberto). Idempotente em re-renders (ex.: depois de editar).
+  state.detalheAberto.insumo = i.nome;
+  sincronizarContextoPainel();
+
   const m = overlay.querySelector(".modal");
   m.querySelector(".modal-close").addEventListener("click", fechar);
   m.querySelector("#in-fechar").addEventListener("click", fechar);
   m.querySelector("#in-editar")?.addEventListener("click", () => renderForm(i, opts));
+  ligarBotoesContextuais(m);
 }

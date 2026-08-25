@@ -42,7 +42,9 @@ async function tratar(r, g) {
       limparContexto();
       document.dispatchEvent(new CustomEvent("app:contexto-invalido", { detail: j.error }));
     }
-    throw new Error(j.error || `${r.status} ${r.statusText}`);
+    const erro = new Error(j.error || `${r.status} ${r.statusText}`);
+    if (j.codigo) erro.codigo = j.codigo; // ex.: "TABELA_NAO_CONFIGURADA" — ver cmv.controller.js
+    throw erro;
   }
   return r.json();
 }
@@ -52,19 +54,43 @@ async function getJson(url) {
   return tratar(await fetch(API_BASE + url, { headers: await comAuth() }), g);
 }
 
-// Compatível com a API atual: nome, tamanho, preco, custo, cmv_pct, lucro_liquido, desatualizado.
-export async function carregarCmv(canal, tabela) {
+// Dashboard comum + Produtos/CMV — MESMO endpoint, mesma regra (ver
+// cmv.service.js#listarMargensOficialOuComparacao no backend):
+//   * `tabelaComparacao` ausente -> backend resolve a tabela OFICIAL da
+//     unidade sozinho (nunca aceita uma tabela vinda daqui como se fosse a
+//     oficial — só ele decide isso). Se a unidade não tiver tabela
+//     configurada, a resposta é um erro com `err.codigo === "TABELA_NAO_CONFIGURADA"`
+//     (ou "UNIDADE_NAO_SELECIONADA") — nunca cai pra "primeira tabela".
+//   * `tabelaComparacao` informada -> `comparar=true` explícito na query, e
+//     o backend usa exatamente essa tabela (modo de comparação).
+// Retorno inclui `tabelaOficial`/`tabela`/`comparando` — quem chama usa isso
+// pra atualizar `state.tabelasOficiais`, nunca inventa localmente.
+export async function carregarCmv(canal, tabelaComparacao) {
+  const params = new URLSearchParams({ canal });
+  if (tabelaComparacao) { params.set("tabela", tabelaComparacao); params.set("comparar", "true"); }
+
   const [cmv, prods] = await Promise.all([
-    getJson(`/api/v1/cmv?canal=${encodeURIComponent(canal)}&tabela=${encodeURIComponent(tabela)}`),
+    getJson(`/api/v1/cmv?${params.toString()}`),
     getJson(`/api/v1/produtos?vendavel=true`).catch(() => ({ data: [] })),
   ]);
   const catPorId = {};
   for (const p of prods.data ?? []) catPorId[p.id] = p.tipo;
-  return (cmv.data ?? []).map((r) => ({
+  const linhas = (cmv.data ?? []).map((r) => ({
     ...r,
     categoria: r.categoria ?? catPorId[r.produto_id] ?? null,
     _status: statusCmv(r.cmv_pct),
   }));
+  return { linhas, canal: cmv.canal, tabela: cmv.tabela, tabelaOficial: cmv.tabelaOficial, comparando: !!cmv.comparando };
+}
+
+// ---------- Tabela comercial da unidade (ver backend/src/modules/unidade) ----------
+export const obterTabelasComerciaisUnidade = () => getJson(`/api/v1/unidade/tabelas-comerciais`);
+export async function alterarTabelaComercialUnidade({ canal, novaTabela, motivo }) {
+  const g = geracaoContexto();
+  const r = await fetch(`${API_BASE}/api/v1/unidade/tabelas-comerciais`, {
+    method: "PATCH", headers: await comAuth({ "Content-Type": "application/json" }), body: JSON.stringify({ canal, novaTabela, motivo }),
+  });
+  return tratar(r, g);
 }
 
 export async function obterProduto(id) {
@@ -274,6 +300,9 @@ export const bonifSalvarMeta = (indicador, dados) => postJson(`${BM}/metas/${enc
 export const bonifCalendarioIndicador = (indicador, f) => getJson(`${BM}/indicadores/${encodeURIComponent(indicador)}/calendario${qs(f)}`);
 export const bonifHistoricoMensalIndicador = (indicador, f) => getJson(`${BM}/indicadores/${encodeURIComponent(indicador)}/historico${qs(f)}`);
 export const bonifSalvarValorDiaIndicador = (indicador, dados) => postJson(`${BM}/indicadores/${encodeURIComponent(indicador)}`, dados);
+// REV: 1 valor por unidade+mês (migration 052), não mais diário.
+// Leitura vem embutida em bonifMes() (campo revMensal); esta é só a escrita.
+export const bonifSalvarRevMensal = (dados) => postJson(`${BM}/rev`, dados);
 
 // ---------- Parser Food Delivery (importação + conciliação de taxas de entregador) ----------
 const PFD = "/api/v1/parser-food-delivery";
@@ -321,6 +350,20 @@ export const mbImportarManual = (payload) => postJson(`${MB}/import-manual`, pay
 export const mbIniciarSincronizacao = (credenciais) => postJson(`${MB}/start`, credenciais);
 export const mbInformarCodigo = (sessionId, codigo) => postJson(`${MB}/${sessionId}/code`, { codigo });
 export const mbCancelarSincronizacao = (sessionId) => postJson(`${MB}/${sessionId}/cancel`, {});
+
+// ---------- Agente Crescer (assistente de IA — Fase 1.5+, só consulta/análise) ----------
+// Histórico curto DESTA conversa (ver agente.service.js) — conversationId
+// null/ausente = inicia uma conversa nova; o servidor sempre devolve o id
+// (novo ou reaproveitado) para a próxima chamada.
+//
+// `pageContext` (Etapa F) é opcional e SEMPRE derivado do estado real da UI
+// (ver agentePageContext.js) — nunca digitado livremente pelo usuário, nunca
+// carrega organizacaoId/unidadeId/permissões (o backend rejeitaria de todo
+// jeito — ver agente.pageContext.js#sanitizarPageContext — mas o frontend
+// nem tenta mandar).
+export const agenteMensagem = (mensagem, conversationId, pageContext = null) =>
+  postJson(`/api/v1/agente/mensagem`, { mensagem, conversationId: conversationId ?? null, pageContext: pageContext ?? undefined });
+export const agenteHistorico = (conversationId) => getJson(`/api/v1/agente/conversas/${encodeURIComponent(conversationId)}`);
 
 export async function health() {
   return getJson("/health");

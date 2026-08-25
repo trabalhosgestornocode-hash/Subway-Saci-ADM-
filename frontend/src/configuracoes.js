@@ -4,7 +4,8 @@
 import { el, escapeHtml, toast } from "./utils.js";
 import { state } from "./state.js";
 import { TABELAS, CMV_LIMITES } from "./config.js";
-import { obterUsuarios, criarUsuario, atualizarUsuario, excluirUsuario } from "./api.js";
+import { obterUsuarios, criarUsuario, atualizarUsuario, excluirUsuario, obterTabelasComerciaisUnidade, alterarTabelaComercialUnidade } from "./api.js";
+import { pode } from "./sessao.js";
 
 // Perfis da UI <-> enum papel_usuario do banco (migration 003)
 // Cargos do modelo multiempresa (enum papel_acesso). O cargo pertence ao
@@ -98,7 +99,7 @@ const chk = (root, id) => !!root.querySelector("#" + id)?.checked;
 const SECOES = [
   { id: "unidade",      icon: "🏪", titulo: "Dados da Unidade",        desc: "Nome, CNPJ, endereço, responsável e contato da loja." },
   { id: "cmv",          icon: "🎯", titulo: "Metas e Limites de CMV",  desc: "Faixas de CMV, metas de faturamento e margem mínima." },
-  { id: "precos",       icon: "🏷️", titulo: "Tabelas de Preço",        desc: "Canal padrão, tabela ativa e recálculo automático." },
+  { id: "precos",       icon: "🏷️", titulo: "Tabelas Comerciais",      desc: "Tabela oficial de Balcão e iFood desta unidade." },
   { id: "usuarios",     icon: "👥", titulo: "Usuários e Permissões",   desc: "Equipe, perfis de acesso, último login e status." },
   { id: "seguranca",    icon: "🔒", titulo: "Segurança",               desc: "Senha forte, bloqueio, sessão e registro de acessos." },
   { id: "notificacoes", icon: "🔔", titulo: "Notificações",            desc: "Alertas no sistema, WhatsApp e e-mail." },
@@ -137,6 +138,88 @@ function abrirSecao(id) {
     <div class="cfg-detalhe" id="cfg-detalhe"></div>`;
   el("#cfg-voltar").addEventListener("click", renderConfiguracoes);
   (DETALHES[id] || (() => {}))(el("#cfg-detalhe"));
+}
+
+// ======================= TABELAS COMERCIAIS (real) =======================
+const CANAL_LABEL_TC = { balcao: "Balcão", ifood: "iFood" };
+
+async function carregarTabelasComerciais(root) {
+  root.innerHTML = `<div class="cfg-panel"><div class="cfg-panel-body"><div class="estado"><div class="spinner"></div>Carregando tabelas comerciais…</div></div></div>`;
+  try {
+    const { data } = await obterTabelasComerciaisUnidade();
+    desenharTabelasComerciais(root, data);
+  } catch (e) {
+    root.innerHTML = painel("Tabelas Comerciais",
+      `<div class="estado-mini">Não foi possível carregar: ${escapeHtml(e.message)}</div>`);
+  }
+}
+
+function linhaTabelaComercial(canalKey, tabelaAtual) {
+  const podeAlterar = pode("configuracoes.gerenciar");
+  return `
+    <div class="cfg-user cfg-tabela-linha">
+      <div class="cfg-user-info">
+        <b>${CANAL_LABEL_TC[canalKey]}</b>
+        <small>${tabelaAtual ? `Tabela atual: ${escapeHtml(tabelaAtual)}` : "Não configurada"}</small>
+      </div>
+      ${tabelaAtual
+        ? `<span class="pill ok">Tabela atual: ${escapeHtml(tabelaAtual)}</span>`
+        : `<span class="pill warn">Precisa configurar</span>`}
+      ${podeAlterar ? `<button class="btn btn-ghost btn-sm" data-alterar-canal="${canalKey}">Alterar</button>` : ""}
+    </div>`;
+}
+
+function desenharTabelasComerciais(root, data) {
+  root.innerHTML = painel(
+    "Tabelas comerciais da unidade",
+    `<p class="cfg-tabela-explicacao">
+      Define qual preço/CMV o Dashboard e Produtos/CMV usam por padrão para esta unidade — a IDENTIDADE
+      COMERCIAL dela. Trocar aqui muda a configuração real, para todo mundo, imediatamente. Só para
+      <b>comparar</b> outra tabela sem alterar nada, use o seletor no topo do Dashboard/Produtos-CMV
+      ("Comparar: X") — isso nunca grava aqui.
+    </p>`
+    + linhaTabelaComercial("balcao", data.tabelaBalcao)
+    + linhaTabelaComercial("ifood", data.tabelaIfood)
+    + (pode("configuracoes.gerenciar")
+      ? ""
+      : `<p class="cfg-meta">Você tem permissão para visualizar, não para alterar a tabela oficial — fale com um Administrador da empresa.</p>`),
+  );
+  root.querySelectorAll("[data-alterar-canal]").forEach((b) =>
+    b.addEventListener("click", () => abrirAlteracaoTabelaComercial(root, b.dataset.alterarCanal, data)));
+}
+
+function abrirAlteracaoTabelaComercial(root, canalKey, dadosAtuais) {
+  const tabelaAtual = canalKey === "ifood" ? dadosAtuais.tabelaIfood : dadosAtuais.tabelaBalcao;
+  const opcoes = TABELAS[canalKey] || [];
+  root.innerHTML = painel(`Alterar tabela — ${CANAL_LABEL_TC[canalKey]}`, `
+    <div class="cfg-form-grid">
+      <label class="cfg-campo"><span>Canal</span><b class="cfg-campo-fixo">${CANAL_LABEL_TC[canalKey]}</b></label>
+      <label class="cfg-campo"><span>Tabela atual</span><b class="cfg-campo-fixo">${tabelaAtual ? escapeHtml(tabelaAtual) : "não configurada"}</b></label>
+      ${select("Nova tabela", "tc-nova", opcoes, tabelaAtual ?? opcoes[0] ?? "")}
+      ${campo("Motivo (opcional)", "tc-motivo", "", { ph: "ex.: renegociação com a marca" })}
+    </div>
+    <p class="cfg-aviso-alteracao">⚠️ Essa alteração modifica a tabela OFICIAL da unidade — Dashboard e Produtos/CMV passam a usar a nova tabela por padrão, para todo mundo, imediatamente. Fica registrada com seu usuário e horário.</p>
+  `) + `
+    <div class="cfg-acoes">
+      <button class="btn btn-ghost" id="tc-cancelar">Cancelar</button>
+      <button class="btn btn-primary" id="tc-confirmar">Confirmar alteração</button>
+    </div>`;
+
+  root.querySelector("#tc-cancelar").addEventListener("click", () => carregarTabelasComerciais(root));
+  root.querySelector("#tc-confirmar").addEventListener("click", async () => {
+    const novaTabela = val(root, "tc-nova");
+    const motivo = val(root, "tc-motivo");
+    const btn = root.querySelector("#tc-confirmar");
+    btn.disabled = true;
+    try {
+      await alterarTabelaComercialUnidade({ canal: canalKey, novaTabela, motivo });
+      toast(`Tabela ${CANAL_LABEL_TC[canalKey]} alterada para ${novaTabela}.`);
+      carregarTabelasComerciais(root);
+    } catch (e) {
+      toast("Erro ao alterar: " + e.message);
+      btn.disabled = false;
+    }
+  });
 }
 
 // ======================= DETALHES DE CADA SEÇÃO =======================
@@ -182,29 +265,14 @@ const DETALHES = {
     }), "cmv");
   },
 
-  // 3. Tabelas de Preço
+  // 3. Tabelas Comerciais — REAL (backend/unidades.tabela_balcao/tabela_ifood),
+  // ao contrário das outras seções desta tela (essas continuam só locais).
+  // Esta é a configuração OFICIAL da unidade: o que muda aqui passa a valer
+  // por padrão no Dashboard comum e em Produtos/CMV para todo mundo — nunca
+  // confundir com "comparar outra tabela" (isso é só o seletor do topo,
+  // temporário, nunca grava nada — ver app.js/comparacaoTabela.js).
   precos(root) {
-    const d = cfg("precos");
-    const canal = d.canal ?? state.canal ?? "balcao";
-    root.innerHTML = painel("Canal e tabela ativa", `
-      <div class="cfg-form-grid">
-        ${select("Canal padrão", "p-canal", [["balcao", "Balcão"], ["ifood", "iFood"]], canal)}
-        ${select("Tabela ativa", "p-tab", TABELAS[canal] || TABELAS.balcao, d.tabela ?? state.tabela ?? "A")}
-      </div>`)
-      + painel("Tabelas disponíveis", `
-        <div class="cfg-sub"><b>Balcão</b>${chips(TABELAS.balcao)}</div>
-        <div class="cfg-sub"><b>iFood</b>${chips(TABELAS.ifood)}</div>
-        <div class="cfg-meta">Última atualização de preços: <b>${escapeHtml(d.atualizado ?? "—")}</b></div>`)
-      + painel("Automação", toggle("Recalcular CMV automaticamente", "p-recalc", d.recalc !== false, "Quando o custo ou o preço de um produto mudar."))
-      + barraSalvar();
-    // trocar o canal atualiza as opções de tabela
-    root.querySelector("#p-canal").addEventListener("change", (e) => {
-      const sel = root.querySelector("#p-tab");
-      sel.innerHTML = (TABELAS[e.target.value] || []).map((t) => `<option>${t}</option>`).join("");
-    });
-    ligarSalvar(root, () => ({
-      canal: val(root, "p-canal"), tabela: val(root, "p-tab"), recalc: chk(root, "p-recalc"),
-    }), "precos");
+    carregarTabelasComerciais(root);
   },
 
   // 4. Usuários e Permissões (real — Supabase Auth via backend)

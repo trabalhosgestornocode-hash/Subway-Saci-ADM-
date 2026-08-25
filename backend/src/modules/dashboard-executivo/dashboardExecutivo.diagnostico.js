@@ -46,6 +46,7 @@ const fmtDataBrCurta = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const ROTULO_INDICADOR = {
   taxas_comissoes: "Taxas e Comissões",
   servicos_promocoes: "Serviços e Promoções",
+  taxas_entregadores: "Taxas de Entregadores",
 };
 
 // ---------------------------------------------------------------------------
@@ -321,6 +322,10 @@ export function gerarDiagnostico(input) {
   const ANALISADORES = [
     () => analisarIndicadorPercentual("taxas_comissoes", indicadores.taxas_comissoes, faturamentoBase),
     () => analisarIndicadorPercentual("servicos_promocoes", indicadores.servicos_promocoes, faturamentoBase),
+    // Etapa H — dado já existia (meta/saldo calculados desde a introdução do
+    // indicador), só faltava virar achado próprio; até aqui só entrava como
+    // "componente que mais pesa" dentro de analisarTotalDeducoes.
+    () => analisarIndicadorPercentual("taxas_entregadores", indicadores.taxas_entregadores, faturamentoBase),
     () => analisarTotalDeducoes(indicadores.total_deducoes, componentesDeducao, faturamentoBase),
     () => analisarFaturamento(comparativo, recuperacao),
     () => analisarDiasPendentes(diasPendentes, diasPendentesDatas),

@@ -1,4 +1,4 @@
-import { state, linhasFiltradas } from "./state.js";
+import { state, linhasFiltradas, tabelaAtiva, emComparacao } from "./state.js";
 import { INTEGRACOES, STATUS_INTEGRACAO } from "./config.js";
 import { acoesTabela } from "./actions.js";
 import { el, fmtMoeda, fmtPct, fmtTexto, fmtHora, fmtRelativo, escapeHtml, temValor, statusCmv } from "./utils.js";
@@ -6,6 +6,7 @@ import { renderGraficos } from "./charts.js";
 import { obterHistoricoRecente } from "./api.js";
 import { abrirHistoricoModal, fmtValor } from "./historicoModal.js";
 import { icon } from "./icons.js";
+import { botaoContextualHtml, ligarBotoesContextuais } from "./agentePainel.js";
 
 // ---------- rótulos ----------
 const CAT_LABEL = {
@@ -29,6 +30,43 @@ const estadoVazio = (nomeIcone, titulo, msg) =>
 
 const bannerErro = () =>
   state.erro ? `<div class="banner-erro">Erro ao carregar: ${escapeHtml(state.erro)}</div>` : "";
+
+// ---------- banner Canal · Tabela (Dashboard comum + Produtos/CMV) ----------
+// Distinção visual EXPLÍCITA, não só cor: modo de comparação tem rótulo
+// próprio + a tabela oficial escrita ao lado (nunca escondida) + botão de
+// volta. Comparar aqui NUNCA altera unidades.tabela_balcao/tabela_ifood —
+// isso só acontece em Configurações → Tabelas Comerciais (ver
+// configuracoes.js), com permissão própria.
+function bannerTabela() {
+  const canal = state.canal;
+  const rotuloCanal = canalLabel(canal);
+  const oficial = state.tabelasOficiais[canal];
+  const tabelaMostrada = tabelaAtiva();
+
+  if (emComparacao()) {
+    return `
+      <div class="banner-tabela banner-tabela--comparacao">
+        <div class="banner-tabela-txt">
+          <span class="banner-tabela-canal">${rotuloCanal} · Tabela ${fmtTexto(tabelaMostrada)}</span>
+          <span class="pill warn banner-tabela-badge">Modo de comparação</span>
+          <span class="banner-tabela-oficial">Tabela oficial da unidade: <b>${oficial ? escapeHtml(oficial) : "não configurada"}</b></span>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="btn-tabela-usar-oficial">${icon("undo", { size: 14 })} Usar tabela oficial</button>
+      </div>`;
+  }
+
+  return `
+    <div class="banner-tabela banner-tabela--oficial">
+      <div class="banner-tabela-txt">
+        <span class="banner-tabela-canal">${rotuloCanal} · Tabela ${tabelaMostrada ? escapeHtml(tabelaMostrada) : "—"}</span>
+        <span class="pill ok banner-tabela-badge">✓ Tabela da unidade</span>
+      </div>
+    </div>`;
+}
+
+function ligarBannerTabela(root) {
+  root.querySelector("#btn-tabela-usar-oficial")?.addEventListener("click", () => document.dispatchEvent(new CustomEvent("app:voltar-tabela-oficial")));
+}
 
 // ======================= DASHBOARD =======================
 function statsDashboard(rows) {
@@ -59,15 +97,15 @@ export function renderDashboard() {
   const carregando = state.carregando;
   const s = statsDashboard(rows);
   const v = (x) => (carregando ? "…" : x);
-  const ctx = `${canalLabel(state.canal)} · Tabela ${fmtTexto(state.tabela)}`;
 
   const stMedio = statusCmv(s.cmvMedio);
 
   el("#view").innerHTML = `
     ${bannerErro()}
+    ${bannerTabela()}
 
     <!-- Indicadores -->
-    <p class="secao-titulo">${icon("target", { size: 16 })} Indicadores <small>${ctx}</small></p>
+    <p class="secao-titulo">${icon("target", { size: 16 })} Indicadores</p>
     <div class="cards">
       ${card("CMV geral", v(s.cmvMedio != null ? s.cmvMedio.toFixed(1) + "%" : "—"), stMedio.classe === "bad" ? "alerta" : "", "média do catálogo")}
       ${card("Total de produtos", v(s.total), "", "com preço nesta tabela")}
@@ -112,6 +150,7 @@ export function renderDashboard() {
   `;
 
   if (!carregando && rows.length) renderGraficos(rows);
+  ligarBannerTabela(el("#view"));
   carregarUltimasAlteracoes();
 }
 
@@ -208,6 +247,7 @@ export function renderTabela() {
 export function renderProdutos() {
   el("#view").innerHTML = `
     ${bannerErro()}
+    ${bannerTabela()}
     <div class="toolbar">
       <div class="busca"><input id="f-busca" type="search" placeholder="Buscar produto..." value="${escapeHtml(state.busca)}" /></div>
       <select id="f-status">
@@ -218,6 +258,7 @@ export function renderProdutos() {
       </select>
       <button id="f-atualizar" class="btn btn-ghost btn-sm">${icon("refresh", { size: 14 })} Atualizar</button>
       <span class="result-count" id="result-count"></span>
+      ${botaoContextualHtml("products_cmv_lista")}
     </div>
     <div class="tabela-wrap">
       <table class="grid">
@@ -235,6 +276,8 @@ export function renderProdutos() {
   el("#f-busca").addEventListener("input", (e) => { state.busca = e.target.value; renderTabela(); });
   el("#f-status").addEventListener("change", (e) => { state.filtroStatus = e.target.value; renderTabela(); });
   el("#f-atualizar").addEventListener("click", () => document.dispatchEvent(new CustomEvent("app:reload")));
+  ligarBotoesContextuais(el("#view"));
+  ligarBannerTabela(el("#view"));
   renderTabela();
 }
 

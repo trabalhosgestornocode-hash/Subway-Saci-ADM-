@@ -10,6 +10,8 @@ import { renderInsumos } from "./insumos.js";
 import { renderDashboardExecutivo } from "./dashboardExecutivo.js";
 import { renderBonificacaoMensal } from "./bonificacaoMensal.js";
 import { renderParserFoodDelivery } from "./parserFoodDelivery.js";
+import { renderAgente } from "./agente.js";
+import { sincronizarContextoPainel } from "./agentePainel.js";
 
 /** Um item da sidebar está liberado para a empresa do contexto atual? */
 const acessivel = (item) => !item.modulo || temModulo(item.modulo);
@@ -79,6 +81,9 @@ export function renderRotaAtual() {
     case "parser-food-delivery":
       renderParserFoodDelivery();
       break;
+    case "agente":
+      renderAgente();
+      break;
     case "martinbrower":
       renderMartinBrower();
       break;
@@ -88,4 +93,11 @@ export function renderRotaAtual() {
     default:
       views.renderDashboard();
   }
+
+  // Painel global do Agente Crescer (se montado/aberto): NUNCA recriado por
+  // uma navegação — só atualiza o indicador de contexto/sugestões pra
+  // refletir a tela nova (ver agentePainel.js). Chamado sempre, mesmo com o
+  // painel fechado: é barato (só recalcula texto) e evita esquecer de
+  // sincronizar quando o usuário abrir o painel depois.
+  sincronizarContextoPainel();
 }

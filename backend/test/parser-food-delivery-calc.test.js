@@ -2,9 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   classificarPedido, resumoConciliacao, agruparPorEntregador, validarCodigo, extrairCodigos, temEntregador, ehCancelado, STATUS_CONCILIACAO,
-  resolverStatusConciliacao,
+  resolverStatusConciliacao, somarResumosPeriodo, limitesDoMes, inicioMesSeguinte, resolverCandidatoPedido, explicarCancelamento,
 } from "../src/modules/parser-food-delivery/parserFoodDelivery.calc.js";
 import { CLASSIFICACAO_CANCELAMENTO } from "../src/modules/parser-food-delivery/parserFoodDelivery.classificacao.js";
+import { OPERACAO } from "../src/modules/parser-food-delivery/parserFoodDelivery.operacao.js";
 
 // ---------- a regra de conciliação (item 3 do pedido) ----------
 test("classificarPedido: não cancelado é sempre incluído", () => {
@@ -180,4 +181,164 @@ test("consistência financeira: soma dos entregadores bate com taxasValidas do r
   assert.equal(resumo.taxasValidas, 20 + 11 + 16);
   const bruno = entregadores.find((e) => e.entregador === "Bruno");
   assert.equal(bruno.canceladosRevisao, 1);
+});
+
+// =====================================================================
+// Agente Crescer (Etapa D) — agregação mensal, calendário e explicação
+// individual de cancelamento. Todas puras, sem I/O.
+// =====================================================================
+
+// ---------- somarResumosPeriodo ----------
+test("somarResumosPeriodo: soma campo a campo, sem reclassificar nada", () => {
+  const importacoes = [
+    { totalPedidos: 100, entregues: 80, cancelados: 20, canceladosComTaxa: 15, canceladosSemTaxa: 5, canceladosRecebemTaxa: 10, canceladosNaoRecebemTaxa: 5, canceladosRevisao: 5, taxasBrutas: 200, taxasDescartadas: 50, taxasValidas: 150 },
+    { totalPedidos: 50, entregues: 45, cancelados: 5, canceladosComTaxa: 4, canceladosSemTaxa: 1, canceladosRecebemTaxa: 3, canceladosNaoRecebemTaxa: 1, canceladosRevisao: 1, taxasBrutas: 60, taxasDescartadas: 10, taxasValidas: 50 },
+  ];
+  const r = somarResumosPeriodo(importacoes);
+  assert.equal(r.totalImportacoes, 2);
+  assert.equal(r.totalPedidos, 150);
+  assert.equal(r.cancelados, 25);
+  assert.equal(r.canceladosRecebemTaxa, 13);
+  assert.equal(r.canceladosNaoRecebemTaxa, 6);
+  assert.equal(r.canceladosRevisao, 6);
+  assert.equal(r.taxasBrutas, 260);
+  assert.equal(r.taxasValidas, 200);
+});
+
+test("somarResumosPeriodo: lista vazia (nenhuma importação no mês) -> tudo zero, nunca lança", () => {
+  const r = somarResumosPeriodo([]);
+  assert.equal(r.totalImportacoes, 0);
+  assert.equal(r.totalPedidos, 0);
+  assert.equal(r.taxasValidas, 0);
+});
+
+test("somarResumosPeriodo: campo ausente numa importação conta como 0, sem quebrar a soma", () => {
+  const r = somarResumosPeriodo([{ totalPedidos: 10 }, { totalPedidos: 5, cancelados: 2 }]);
+  assert.equal(r.totalPedidos, 15);
+  assert.equal(r.cancelados, 2);
+});
+
+// ---------- limitesDoMes / inicioMesSeguinte ----------
+test("limitesDoMes: primeiro e último dia do mês", () => {
+  assert.deepEqual(limitesDoMes(2026, 8), { inicio: "2026-08-01", fim: "2026-08-31" });
+  assert.deepEqual(limitesDoMes(2026, 2), { inicio: "2026-02-01", fim: "2026-02-28" }); // 2026 não é bissexto
+});
+
+test("inicioMesSeguinte: caso comum e virada de ano (dezembro -> janeiro)", () => {
+  assert.equal(inicioMesSeguinte(2026, 8), "2026-09-01");
+  assert.equal(inicioMesSeguinte(2026, 12), "2027-01-01");
+});
+
+// ---------- resolverCandidatoPedido ----------
+test("resolverCandidatoPedido: sem candidatos -> nao_encontrado", () => {
+  assert.deepEqual(resolverCandidatoPedido([]), { status: "nao_encontrado" });
+  assert.deepEqual(resolverCandidatoPedido(undefined), { status: "nao_encontrado" });
+});
+
+test("resolverCandidatoPedido: 1 candidato -> unico, mesmo sem filtro de período", () => {
+  const r = resolverCandidatoPedido([{ dataHora: "2026-08-04T10:00:00" }]);
+  assert.equal(r.status, "unico");
+  assert.equal(r.candidato.dataHora, "2026-08-04T10:00:00");
+});
+
+test("resolverCandidatoPedido: 2+ candidatos SEM ano/mes informado -> ambiguo, nunca escolhe sozinho", () => {
+  const r = resolverCandidatoPedido([{ dataHora: "2026-08-04T10:00:00" }, { dataHora: "2026-05-01T08:00:00" }]);
+  assert.equal(r.status, "ambiguo");
+  assert.equal(r.candidatos.length, 2);
+});
+
+test("resolverCandidatoPedido: 2+ candidatos, ano/mes informado -> filtra pelo mês do PEDIDO e resolve", () => {
+  const candidatos = [{ dataHora: "2026-08-04T10:00:00" }, { dataHora: "2026-05-01T08:00:00" }];
+  const r = resolverCandidatoPedido(candidatos, { ano: 2026, mes: 8 });
+  assert.equal(r.status, "unico");
+  assert.equal(r.candidato.dataHora, "2026-08-04T10:00:00");
+});
+
+test("resolverCandidatoPedido: ano/mes informado mas nenhum candidato bate -> nao_encontrado (nunca inventa um resultado próximo)", () => {
+  const r = resolverCandidatoPedido([{ dataHora: "2026-05-01T08:00:00" }], { ano: 2026, mes: 8 });
+  assert.equal(r.status, "nao_encontrado");
+});
+
+test("resolverCandidatoPedido: só ano OU só mes informado (não os dois) -> filtro não aplicado", () => {
+  const candidatos = [{ dataHora: "2026-08-04T10:00:00" }, { dataHora: "2026-05-01T08:00:00" }];
+  assert.equal(resolverCandidatoPedido(candidatos, { ano: 2026 }).status, "ambiguo");
+  assert.equal(resolverCandidatoPedido(candidatos, { mes: 8 }).status, "ambiguo");
+});
+
+// ---------- explicarCancelamento ----------
+const PEDIDO_BASE = {
+  numeroPedido: "123", dataHora: "2026-08-04T19:00:00", situacao: "Cancelado", entregador: "Ana",
+  operacao: OPERACAO.SUBWAY, classificacaoCancelamento: CLASSIFICACAO_CANCELAMENTO.RECEBE_TAXA,
+  classificacaoMotivo: "Há registro de coleta e de chegada ao endereço antes do cancelamento.",
+  classificacaoNivelConfianca: "muito_alta", classificacaoRegra: "regra_chegada",
+  statusConciliacao: STATUS_CONCILIACAO.CANCELADO_COM_TAXA,
+  dataDespachado: "2026-08-04T18:40:00", dataAceito: "2026-08-04T18:41:00",
+  dataColetado: "2026-08-04T18:50:00", dataChegadaEntrega: "2026-08-04T18:58:00", dataCancelado: "2026-08-04T19:00:00",
+  classificacaoOverrideEm: null, classificacaoOverrideUsuarioNome: null, classificacaoOverrideMotivo: null,
+};
+
+test("explicarCancelamento: pedido NÃO cancelado -> cancelado: false, nenhum campo de classificação", () => {
+  const r = explicarCancelamento({ ...PEDIDO_BASE, situacao: "Finalizado" });
+  assert.equal(r.cancelado, false);
+  assert.equal("classificacaoAutomatica" in r, false);
+});
+
+test("explicarCancelamento: cancelado, RECEBE taxa — decisão, motivo, confiança, regra e timeline vêm intactos, nunca recalculados", () => {
+  const r = explicarCancelamento(PEDIDO_BASE);
+  assert.equal(r.cancelado, true);
+  assert.equal(r.elegivelConciliacao, true);
+  assert.equal(r.classificacaoDisponivel, true);
+  assert.equal(r.classificacaoAutomatica.decisao, CLASSIFICACAO_CANCELAMENTO.RECEBE_TAXA);
+  assert.equal(r.classificacaoAutomatica.regra, "regra_chegada");
+  assert.equal(r.classificacaoAutomatica.nivelConfianca, "muito_alta");
+  assert.equal(r.emRevisao, false);
+  assert.equal(r.correcaoManual, null);
+  assert.deepEqual(r.timeline, {
+    dataDespachado: "2026-08-04T18:40:00", dataAceito: "2026-08-04T18:41:00",
+    dataColetado: "2026-08-04T18:50:00", dataChegadaEntrega: "2026-08-04T18:58:00", dataCancelado: "2026-08-04T19:00:00",
+  });
+});
+
+test("explicarCancelamento: cancelado, NÃO recebe taxa", () => {
+  const r = explicarCancelamento({ ...PEDIDO_BASE, classificacaoCancelamento: CLASSIFICACAO_CANCELAMENTO.NAO_RECEBE_TAXA, statusConciliacao: STATUS_CONCILIACAO.EXCLUIDO });
+  assert.equal(r.classificacaoAutomatica.decisao, CLASSIFICACAO_CANCELAMENTO.NAO_RECEBE_TAXA);
+  assert.equal(r.statusFinanceiroAtual, STATUS_CONCILIACAO.EXCLUIDO);
+});
+
+test("explicarCancelamento: em REVISAR -> emRevisao: true, mas a taxa continua contada (mantida por padrão)", () => {
+  const r = explicarCancelamento({ ...PEDIDO_BASE, classificacaoCancelamento: CLASSIFICACAO_CANCELAMENTO.REVISAR, statusConciliacao: STATUS_CONCILIACAO.CANCELADO_COM_TAXA });
+  assert.equal(r.emRevisao, true);
+  assert.equal(r.statusFinanceiroAtual, STATUS_CONCILIACAO.CANCELADO_COM_TAXA);
+});
+
+test("explicarCancelamento: com correção manual -> correcaoManual preenchido, classificacaoAutomatica preserva o ORIGINAL do motor", () => {
+  const r = explicarCancelamento({
+    ...PEDIDO_BASE,
+    classificacaoOverrideEm: "2026-08-05T10:00:00", classificacaoOverrideUsuarioNome: "Consultor João", classificacaoOverrideMotivo: "Confirmado com o entregador.",
+  });
+  assert.deepEqual(r.correcaoManual, { usuarioNome: "Consultor João", motivo: "Confirmado com o entregador.", em: "2026-08-05T10:00:00" });
+  // A automática NUNCA é sobrescrita pela correção manual.
+  assert.equal(r.classificacaoAutomatica.decisao, CLASSIFICACAO_CANCELAMENTO.RECEBE_TAXA);
+});
+
+test("explicarCancelamento: cancelado mas de OUTRA operação -> elegivelConciliacao: false, nunca classifica", () => {
+  const r = explicarCancelamento({ ...PEDIDO_BASE, operacao: OPERACAO.ACAI_NO_GRAU, classificacaoCancelamento: null });
+  assert.equal(r.cancelado, true);
+  assert.equal(r.elegivelConciliacao, false);
+  assert.match(r.motivoNaoElegivel, /outra operação/i);
+  assert.equal("classificacaoAutomatica" in r, false);
+});
+
+test("explicarCancelamento: cancelado, SEM entregador atribuído -> elegivelConciliacao: false", () => {
+  const r = explicarCancelamento({ ...PEDIDO_BASE, entregador: null, classificacaoCancelamento: null });
+  assert.equal(r.elegivelConciliacao, false);
+  assert.match(r.motivoNaoElegivel, /entregador/i);
+});
+
+test("explicarCancelamento: cancelado, elegível, mas SEM classificação registrada (importação anterior ao motor) -> classificacaoDisponivel: false, nunca inventa uma decisão", () => {
+  const r = explicarCancelamento({ ...PEDIDO_BASE, classificacaoCancelamento: null });
+  assert.equal(r.elegivelConciliacao, true);
+  assert.equal(r.classificacaoDisponivel, false);
+  assert.equal("classificacaoAutomatica" in r, false);
+  assert.ok(r.motivo);
 });

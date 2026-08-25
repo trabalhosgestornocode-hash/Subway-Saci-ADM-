@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <!-- ?v= força o navegador a baixar o CSS novo após um deploy (evita tela antiga em cache).
        Incremente este número sempre que mudar o styles.css. -->
-  <link rel="stylesheet" href="/src/styles.css?v=21" />
+  <link rel="stylesheet" href="/src/styles.css?v=26" />
   <!-- Tema individual (por dispositivo): aplica antes da pintura p/ evitar flash.
        Em arquivo próprio (não inline) para a CSP dispensar 'unsafe-inline'. -->
   <script src="/src/tema.js"></script>
@@ -267,6 +267,10 @@
           <button id="btn-notif" class="icon-btn2 notif-btn" title="Alertas operacionais" aria-label="Alertas">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
             <span class="notif-badge" id="notif-badge" hidden>0</span>
+          </button>
+          <!-- Agente Crescer — abre o painel global persistente (agentePainel.js). Discreto de propósito: não é um botão flutuante cobrindo dados. -->
+          <button id="btn-agente" class="icon-btn2 agente-btn-topbar" title="Agente Crescer" aria-label="Abrir Agente Crescer">
+            <span aria-hidden="true">✦</span>
           </button>
           <div class="chip chip-unidade" id="chip-unidade">🏪 —</div>
 

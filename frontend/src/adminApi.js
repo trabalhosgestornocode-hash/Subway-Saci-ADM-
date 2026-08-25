@@ -117,4 +117,7 @@ export const adminApi = {
   salvarConfiguracoes: (dados) => put("/configuracoes", dados),
   atualizacoes: () => get("/atualizacoes"),
   ia: () => get("/ia"),
+  consumoAgente: (f) => get(`/ia/consumo${qs(f)}`),
+  consumoAgentePorOrganizacao: (f) => get(`/ia/consumo/organizacoes${qs(f)}`),
+  consumoAgentePorModelo: (f) => get(`/ia/consumo/modelos${qs(f)}`),
 };

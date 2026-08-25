@@ -20,6 +20,7 @@ import { abrirLancamentoModal } from "./dashboardExecutivoForm.js";
 import { abrirLancamentoMensalModal } from "./dashboardExecutivoMensal.js";
 import { montarSimuladorPreco } from "./dashboardExecutivoSimulador.js";
 import { icon } from "./icons.js";
+import { botaoContextualHtml, botaoDiagnosticoHtml, ligarBotoesContextuais, sincronizarContextoPainel } from "./agentePainel.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const ABAS = [
@@ -125,6 +126,7 @@ function montarLayout() {
       <div class="dex-head-txt">
         <h2>${INTEGRACOES.ifood?.logo ? `<img src="${INTEGRACOES.ifood.logo}" alt="iFood" class="dex-logo">` : ""}Dashboard iFood</h2>
         <p>Lançamento financeiro diário do iFood — preencha os dados brutos; percentuais, deduções e projeções são calculados automaticamente.</p>
+        ${botaoContextualHtml("dashboard_executivo")}
       </div>
       <div id="dex-modelo-box" class="dex-modelo-box"></div>
     </div>
@@ -152,6 +154,7 @@ function montarLayout() {
   el("#dex-lancamento-mensal")?.addEventListener("click", () => abrirLancamentoMensalModal({
     unidadeId: dex.unidadeId, mes: dex.mes, ano: dex.ano, modeloLogistico: dex.dadosMes?.modeloLogistico, onSalvo: carregarConteudo,
   }));
+  ligarBotoesContextuais(view);
   view.querySelectorAll(".dex-tab").forEach((b) => b.addEventListener("click", () => irParaAba(b.dataset.aba)));
 }
 
@@ -178,6 +181,15 @@ async function carregarConteudo() {
   if (!box) return;
   box.innerHTML = carregando();
   destruirGraficosDashboardExecutivo();
+  // Espelho pro Agente Crescer montar o Page Context (agentePageContext.js)
+  // — nunca lido de volta aqui, só escrito; state.js é a única ponte entre
+  // esta tela e o painel, evita import circular entre os dois módulos.
+  state.periodoDashboardExecutivo = { ano: dex.ano, mes: dex.mes };
+  // Etapa H — cada carregamento novo do mês começa sem nenhum ponto de
+  // atenção sob investigação; só volta a existir se o usuário clicar em
+  // "✦ Diagnosticar..." de novo neste render (ver botaoDiagnosticoHtml).
+  state.detalheAberto.attentionPoint = null;
+  sincronizarContextoPainel();
   const g = geracaoContexto();
   const minhaGeracao = ++geracaoConteudo;
   const mesPedido = dex.mes, anoPedido = dex.ano;
@@ -340,6 +352,9 @@ function wirePlanoAcao() {
     const bloco = btn.closest(".dex-acao").querySelector(".dex-acao-detalhe");
     if (bloco) bloco.hidden = !bloco.hidden;
   }));
+  // Etapa H — botões "✦ Diagnosticar..." de cada card (ligarBotoesContextuais
+  // já ignora quem já foi ligado, então é seguro chamar de novo a cada render).
+  ligarBotoesContextuais();
 }
 
 function alertaPendencias(d) {
@@ -412,12 +427,21 @@ function planoAcaoHtml(diag) {
       : a.cta?.expandir
         ? `<button class="btn btn-ghost btn-sm" data-cta-expandir type="button">${escapeHtml(a.cta.label)}</button>`
         : "";
+    // Etapa H — o ponto de atenção do backend (ATTENTION_POINTS, ver
+    // agente.pageContext.js) É `achado.categoria` na maioria dos analisadores,
+    // MAS "dias_pendentes" e "detalhamento_financeiro_ausente" compartilham a
+    // categoria "dados" entre si — nesses dois, o `id` (estável, sem sufixo)
+    // é que bate com o valor esperado. Um achado sem correspondência aqui
+    // simplesmente não ganha o botão, nunca inventa uma categoria pra ele.
+    const attentionPoint = achado ? (achado.categoria === "dados" ? achado.id : achado.categoria) : null;
+    const diagnosticar = attentionPoint ? botaoDiagnosticoHtml(attentionPoint) : "";
     return `<div class="dex-acao ${classe}">
       <div class="dex-acao-num">${i + 1}</div>
       <div class="dex-acao-corpo">
         <b class="dex-acao-titulo">${pontoSeveridade(pontoClasse)} ${escapeHtml(a.titulo)}</b>
         <p class="dex-acao-desc">${escapeHtml(a.descricao)}</p>
         ${cta}
+        ${diagnosticar}
         ${a.detalhe ? `<div class="dex-acao-detalhe" hidden>${recuperacaoDetalheHtml(a.detalhe)}</div>` : ""}
       </div>
     </div>`;

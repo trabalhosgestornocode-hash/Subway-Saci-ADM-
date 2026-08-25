@@ -13,10 +13,11 @@
 // superadmin, a tela de seleção explica a situação em vez de mostrar uma lista
 // vazia sem contexto.
 
-import { state } from "./state.js";
+import { state, tabelaAtiva, emComparacao } from "./state.js";
 import { MENU, SECOES, TABELAS, INTEGRACOES } from "./config.js";
 import { el, els, escapeHtml, toast } from "./utils.js";
-import { carregarCmv } from "./api.js";
+import { carregarCmv, obterTabelasComerciaisUnidade } from "./api.js";
+import { comparacaoSalvaDaUnidade, salvarComparacao, limparComparacaoSalva } from "./comparacaoTabela.js";
 import {
   login, logout, restaurarSessao, listarAcessos, selecionarContexto,
   restaurarContexto, encerrarContexto, aplicarContexto,
@@ -26,11 +27,43 @@ import { irPara, renderRotaAtual, primeiraRotaAcessivel } from "./router.js";
 import { resetarEscopoDeContexto } from "./contextoEscopo.js";
 import { acoes } from "./actions.js";
 import { getLinha, contarAlertas } from "./views.js";
-import { abrirProdutoModal } from "./produtoModal.js";
+import { abrirProdutoModal, abrirProdutoPorNome } from "./produtoModal.js";
+import { abrirInsumoPorNome } from "./insumoModal.js";
+import { abrirParserCancelamentos, abrirParserPedidoPorNumero, aguardarCarregamentoParser } from "./parserFoodDelivery.js";
+import { registrarResolverAcao } from "./agenteAcoesResolvedores.js";
 import { aplicarTemaSalvo } from "./configuracoes.js";
 import { abrirPainelAdmin, fecharPainelAdmin } from "./admin.js";
 import { initTooltips } from "./tooltip.js";
 import { icon } from "./icons.js";
+import { montarPainelGlobal, alternarPainel } from "./agentePainel.js";
+
+// ---------- Ações de navegação do Agente Crescer (Etapa F.1) ----------
+// Registradas UMA vez, aqui — app.js é o topo do grafo de imports (nada o
+// importa de volta), então é o único lugar onde dá pra puxar router.js E as
+// views de detalhe sem criar ciclo (ver agenteAcoesResolvedores.js). Cada
+// resolver só chama código REAL do Crescer — nunca constrói URL/rota.
+function registrarAcoesDoAgente() {
+  registrarResolverAcao("dashboard_executivo", () => irPara("dashboard-executivo"));
+  registrarResolverAcao("products_cmv", () => irPara("produtos"));
+  registrarResolverAcao("product_detail", async (params) => { irPara("produtos"); await abrirProdutoPorNome(params.productName); });
+  registrarResolverAcao("ingredients", () => irPara("insumos"));
+  registrarResolverAcao("ingredient_detail", async (params) => { irPara("insumos"); await abrirInsumoPorNome(params.ingredientName); });
+  registrarResolverAcao("parser", () => irPara("parser-food-delivery"));
+  // parser_cancelamentos/parser_order esperam o carregamento terminar antes
+  // de trocar de aba/procurar o pedido — irPara() nunca espera a view (é
+  // fire-and-forget), então sem isto a busca quase sempre "não encontraria
+  // nada" mesmo quando o pedido existe (ver parserFoodDelivery.js#aguardarCarregamentoParser).
+  registrarResolverAcao("parser_cancelamentos", async () => {
+    irPara("parser-food-delivery");
+    await aguardarCarregamentoParser();
+    abrirParserCancelamentos();
+  });
+  registrarResolverAcao("parser_order", async (params) => {
+    irPara("parser-food-delivery");
+    await aguardarCarregamentoParser();
+    await abrirParserPedidoPorNumero(params.orderNumber);
+  });
+}
 
 // ---------- sidebar ----------
 function montarMenu() {
@@ -79,12 +112,42 @@ function atualizarNotif() {
   badge.hidden = n === 0;
 }
 
-// ---------- filtros globais (canal / tabela) ----------
+// ---------- filtros globais (canal / comparar tabela) ----------
+// O select #tabela NUNCA muda a configuração da unidade — é só "ver outra
+// tabela pra comparar". A opção "Tabela oficial" (valor especial) volta pra
+// ela. A tabela oficial em si só muda em Configurações → Tabelas Comerciais
+// (ver configuracoes.js), com permissão própria.
+const VALOR_OFICIAL = "__oficial__";
 function popularTabelas() {
   const sel = el("#tabela");
-  sel.innerHTML = TABELAS[state.canal].map((t) => `<option>${t}</option>`).join("");
-  if (!TABELAS[state.canal].includes(state.tabela)) state.tabela = TABELAS[state.canal][0];
-  sel.value = state.tabela;
+  const oficial = state.tabelasOficiais[state.canal];
+  const rotuloOficial = oficial ? `★ Tabela oficial (${oficial})` : "★ Tabela oficial (não configurada)";
+  const opcoes = [`<option value="${VALOR_OFICIAL}">${rotuloOficial}</option>`]
+    .concat(TABELAS[state.canal].map((t) => `<option value="${t}">Comparar: ${t}</option>`));
+  sel.innerHTML = opcoes.join("");
+  sel.value = state.tabelaComparacao ?? VALOR_OFICIAL;
+}
+
+/** Muda o canal, canal SÓ ele — nunca decide tabela sozinho (isso é sempre backend). */
+function definirCanal(canal) {
+  state.canal = canal === "ifood" ? "ifood" : "balcao";
+  state.tabelaComparacao = null; // trocar de canal sai do modo de comparação — tabelas de canais diferentes não se comparam
+  limparComparacaoSalva();
+  popularTabelas();
+  carregar();
+}
+
+/** Seleção no #tabela: ou volta pra oficial, ou entra em comparação (nunca grava na unidade). */
+function definirComparacao(valorSelecionado) {
+  const unidadeId = state.sessao?.unidade?.id;
+  if (valorSelecionado === VALOR_OFICIAL) {
+    state.tabelaComparacao = null;
+    limparComparacaoSalva();
+  } else {
+    state.tabelaComparacao = valorSelecionado;
+    if (unidadeId) salvarComparacao({ unidadeId, canal: state.canal, tabela: valorSelecionado });
+  }
+  carregar();
 }
 
 // ---------- carregamento de dados ----------
@@ -95,16 +158,26 @@ async function carregar() {
   el("#btn-refresh")?.classList.add("girando");
   renderRotaAtual();
   try {
-    state.linhas = await carregarCmv(state.canal, state.tabela);
+    const r = await carregarCmv(state.canal, state.tabelaComparacao);
+    state.linhas = r.linhas;
+    // A resposta é a fonte de verdade da tabela oficial (nunca o que este
+    // cliente supôs antes de perguntar) — mantém o seletor em sincronia
+    // mesmo que outra aba/usuário tenha alterado a configuração da unidade.
+    state.tabelasOficiais = { ...state.tabelasOficiais, [r.canal]: r.tabelaOficial };
     state.atualizadoEm = Date.now();
     setSync("ok", "Sincronizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
+    // "Tabela comercial não configurada" não é uma falha de rede — é um
+    // estado real e esperado (unidade pendente de configurar). Mostra a
+    // mensagem certa, sem o banner genérico de "falha na sincronização".
     state.erro = e.message;
+    state.erroCodigo = e.codigo ?? null;
     state.linhas = [];
-    setSync("erro", "Falha na sincronização");
+    setSync(e.codigo ? "aviso" : "erro", e.codigo ? "Tabela comercial não configurada" : "Falha na sincronização");
   } finally {
     state.carregando = false;
     el("#btn-refresh")?.classList.remove("girando");
+    popularTabelas(); // reflete a tabela oficial atualizada (rótulo "★ Tabela oficial (E)")
     atualizarNotif();
     renderRotaAtual();
   }
@@ -128,7 +201,7 @@ function mostrarTela(qual) {
 }
 
 // ---------- tela: app (tenant) ----------
-function mostrarApp() {
+async function mostrarApp() {
   // FUNIL ÚNICO de entrada no shell do tenant (seleção de unidade,
   // restauração de sessão e impersonação passam todos por aqui) — e por isso
   // o único lugar certo para invalidar o contexto anterior. Tem que ser a
@@ -163,9 +236,32 @@ function mostrarApp() {
   barra.hidden = !impersonando;
   if (impersonando) el("#imp-empresa").textContent = empresa?.nome ?? "—";
 
+  // Restaura o modo de comparação SÓ se for da MESMA unidade (sessionStorage
+  // — sobrevive a um F5, nunca atravessa troca de unidade/empresa/logout;
+  // ver comparacaoTabela.js). Unidade diferente (ou nenhuma comparação
+  // salva): garante que não sobra nada de sessão anterior.
+  const comparacaoSalva = unidade?.id ? comparacaoSalvaDaUnidade(unidade.id) : null;
+  if (comparacaoSalva) {
+    state.canal = comparacaoSalva.canal;
+    state.tabelaComparacao = comparacaoSalva.tabela;
+  } else {
+    limparComparacaoSalva();
+  }
+
+  // Tabelas oficiais da unidade NOVA, ANTES de desenhar o seletor — evita
+  // mostrar por um instante "★ Tabela oficial (não configurada)" quando na
+  // verdade só ainda não perguntamos (carregar() também atualiza isto, mas
+  // só do canal ativo; aqui pega os dois de uma vez pra Configurações e pro
+  // rótulo do canal que NÃO está selecionado agora).
+  try {
+    const { data } = await obterTabelasComerciaisUnidade();
+    state.tabelasOficiais = { balcao: data?.tabelaBalcao ?? null, ifood: data?.tabelaIfood ?? null };
+  } catch { /* sem unidade selecionada, ou falha pontual — carregar() tenta de novo a seguir */ }
+
   montarMenu();
   iniciarRelogio();
   popularTabelas();
+  montarPainelGlobal(); // idempotente — o Agente Crescer sobrevive a trocas de unidade/empresa, só reseta a conversa (ver agentePainel.js)
   irPara(primeiraRotaAcessivel());
   carregar();
 }
@@ -494,14 +590,16 @@ function wireEventos() {
     });
   }
 
-  el("#canal").addEventListener("change", (e) => { state.canal = e.target.value; popularTabelas(); carregar(); });
-  el("#tabela").addEventListener("change", (e) => { state.tabela = e.target.value; carregar(); });
+  el("#canal").addEventListener("change", (e) => definirCanal(e.target.value));
+  el("#tabela").addEventListener("change", (e) => definirComparacao(e.target.value));
 
   document.addEventListener("app:reload", carregar);
+  document.addEventListener("app:voltar-tabela-oficial", () => definirComparacao(VALOR_OFICIAL));
 
-  // topbar: refresh manual + sino de notificações
+  // topbar: refresh manual + sino de notificações + Agente Crescer
   el("#btn-refresh")?.addEventListener("click", carregar);
   el("#btn-notif")?.addEventListener("click", () => irPara("dashboard"));
+  el("#btn-agente")?.addEventListener("click", alternarPainel);
 
   // menu mobile
   el("#btn-menu").addEventListener("click", () => el("#app").classList.toggle("menu-aberto"));

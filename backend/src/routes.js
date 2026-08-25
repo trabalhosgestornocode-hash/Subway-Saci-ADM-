@@ -14,6 +14,8 @@ import { sessaoRouter } from "./modules/sessao/sessao.routes.js";
 import { plataformaRouter } from "./modules/plataforma/plataforma.routes.js";
 import { martinBrowerRouter } from "./modules/martinbrower/martinbrower.routes.js";
 import { parserFoodDeliveryRouter } from "./modules/parser-food-delivery/parserFoodDelivery.routes.js";
+import { agenteRouter } from "./modules/agente/agente.routes.js";
+import { unidadeRouter } from "./modules/unidade/unidade.routes.js";
 
 // Todas as rotas daqui já passaram por `requireAuth` (aplicado em app.js).
 // O que este arquivo decide é a SEGUNDA camada, e ela divide a API em três
@@ -59,9 +61,15 @@ tenant.use("/dashboard", requireModulo(MODULOS.DASHBOARD), dashboardRouter);
 tenant.use("/dashboard-executivo", requireModulo(MODULOS.IFOOD_DASHBOARD), dashboardExecutivoRouter);
 tenant.use("/bonificacao-mensal", requireModulo(MODULOS.MONTHLY_BONUS), bonificacaoMensalRouter);
 tenant.use("/usuarios", usuariosRouter);   // infraestrutura do tenant, não um módulo contratável
+tenant.use("/unidade", unidadeRouter);     // idem — config real da unidade (tabelas comerciais)
 tenant.use("/vendas", requireModulo(MODULOS.SALES), vendasRouter);
 tenant.use("/integracoes/martin-brower", requireModulo(MODULOS.MARTIN_BROWER), martinBrowerRouter);
 tenant.use("/parser-food-delivery", requireModulo(MODULOS.PARSER_FOOD_DELIVERY), parserFoodDeliveryRouter);
+// Agente Crescer (assistente de IA, Fase 1 — só leitura). As tools do agente
+// validam módulo/permissão de CADA módulo que consultam por conta própria
+// (ver agenteAcesso.js) — requireModulo aqui só garante que a empresa
+// contratou o agente em si.
+tenant.use("/agente", requireModulo(MODULOS.AGENTE_IA), agenteRouter);
 router.use(tenant);
 
 // `contexto` é legado: existia para o seletor de organização antes do Context

@@ -18,11 +18,15 @@ bonificacaoMensalRouter.get("/lancamentos/:data", ver, controller.lancamentoPorD
 bonificacaoMensalRouter.post("/lancamentos", lancar, controller.salvarLancamento);
 bonificacaoMensalRouter.post("/lancamentos/:data/excluir", excluir, controller.excluirLancamento);
 
-// Indicadores manuais (REV/Pesquisas/Avaliação iFood/Pedidos com chamado) —
-// acompanhamento diário, igual à Visio.
+// Indicadores manuais (Pesquisas/Avaliação iFood/Pedidos com chamado/
+// Cancelamentos) — acompanhamento diário, igual à Visio.
 bonificacaoMensalRouter.get("/indicadores/:indicador/calendario", ver, controller.calendarioIndicador);
 bonificacaoMensalRouter.get("/indicadores/:indicador/historico", ver, controller.historicoMensalIndicador);
 bonificacaoMensalRouter.post("/indicadores/:indicador", lancar, controller.salvarValorDiaIndicador);
+
+// REV (migration 052): 1 valor por unidade+mês, não mais diário. Leitura
+// vem embutida em GET /mes (campo revMensal).
+bonificacaoMensalRouter.post("/rev", lancar, controller.salvarRevMensal);
 
 bonificacaoMensalRouter.get("/importacoes", ver, controller.importacoes);
 bonificacaoMensalRouter.get("/importacoes/:id/arquivo", ver, controller.arquivoImportacao);

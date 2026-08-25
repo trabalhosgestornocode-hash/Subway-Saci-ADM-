@@ -19,7 +19,7 @@ import { abrirPaginaUnidade } from "./adminUnidadeDetalhe.js";
 import {
   num, pct, escapeHtml, fmtMoeda, fmtDataHora, fmtRelativo,
   STATUS_EMPRESA, STATUS_ASSINATURA, STATUS_COBRANCA, SITUACAO, pill,
-  kpi, kpiGrade, secao, tabela, carregando, erro, vazio, reservado, barras,
+  kpi, kpiGrade, secao, tabela, carregando, erro, vazio, barras,
   campo, selecao, area, grade, abrirModal, valor, mostrarErroModal,
 } from "./adminUi.js";
 
@@ -685,11 +685,35 @@ async function viewAtualizacoes() {
 }
 
 // ===========================================================================
-// 9. IA
+// 9. IA — Agente Crescer: provedores + consumo real (tokens/custo)
 // ===========================================================================
 
+/** Custo em USD, padrão pt-BR (vírgula decimal) — nunca fmtMoeda (BRL). */
+function fmtUsd(v, casasMin = 2, casasMax = 4) {
+  if (v === null || v === undefined) return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return `US$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: casasMin, maximumFractionDigits: casasMax })}`;
+}
+
+const ROTULOS_PERIODO_AGENTE = [
+  { valor: "hoje", rotulo: "Hoje" },
+  { valor: "este_mes", rotulo: "Este mês" },
+  { valor: "mes_anterior", rotulo: "Mês anterior" },
+  { valor: "personalizado", rotulo: "Período personalizado" },
+];
+
+let filtrosConsumoAgente = { periodo: "este_mes", desde: "", ate: "" };
+let paginaConsumoAgente = 1;
+
 async function viewIa() {
-  const d = await adminApi.ia();
+  const [d, resumo, porOrg, porModelo] = await Promise.all([
+    adminApi.ia(),
+    adminApi.consumoAgente(filtrosConsumoAgente),
+    adminApi.consumoAgentePorOrganizacao({ ...filtrosConsumoAgente, pagina: paginaConsumoAgente }),
+    adminApi.consumoAgentePorModelo(filtrosConsumoAgente),
+  ]);
+
   const provedores = d.provedores.map((p) => `
     <div class="adm-mon ${p.configurado ? "adm-mon--operacional" : "adm-mon--desligado"}">
       <header>
@@ -699,6 +723,56 @@ async function viewIa() {
       <p>Modelo sugerido: <code>${escapeHtml(p.modeloSugerido)}</code></p>
       <footer><span class="adm-mon-tipo">Configure a chave em Configurações Globais → APIs</span></footer>
     </div>`).join("");
+
+  const barraFiltros = `
+    <div class="adm-filtros">
+      ${selecao({ id: "ia-periodo", label: "Período", valor: filtrosConsumoAgente.periodo, opcoes: ROTULOS_PERIODO_AGENTE.map((p) => ({ valor: p.valor, rotulo: p.rotulo })) })}
+      ${campo({ id: "ia-desde", label: "De (só p/ período personalizado)", valor: filtrosConsumoAgente.desde, tipo: "date" })}
+      ${campo({ id: "ia-ate", label: "Até (só p/ período personalizado)", valor: filtrosConsumoAgente.ate, tipo: "date" })}
+      <div class="adm-filtros-acoes">
+        <button class="btn btn-primary btn-sm" data-adm-acao="agente-uso-filtrar">Filtrar</button>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="agente-uso-limpar">Limpar</button>
+      </div>
+    </div>`;
+
+  const kpis = kpiGrade([
+    kpi({ label: "Interações", valor: num(resumo.interacoes) }),
+    kpi({ label: "Custo estimado", valor: fmtUsd(resumo.custoEstimadoUsd) }),
+    kpi({ label: "Custo médio por interação", valor: fmtUsd(resumo.custoMedioUsd, 4, 6) }),
+    kpi({ label: "Input tokens", valor: num(resumo.inputTokens) }),
+    kpi({ label: "Output tokens", valor: num(resumo.outputTokens) }),
+    kpi({ label: "Falhas", valor: num(resumo.falhas), tom: resumo.falhas ? "warn" : "" }),
+  ].join(""));
+
+  const tabelaOrg = tabela({
+    colunas: ["Organização", "Interações", "Usuários ativos", "Unidades", "Input tokens", "Output tokens", "Custo estimado"],
+    linhas: porOrg.itens.map((o) => [
+      escapeHtml(o.organizacaoNome),
+      num(o.interacoes),
+      num(o.usuariosAtivos),
+      num(o.unidadesAtivas),
+      num(o.inputTokens),
+      num(o.outputTokens),
+      `<b>${fmtUsd(o.custoEstimadoUsd)}</b>`,
+    ]),
+    vazio: "Nenhuma interação com o Agente Crescer no período.",
+  });
+
+  const totalPaginasOrg = Math.max(1, Math.ceil(porOrg.total / porOrg.porPagina));
+  const paginacaoOrg = porOrg.total > porOrg.porPagina ? `
+    <div class="adm-paginacao">
+      <button class="btn btn-ghost btn-sm" data-adm-acao="agente-uso-pagina" data-pagina="${porOrg.pagina - 1}" ${porOrg.pagina <= 1 ? "disabled" : ""}>← Anterior</button>
+      <span>Página ${porOrg.pagina} de ${totalPaginasOrg}</span>
+      <button class="btn btn-ghost btn-sm" data-adm-acao="agente-uso-pagina" data-pagina="${porOrg.pagina + 1}" ${porOrg.pagina >= totalPaginasOrg ? "disabled" : ""}>Próxima →</button>
+    </div>` : "";
+
+  const tabelaModelo = tabela({
+    colunas: ["Modelo", "Interações", "Input tokens", "Output tokens", "Custo estimado"],
+    linhas: porModelo.itens.map((m) => [
+      `<code>${escapeHtml(m.model)}</code>`, num(m.interacoes), num(m.inputTokens), num(m.outputTokens), `<b>${fmtUsd(m.custoEstimadoUsd)}</b>`,
+    ]),
+    vazio: "Nenhuma interação no período.",
+  });
 
   view().innerHTML =
     secao({
@@ -711,9 +785,12 @@ async function viewIa() {
       corpo: `<ul class="adm-det-lista">${d.recursosPrevistos.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`,
     }) +
     secao({
-      titulo: "Consumo",
-      corpo: reservado("Consumo e custo não disponíveis", d.consumo.origem),
-    });
+      titulo: "Consumo do Agente Crescer",
+      nota: "Medido por interação real (tokens da própria resposta da Anthropic) — nunca estimado. Só observação: nenhum limite é aplicado nesta fase.",
+      corpo: barraFiltros + kpis,
+    }) +
+    secao({ titulo: "Por organização", corpo: tabelaOrg + paginacaoOrg }) +
+    secao({ titulo: "Por modelo", corpo: tabelaModelo });
 }
 
 // ===========================================================================
@@ -1221,6 +1298,22 @@ const ACOES = {
 
   "auditoria-limpar": () => {
     filtrosAuditoria = { acao: "", organizacaoId: "", busca: "", desde: "", ate: "", soImpersonacao: false };
+    recarregarAdmin();
+  },
+
+  // ---- Consumo do Agente Crescer (tela IA)
+  "agente-uso-filtrar": () => {
+    filtrosConsumoAgente = { periodo: valor("ia-periodo") || "este_mes", desde: valor("ia-desde"), ate: valor("ia-ate") };
+    paginaConsumoAgente = 1;
+    recarregarAdmin();
+  },
+  "agente-uso-limpar": () => {
+    filtrosConsumoAgente = { periodo: "este_mes", desde: "", ate: "" };
+    paginaConsumoAgente = 1;
+    recarregarAdmin();
+  },
+  "agente-uso-pagina": (dados) => {
+    paginaConsumoAgente = Math.max(1, Number(dados.pagina) || 1);
     recarregarAdmin();
   },
 

@@ -1,14 +1,18 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
 import * as service from "./cmv.service.js";
 
+// `comparar=true` é o único jeito de sair da tabela oficial: sem ele, `tabela`
+// na query é ignorada de propósito (evita que um link/bookmark antigo com
+// ?tabela=A continue driblando a tabela oficial da unidade em silêncio).
 export const listar = asyncHandler(async (req, res) => {
-  const { canal, tabela } = req.query;
-  const data = await service.listarMargens({
+  const { canal, tabela, comparar } = req.query;
+  const resultado = await service.listarMargensOficialOuComparacao({
     organizacaoId: req.tenant.organizacaoId,
+    unidadeId: req.tenant.unidadeId,
     canal,
-    tabela,
+    tabelaComparacao: comparar === "true" ? tabela : undefined,
   });
-  res.json({ data });
+  res.json(resultado);
 });
 
 export const porProduto = asyncHandler(async (req, res) => {

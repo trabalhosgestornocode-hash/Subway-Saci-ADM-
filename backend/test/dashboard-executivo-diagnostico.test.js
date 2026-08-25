@@ -93,6 +93,72 @@ describe("Caso C — Taxas dentro da meta", () => {
 });
 
 // ---------------------------------------------------------------------------
+describe("Caso C.1 (Etapa H) — Taxas de Entregadores acima do limite (16,0% / meta ideal e limite 15%)", () => {
+  test("vira ALERTA (meta ideal == limite: qualquer excesso já ultrapassa os dois) com excesso em R$", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.taxas_entregadores = indicador({ atual: 16, valor: 8000, metaIdeal: 15, limite: 15, faturamentoBase });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    const achado = d.alertas.find((a) => a.categoria === "taxas_entregadores");
+    assert.ok(achado, "deveria virar alerta para Taxas de Entregadores");
+    assert.match(achado.titulo, /Taxas de Entregadores/);
+    assert.ok(perto(achado.metricas.excesso, 500)); // 500/50000 = 1% de excesso sobre a meta ideal de 15%
+
+    const acao = d.acoes.find((a) => a.diagnosticoId === achado.id);
+    assert.ok(acao, "deveria gerar uma ação ligada ao MESMO id do achado");
+    assert.equal(acao.cta.label, "Analisar Taxas de Entregadores");
+  });
+
+  test("indicador não aplicável (ex.: modelo Full Service) nunca gera achado", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.taxas_entregadores = indicador({ atual: 16, valor: 8000, metaIdeal: 15, limite: 15, faturamentoBase, naoAplicavel: true });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    assert.ok(!d.alertas.some((a) => a.categoria === "taxas_entregadores"));
+    assert.ok(!d.pontosAtencao.some((a) => a.categoria === "taxas_entregadores"));
+  });
+
+  test("dentro da meta -> ponto forte, sem ação prioritária", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.taxas_entregadores = indicador({ atual: 12, valor: 6000, metaIdeal: 15, limite: 15, faturamentoBase });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    assert.ok(d.pontosFortes.some((a) => a.categoria === "taxas_entregadores"));
+    assert.ok(!d.acoes.some((a) => a.diagnosticoId.startsWith("taxas_entregadores")));
+  });
+
+  test("continua contribuindo pro texto de 'componente que mais pesa' do Total de Deduções (comportamento pré-existente preservado)", () => {
+    const faturamentoBase = 50000;
+    const indicadores = baseIndicadores({ faturamentoBase });
+    indicadores.taxas_entregadores = indicador({ atual: 16, valor: 8000, metaIdeal: 15, limite: 15, faturamentoBase });
+    indicadores.total_deducoes = indicador({ atual: 33, valor: 16500, metaIdeal: 30.5, limite: 32, faturamentoBase });
+
+    const d = gerarDiagnostico({
+      indicadores, faturamentoBase, diasComDados: 20, diasPendentes: 0, diasPendentesDatas: [], diasEstimados: 0,
+      comparativo: null, recuperacao: null,
+    });
+
+    const achadoDeducoes = d.alertas.find((a) => a.categoria === "total_deducoes");
+    assert.match(achadoDeducoes.descricao, /Taxas de Entregadores/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe("Caso D — faturamento de mês fechado caiu (comparação real)", () => {
   test("mostra diferença em R$ e percentual", () => {
     const comparativo = { tipo: "mes_fechado", diaComparado: null, atual: 40000, anterior: 80000, diferenca: -40000, pct: -50, temEstimativa: false };

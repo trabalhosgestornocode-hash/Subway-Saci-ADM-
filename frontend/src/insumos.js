@@ -7,6 +7,7 @@ import { listarInsumos, definirStatusInsumo, excluirInsumo } from "./api.js";
 import { abrirInsumoModal } from "./insumoModal.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { icon } from "./icons.js";
+import { botaoContextualHtml, ligarBotoesContextuais } from "./agentePainel.js";
 
 // Filtros locais desta aba (não poluem o estado global de CMV).
 const filtros = { busca: "", categoria: "todos", status: "todos", semPreco: false };
@@ -57,6 +58,7 @@ export async function renderInsumos() {
       <button id="ins-atualizar" class="btn btn-ghost btn-sm">${icon("refresh", { size: 14 })} Atualizar</button>
       ${editar ? `<button id="ins-novo" class="btn btn-primary btn-sm">${icon("plus", { size: 14 })} Adicionar insumo</button>` : ""}
       <span class="result-count" id="ins-count"></span>
+      ${botaoContextualHtml("ingredients_lista")}
     </div>
 
     <div class="tabela-wrap">
@@ -81,6 +83,7 @@ export async function renderInsumos() {
   el("#ins-sempreco").addEventListener("change", (e) => { filtros.semPreco = e.target.checked; carregar(); });
   el("#ins-atualizar").addEventListener("click", carregar);
   el("#ins-novo")?.addEventListener("click", () => abrirInsumoModal(null, { onSalvar: carregar }));
+  ligarBotoesContextuais(el("#view"));
 
   carregar();
 }

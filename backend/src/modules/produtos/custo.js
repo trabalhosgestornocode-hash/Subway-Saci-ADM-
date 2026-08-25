@@ -219,6 +219,26 @@ export function produtosAfetadosPorInsumo(insumoId, grafo) {
 }
 
 /**
+ * Uso DIRETO (1 nível) de um insumo específico dentro de UM produto — a
+ * linha exata da ficha, se existir, já com quantidade/unidade/custo aplicado
+ * calculados. Diferente de `produtosAfetadosPorInsumo` (que também enxerga
+ * uso INDIRETO via submontagem, sem uma quantidade única de sentido nesse
+ * caso). Usado pelo Agente Crescer para "quanto desse insumo tem no produto
+ * X" — nunca inventa uma quantidade quando o uso é só indireto: devolve null.
+ * @param {string} produtoId @param {string} insumoId @param {object} grafo
+ * @returns {{quantidade: number, unidade: string, custoAplicado: number}|null}
+ */
+export function usoDiretoDeInsumo(produtoId, insumoId, grafo) {
+  const linha = (grafo.fichaByProd.get(produtoId) ?? []).find((f) => linhaAtiva(f) && f.insumo_id === insumoId);
+  if (!linha) return null;
+  const ins = grafo.insumoById.get(insumoId);
+  const custoUnitarioBase = ins?.preco_unitario != null ? Number(ins.preco_unitario) : null;
+  if (custoUnitarioBase == null) return null;
+  const quantidade = Number(linha.quantidade) || 0;
+  return { quantidade, unidade: ins.unidade_medida ?? "un", custoAplicado: quantidade * custoUnitarioBase };
+}
+
+/**
  * O próprio produto + todos que o usam como submontagem/combo (recursivo).
  * Usado para recalcular em cascata quando a ficha de um produto muda.
  * @param {string} produtoId @param {object} grafo @returns {string[]}

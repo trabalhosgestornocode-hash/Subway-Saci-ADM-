@@ -14,6 +14,7 @@ import {
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
   recalcularDistribuicaoMensal, snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros,
   listaDesempenhoDiario, ultimoDesempenhoConhecido, desempenhoParaTicketMedio,
+  deltaFinanceiro,
 } from "../src/modules/dashboard-executivo/dashboardExecutivo.calc.js";
 
 const perto = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -872,5 +873,23 @@ describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensa
     });
     assert.equal(r.extras.valorVendasBrutoTotal, null);
     assert.equal(r.fatiasPorCampo.valorVendasBrutoTotal, null);
+  });
+});
+
+describe("deltaFinanceiro", () => {
+  test("subtrai o snapshot anterior do atual (dias consecutivos ambos preenchidos)", () => {
+    assert.equal(deltaFinanceiro(14854, 13692), 1162);
+  });
+  test("null quando o valor atual não foi informado", () => {
+    assert.equal(deltaFinanceiro(null, 13692), null);
+  });
+  test("null quando o valor anterior não foi informado (dia anterior sem Financeiro)", () => {
+    assert.equal(deltaFinanceiro(14854, null), null);
+  });
+  test("null quando os dois estão ausentes", () => {
+    assert.equal(deltaFinanceiro(null, null), null);
+  });
+  test("aceita delta negativo (correção/estorno reduziu o acumulado)", () => {
+    assert.equal(deltaFinanceiro(100, 150), -50);
   });
 });

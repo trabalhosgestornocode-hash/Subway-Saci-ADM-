@@ -53,6 +53,13 @@ export const salvarValorDiaIndicador = asyncHandler(async (req, res) => {
   res.status(201).json({ data });
 });
 
+// REV (migration 052): 1 valor por unidade+mês, nunca por dia. O valor de
+// LEITURA já vem embutido em `mes.revMensal`; esta rota é só a de ESCRITA.
+export const salvarRevMensal = asyncHandler(async (req, res) => {
+  const data = await service.salvarRevMensal({ ...tenant(req), usuario: req.user, ...(req.body ?? {}) });
+  res.status(201).json({ data });
+});
+
 export const historico = asyncHandler(async (req, res) => {
   const data = await service.listarHistoricoMeses({ ...tenant(req), ano: req.query.ano });
   res.json({ data });

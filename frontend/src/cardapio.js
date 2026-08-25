@@ -40,8 +40,15 @@ const CAT_LABEL = {
 const CAT_ICON = { sanduiche: "🥪", salada: "🥗", bebida: "🥤", sobremesa: "🍪", chips: "🍟", adicional: "➕", acompanhamento: "🍟", combo: "🍱", outro: "🍽️" };
 const CAT_ORDEM = ["sanduiche", "salada", "adicional", "chips", "acompanhamento", "sobremesa", "bebida", "combo", "outro"];
 
-const TABELA_IFOOD = "A"; // tabela iFood de referência
-
+// NOTA (auditoria da tabela comercial da unidade — ver pedido original): este
+// módulo não é importado por nenhuma rota hoje (nem index.html, nem app.js,
+// nem router.js) — código órfão, nunca chega a rodar. Se um dia for religado,
+// NÃO reintroduza um valor fixo aqui: esta era exatamente a mesma armadilha
+// (tabela hardcoded "A") que a auditoria pediu para eliminar do resto do
+// app. `carregarCmv("ifood")` sem 2º argumento deixa o backend resolver a
+// tabela iFood OFICIAL da unidade sozinho (ver cmv.service.js) — mas exige
+// contexto de unidade (Context Token), que uma vitrine pública sem login não
+// tem; decidir isso é produto, não algo pra resolver aqui.
 const item = (r) => `
   <div class="cardapio-item">
     <div class="cardapio-item-info">
@@ -57,7 +64,8 @@ export async function montarCardapioIfood() {
   box.innerHTML = `<div class="estado"><div class="spinner"></div>Carregando cardápio…</div>`;
 
   try {
-    const linhas = (await carregarCmv("ifood", TABELA_IFOOD)).filter((r) => temValor(r.preco) && Number(r.preco) > 0);
+    const { linhas: todasLinhas } = await carregarCmv("ifood");
+    const linhas = todasLinhas.filter((r) => temValor(r.preco) && Number(r.preco) > 0);
     if (!linhas.length) {
       box.innerHTML = `<div class="estado"><span class="emoji">📭</span><p>Nenhum item disponível no cardápio.</p></div>`;
       return;

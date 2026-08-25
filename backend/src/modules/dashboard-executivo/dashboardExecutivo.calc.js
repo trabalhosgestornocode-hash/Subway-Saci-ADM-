@@ -94,6 +94,24 @@ export function percentual(valor, base) {
 }
 
 /**
+ * Delta ISOLADO entre dois snapshots ACUMULADOS de um mesmo campo Financeiro
+ * (ex.: taxas_entregadores). Só é matematicamente exato quando os dois
+ * pontos são de dias REALMENTE consecutivos no calendário e AMBOS têm
+ * Financeiro preenchido — por isso não recebe datas: é responsabilidade de
+ * quem chama garantir que `anterior` é o dia imediatamente anterior a
+ * `atual` (ver dashboardDia.tool.js no módulo do Agente, único uso hoje).
+ * Null quando qualquer um dos dois lados não tem o campo preenchido —
+ * comparar um snapshot com um "buraco" atribuiria a diferença de vários
+ * dias a um só, o que seria inventar um número (mesma regra de `percentual`
+ * acima: "não sei" nunca vira 0 nem um valor aproximado).
+ * @param {number|null} atual @param {number|null} anterior @returns {number|null}
+ */
+export function deltaFinanceiro(atual, anterior) {
+  if (atual == null || anterior == null) return null;
+  return Number(atual) - Number(anterior);
+}
+
+/**
  * Soma as 4 deduções. Se NENHUMA foi informada, o total é indisponível
  * (null) — não um 0 que faria um card de meta parecer "dentro da meta" por
  * falta de dado. Se ALGUMAS foram informadas, soma só as conhecidas (melhor
