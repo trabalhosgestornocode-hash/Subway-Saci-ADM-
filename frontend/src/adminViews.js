@@ -20,7 +20,7 @@ import {
   num, pct, escapeHtml, fmtMoeda, fmtDataHora, fmtRelativo,
   STATUS_EMPRESA, STATUS_ASSINATURA, STATUS_COBRANCA, SITUACAO, pill,
   kpi, kpiGrade, secao, tabela, carregando, erro, vazio, barras,
-  campo, selecao, area, grade, abrirModal, valor, mostrarErroModal,
+  campo, selecao, area, grade, abrirModal, fecharModal, valor, mostrarErroModal,
 } from "./adminUi.js";
 
 /** Menu do painel. A ordem é a da especificação. */
@@ -44,15 +44,25 @@ const view = () => el("#adm-view");
 /** Caches de listas auxiliares — só o que alimenta seletores. */
 const cache = { empresas: [], planos: [], papeis: [] };
 
-/** Rótulos do preview de impacto de exclusão de empresa — mesmo espírito do ROTULO_METRICA de adminUnidadeDetalhe.js. */
+/**
+ * Rótulos do preview de impacto de exclusão de empresa — mesmo espírito do
+ * ROTULO_METRICA de adminUnidadeDetalhe.js. [singular, plural]: "1 unidade"
+ * lê melhor que "1 unidades" numa lista que é sempre lida em voz alta antes
+ * de um clique destrutivo.
+ */
 const ROTULO_METRICA_EMPRESA = {
-  unidades: "Unidades", usuarios: "Usuários vinculados",
-  categorias: "Categorias", insumos: "Insumos", produtos: "Produtos",
-  lancamentosDashboardIfood: "Lançamentos — Dashboard Executivo",
-  bonificacaoLancamentos: "Lançamentos — Bonificação Mensal",
-  parserFdImportacoes: "Importações — Parser Food Delivery",
-  martinBrowerIntegracoes: "Integrações Martin Brower",
-  agenteConversas: "Conversas — Agente Crescer",
+  unidades: ["Unidade", "Unidades"], usuarios: ["Usuário vinculado", "Usuários vinculados"],
+  categorias: ["Categoria", "Categorias"], insumos: ["Insumo", "Insumos"], produtos: ["Produto", "Produtos"],
+  lancamentosDashboardIfood: ["Lançamento — Dashboard Executivo", "Lançamentos — Dashboard Executivo"],
+  bonificacaoLancamentos: ["Lançamento — Bonificação Mensal", "Lançamentos — Bonificação Mensal"],
+  parserFdImportacoes: ["Importação — Parser Food Delivery", "Importações — Parser Food Delivery"],
+  martinBrowerIntegracoes: ["Integração Martin Brower", "Integrações Martin Brower"],
+  agenteConversas: ["Conversa — Agente Crescer", "Conversas — Agente Crescer"],
+};
+/** @param {string} chave @param {number} qtd */
+const rotuloMetricaEmpresa = (chave, qtd) => {
+  const par = ROTULO_METRICA_EMPRESA[chave];
+  return par ? par[qtd === 1 ? 0 : 1] : chave;
 };
 
 /** @param {string} telaId */
@@ -1069,14 +1079,16 @@ const ACOES = {
     },
   }),
 
-  // Item 8 do pedido de exclusão de empresa: mostra o impacto ANTES de
-  // qualquer coisa (mesmo padrão de adminUnidadeDetalhe.js#abrirExclusao).
-  // Achado da investigação: excluirEmpresa() fazia DELETE cru confiando no
-  // cascade — mas catálogo (ficha_tecnica é ON DELETE RESTRICT) bloqueava
-  // o banco de verdade, e o SuperAdmin via um erro cru do Postgres. Agora o
-  // backend já recusa cedo com uma mensagem clara; isto aqui evita nem
-  // chegar a mostrar o formulário de confirmação quando já se sabe que vai
-  // ser recusado.
+  // Mostra o impacto ANTES de qualquer coisa (mesmo padrão de
+  // adminUnidadeDetalhe.js#abrirExclusao). Achado da investigação:
+  // excluirEmpresa() fazia DELETE cru confiando no cascade — mas catálogo
+  // (ficha_tecnica é ON DELETE RESTRICT) batia num erro 23503 cru do banco.
+  // A correção real está em excluir_organizacao_definitivamente (migration
+  // 055): limpa as dependências travadas ANTES do delete em cascata, numa
+  // transação só. Por isso o botão "Excluir definitivamente" continua
+  // disponível MESMO havendo catálogo/histórico — a trava daqui é só um
+  // aviso pra guiar pra "Arquivar" como alternativa mais segura, nunca um
+  // impeditivo sem saída.
   "empresa-excluir": async ({ id, nome }) => {
     let impacto;
     try {
@@ -1086,33 +1098,33 @@ const ACOES = {
       return;
     }
 
-    const linhasImpacto = Object.entries(impacto.metricas)
-      .map(([chave, valorMetrica]) => `<div class="adm-det-linha"><span>${escapeHtml(ROTULO_METRICA_EMPRESA[chave] ?? chave)}</span><b>${num(valorMetrica)}</b></div>`)
+    // Só o que existe de fato — uma lista de zeros não ajuda ninguém a
+    // avaliar o tamanho real do impacto.
+    const itensImpacto = Object.entries(impacto.metricas)
+      .filter(([, valorMetrica]) => Number(valorMetrica) > 0)
+      .map(([chave, valorMetrica]) => {
+        const rotulo = rotuloMetricaEmpresa(chave, Number(valorMetrica));
+        // Nomes de módulo (após " — ") ficam com a capitalização própria
+        // deles ("Dashboard Executivo", "Parser Food Delivery"...) — só a
+        // primeira parte (a entidade contada) vira minúscula.
+        const rotuloExibido = rotulo.includes(" — ")
+          ? rotulo.replace(/^(.*?) — /, (m, entidade) => `${entidade.toLowerCase()} — `)
+          : rotulo.toLowerCase();
+        return `<li>${num(valorMetrica)} ${escapeHtml(rotuloExibido)}</li>`;
+      })
       .join("");
+    const blocoImpacto = itensImpacto ? `<p>Esta empresa possui:</p><ul class="adm-det-lista">${itensImpacto}</ul>` : "";
 
-    if (!impacto.exclusaoFisicaSegura) {
-      abrirModal({
-        titulo: `Excluir ${impacto.nome}`,
-        corpo: `
-          <div class="adm-aviso adm-aviso--perigo">
-            Esta empresa tem catálogo e/ou histórico operacional — excluir apagaria tudo isso definitivamente
-            (e o próprio banco recusa por segurança nesses casos). Use o status <b>"Cancelada"</b>
-            (menu "⋯" desta empresa → Status) para encerrar o acesso preservando todos os dados.
-          </div>
-          <div class="adm-det">${linhasImpacto}</div>`,
-      });
-      return;
-    }
-
-    abrirModal({
-      titulo: `Excluir ${impacto.nome}`,
+    const abrirConfirmacaoExclusao = () => abrirModal({
+      titulo: `Excluir definitivamente "${impacto.nome}"?`,
       perigo: true,
       corpo: `
+        ${blocoImpacto}
         <div class="adm-aviso adm-aviso--perigo">
-          Esta ação apaga a empresa permanentemente. <b>Não há como desfazer.</b>
+          A exclusão removerá permanentemente a empresa e todos os dados relacionados que fizerem parte de sua estrutura.
+          <b>Esta ação não poderá ser desfeita.</b>
         </div>
-        <div class="adm-det">${linhasImpacto}</div>
-        ${grade(campo({ id: "ex-conf", label: `Digite o nome exato da empresa para confirmar`, ph: impacto.nome, obrigatorio: true }))}`,
+        ${grade(campo({ id: "ex-conf", label: `Digite ${impacto.nome} para confirmar`, ph: impacto.nome, obrigatorio: true }))}`,
       confirmar: "Excluir definitivamente",
       aoConfirmar: async () => {
         // A confirmação é validada TAMBÉM no servidor — este campo não é a
@@ -1126,6 +1138,49 @@ const ACOES = {
         irParaAdmin("empresas");
       },
     });
+
+    if (!impacto.exclusaoFisicaSegura) {
+      // Sem `aoConfirmar` de propósito: as duas ações que importam aqui já
+      // são os botões no corpo. Um `aoConfirmar` chamando
+      // `abrirConfirmacaoExclusao()` colidiria com o próprio `abrirModal` —
+      // ele reabriria #adm-modal com o segundo passo, e o `fecharModal()`
+      // automático que o rodapé dispara na sequência fecharia tudo por
+      // baixo dele. Rodapé aqui é só "Fechar".
+      abrirModal({
+        titulo: `Excluir ${impacto.nome}`,
+        corpo: `
+          <div class="adm-aviso adm-aviso--perigo">
+            <b>Atenção:</b> esta empresa possui histórico operacional. Recomendamos <b>arquivá-la</b> para preservar
+            os dados. Como SuperAdmin, você ainda pode realizar a exclusão definitiva.
+          </div>
+          ${blocoImpacto}
+          <div class="adm-det-acoes">
+            <button type="button" class="btn btn-ghost" data-adm-acao="empresa-arquivar"
+                    data-id="${escapeHtml(id)}" data-nome="${escapeHtml(impacto.nome)}">Arquivar empresa</button>
+            <button type="button" class="btn btn-perigo" id="btn-ir-exclusao-definitiva">Excluir definitivamente</button>
+          </div>`,
+      });
+      el("#btn-ir-exclusao-definitiva")?.addEventListener("click", abrirConfirmacaoExclusao);
+      return;
+    }
+
+    abrirConfirmacaoExclusao();
+  },
+
+  // Atalho a partir do aviso de exclusão — mesma operação que "Status" no
+  // menu "⋯" da empresa (adminApi.alterarStatusEmpresa), só que direto pra
+  // "cancelada" sem abrir aquele formulário inteiro.
+  "empresa-arquivar": async ({ id, nome }) => {
+    if (!confirm(`Arquivar "${nome}"?\n\nO status muda para "Cancelada": o acesso é encerrado, mas nenhum dado é perdido.`)) return;
+    try {
+      await adminApi.alterarStatusEmpresa(id, "cancelada");
+    } catch (e) {
+      toast("Erro: " + e.message);
+      return;
+    }
+    fecharModal();
+    toast("Empresa arquivada (status: Cancelada).");
+    recarregarAdmin();
   },
 
   // ---- Estrutura organizacional (promover/converter/transferir) — cada

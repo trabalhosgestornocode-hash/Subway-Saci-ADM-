@@ -404,23 +404,20 @@ export async function alterarPlanoEmpresa(req, idBruto, body) {
 /**
  * Contagens de catálogo/histórico/vínculos de uma empresa — mesmo papel de
  * `impactoExclusaoUnidade` (plataforma.unidades.service.js), aplicado no
- * nível de empresa. Alimenta o preview de exclusão e decide se a exclusão
- * física é segura.
+ * nível de empresa. Alimenta o preview que o painel mostra ANTES do
+ * formulário de confirmação: quantas unidades, produtos, insumos, usuários e
+ * histórico operacional existem.
  *
- * ACHADO (investigação do bug de exclusão): `excluirEmpresa` fazia um
- * `DELETE FROM organizacoes` cru, confiando cegamente no `ON DELETE CASCADE`
- * — mas `ficha_tecnica.insumo_id`/`subproduto_id` (e, com Estoque/Distribuidoras,
- * `movimentacoes_estoque.insumo_id`/`pedidos_compra_itens.insumo_id`) são
- * `ON DELETE RESTRICT` (decisão original do schema — protege contra apagar
- * um insumo/produto que uma ficha técnica ainda usa, mesmo dentro de uma
- * cascata). Qualquer empresa com catálogo configurado — inclusive uma
- * "vazia" que nunca operou mas nasceu clonada de um Modelo Padrão — batia
- * nessa constraint e o DELETE falhava com um erro 23503 cru do Postgres.
- * Catálogo (categorias/insumos/produtos) e histórico operacional (Dashboard
- * Executivo, Bonificação, Parser FD, Martin Brower, Agente Crescer) agora
- * bloqueiam a exclusão física ANTES de tentar — mesmo espírito de
- * `impactoExclusaoUnidade`: nunca destrutivo em silêncio, e nunca um erro de
- * banco cru na cara do SuperAdmin.
+ * `exclusaoFisicaSegura` é informativo, não uma trava: quando falso, o
+ * painel mostra um aviso forte recomendando arquivar (status "cancelada")
+ * em vez de excluir — mas o SuperAdmin ainda pode seguir com "Excluir
+ * definitivamente". Quem garante que a exclusão funciona de verdade mesmo
+ * havendo catálogo/histórico é `excluir_organizacao_definitivamente`
+ * (migration 055): limpa as dependências `on delete restrict` do schema
+ * (ficha_tecnica/movimentacoes_estoque/pedidos_compra_itens/vendas_itens/
+ * pedidos_compra) antes do delete em cascata, numa única transação. Ver o
+ * comentário da migration para a causa raiz completa do erro 23503 que essa
+ * função elimina.
  * @param {unknown} idBruto
  */
 export async function impactoExclusaoEmpresa(idBruto) {
@@ -454,56 +451,53 @@ export async function impactoExclusaoEmpresa(idBruto) {
 }
 
 /**
- * Exclui a empresa DE VERDADE — só quando comprovadamente segura (ver
- * `impactoExclusaoEmpresa`). Nunca destrutivo em silêncio: recusa de cara se
- * houver catálogo ou histórico operacional, orientando para o status
- * "cancelada" (arquivar, preservando tudo) em vez disso — mesmo padrão de
- * `excluirUnidade`.
+ * Exclui a empresa DE VERDADE. O botão "Excluir definitivamente" é do
+ * SuperAdmin e existe mesmo quando há catálogo/histórico operacional — a
+ * trava não pode ser "sem saída" (achado da investigação original: era
+ * exatamente esse o bug, ver `impactoExclusaoEmpresa`). O que muda conforme
+ * o impacto é o AVISO no painel (arquivar em vez de excluir), não a
+ * disponibilidade do botão.
+ *
+ * A exclusão física em si roda inteira dentro de
+ * `excluir_organizacao_definitivamente` (migration 055): uma função
+ * PL/pgSQL = uma transação real do Postgres. Ela limpa explicitamente as
+ * linhas presas pelas colunas `on delete restrict` do schema
+ * (ficha_tecnica/movimentacoes_estoque/pedidos_compra_itens/vendas_itens/
+ * pedidos_compra) ANTES do delete em cascata — é isso que resolve o erro
+ * 23503 cru que o Postgres devolvia antes. Auditoria e revogação de sessões
+ * também estão dentro da função: se qualquer passo falhar, tudo volta atrás
+ * junto, nunca sobra um "empresa.excluida" para uma empresa que continua
+ * existindo.
  *
  * Exige `confirmacao` igual ao nome exato da empresa. Um clique acidental num
  * painel de administração não pode apagar a operação inteira de um cliente, e
- * um `?confirmar=true` é fácil demais de mandar sem ler.
+ * um `?confirmar=true` é fácil demais de mandar sem ler — a função SQL
+ * confere a MESMA coisa de novo, então a barreira não depende só do backend
+ * ter lido certo.
  */
 export async function excluirEmpresa(req, idBruto, body) {
   const id = v.uuid(idBruto, "Empresa");
-  const { data: empresa } = await supabase.from("organizacoes")
-    .select("id, nome").eq("id", id).maybeSingle();
-  if (!empresa) throw ApiError.notFound("Empresa não encontrada.");
-
-  const impacto = await impactoExclusaoEmpresa(id);
-  if (!impacto.exclusaoFisicaSegura) {
-    throw ApiError.badRequest(
-      "Esta empresa tem catálogo e/ou histórico operacional (unidades, produtos/insumos, lançamentos, integrações...) — " +
-      "excluir apagaria tudo isso definitivamente, e o próprio banco recusa por segurança nesses casos. " +
-      "Use o status \"Cancelada\" para encerrar sem perder dados.",
-      { metricas: impacto.metricas },
-    );
-  }
-
   const confirmacao = typeof body?.confirmacao === "string" ? body.confirmacao.trim() : "";
-  if (confirmacao !== empresa.nome) {
-    throw ApiError.badRequest(
-      `Exclusão não confirmada. Envie "confirmacao" com o nome exato da empresa ("${empresa.nome}"). ` +
-      "Para apenas encerrar sem perder dados, use o status 'cancelada'.");
-  }
+  const { ip, userAgent } = origemDe(req);
 
-  // Só a partir daqui a exclusão física é garantidamente segura (comprovado
-  // acima) — revogar sessões e gravar a auditoria ANTES do DELETE deixou de
-  // ser arriscado: antes disso, um DELETE que falhasse (o caso comum, por
-  // causa do bug corrigido aqui) já tinha derrubado sessões reais e gravado
-  // "EMPRESA_EXCLUIDA" (auditoria é append-only, imutável) para uma empresa
-  // que continuava existindo.
-  await revogarSessoes({ organizacaoId: id, motivo: "empresa_excluida" });
-
-  await auditar({
-    atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
-    acao: ACOES.EMPRESA_EXCLUIDA, entidade: "organizacao", entidadeId: id, organizacaoId: id,
-    detalhes: { nome: empresa.nome }, ...origemDe(req),
+  const { data, error } = await supabase.rpc("excluir_organizacao_definitivamente", {
+    p_organizacao_id: id,
+    p_confirmacao_nome: confirmacao,
+    p_ator_id: req.user.id,
+    p_ator_email: req.user.email,
+    p_ip: ip,
+    p_user_agent: userAgent,
   });
-
-  const { error } = await supabase.from("organizacoes").delete().eq("id", id);
-  if (error) throw ApiError.internal(error.message);
-  return { id, nome: empresa.nome, excluida: true };
+  if (error) {
+    if (error.code === "P0002") throw ApiError.notFound(error.message);
+    if (error.code === "22023") {
+      throw ApiError.badRequest(
+        `Exclusão não confirmada. Digite exatamente o nome da empresa para confirmar. ` +
+        "Para apenas encerrar sem perder dados, use o status 'cancelada'.");
+    }
+    throw ApiError.internal(error.message || "Falha ao excluir a empresa.");
+  }
+  return { id: data.organizacaoId, nome: data.organizacaoNome, excluida: true, ...data };
 }
 
 // --------------------------------------------------------------------------

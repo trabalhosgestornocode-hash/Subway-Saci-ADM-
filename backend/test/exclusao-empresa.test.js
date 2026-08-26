@@ -1,13 +1,22 @@
 // =====================================================================
-// TESTE DE INTEGRAÇÃO — Exclusão/arquivamento de empresa
+// TESTE DE INTEGRAÇÃO — Exclusão definitiva de empresa
 // =====================================================================
-// Investigação: excluirEmpresa() fazia DELETE FROM organizacoes cru,
-// confiando cegamente no ON DELETE CASCADE — mas ficha_tecnica.insumo_id/
-// subproduto_id são ON DELETE RESTRICT (nunca alterado por nenhuma
-// migration), então QUALQUER empresa com catálogo configurado (inclusive
-// uma "vazia" clonada de um Modelo Padrão) batia num erro 23503 cru do
-// Postgres. Corrigido com impactoExclusaoEmpresa() (mesmo padrão de
-// impactoExclusaoUnidade()) bloqueando ANTES de tentar.
+// Investigação original: excluirEmpresa() fazia DELETE FROM organizacoes
+// cru, confiando cegamente no ON DELETE CASCADE — mas ficha_tecnica.
+// insumo_id/subproduto_id (e mais três colunas do schema original) são
+// ON DELETE RESTRICT, então QUALQUER empresa com catálogo configurado
+// (inclusive uma "vazia" clonada de um Modelo Padrão) batia num erro 23503
+// cru do Postgres.
+//
+// Uma primeira correção reagiu bloqueando a exclusão física sempre que
+// havia catálogo/histórico — mas isso deixava o SuperAdmin sem NENHUMA
+// saída pra apagar de verdade uma empresa de teste/lixo que realmente
+// precisa sumir (o botão "Excluir definitivamente" virava um beco sem
+// saída). A correção final (migration 055,
+// excluir_organizacao_definitivamente) limpa essas dependências RESTRICT
+// explicitamente, numa única transação, e o delete em cascata funciona de
+// verdade — o botão continua disponível mesmo com catálogo; o que muda é
+// só o AVISO no painel (recomendar "Cancelada" em vez de excluir).
 //
 // SEGURANÇA — mesmo padrão de estrutura-organizacional.test.js: só roda
 // com TEST_SUPABASE_* + ISOLATION_TEST_DISPOSABLE=1; sem isso, PULA (não
@@ -62,8 +71,24 @@ describe("Exclusão de empresa — impactoExclusaoEmpresa + excluirEmpresa", { s
     await verificarCredencial(admin, SERVICE);
     await verificarTabelas(admin, [
       "organizacoes", "unidades", "categorias", "insumos", "produtos", "ficha_tecnica",
-      "lancamentos_financeiros_diarios", "plataforma_auditoria",
+      "fornecedores", "pedidos_compra", "pedidos_compra_itens", "movimentacoes_estoque",
+      "vendas", "vendas_itens", "lancamentos_financeiros_diarios", "plataforma_auditoria",
     ]);
+
+    // A migration 055 foi aplicada? Chama a função com um id inexistente —
+    // função ausente (PGRST202) e "empresa não encontrada" (P0002) são
+    // erros DIFERENTES; só o segundo prova que a função existe.
+    const idFalso = "00000000-0000-0000-0000-000000000000";
+    const { error } = await admin.rpc("excluir_organizacao_definitivamente", {
+      p_organizacao_id: idFalso, p_confirmacao_nome: "x", p_ator_id: idFalso,
+    });
+    if (!error || error.code !== "P0002") {
+      throw new Error(
+        "A migration 055_excluir_organizacao_definitivamente.sql não parece estar aplicada no banco de teste " +
+        `(esperava erro P0002 'Empresa não encontrada', recebi: ${error?.code ?? "nenhum erro"} ${error?.message ?? ""}). ` +
+        "Aplique a migration no SQL Editor do projeto de teste antes de rodar.",
+      );
+    }
   });
 
   after(async () => {
@@ -114,7 +139,7 @@ describe("Exclusão de empresa — impactoExclusaoEmpresa + excluirEmpresa", { s
     await admin.from("categorias").delete().eq("id", cat.id);
   });
 
-  it("empresa com unidade com histórico operacional (Dashboard Executivo): também não pode ser excluída fisicamente sem aviso", async () => {
+  it("empresa com unidade com histórico operacional (Dashboard Executivo): a métrica detecta mesmo sem catálogo algum", async () => {
     const org = await criarOrg("ComHistorico");
     const { data: uni } = await admin.from("unidades").insert({ organizacao_id: org.id, nome: "Matriz", ativo: true }).select("id").single();
     await admin.from("lancamentos_financeiros_diarios")
@@ -122,11 +147,9 @@ describe("Exclusão de empresa — impactoExclusaoEmpresa + excluirEmpresa", { s
 
     const { count: lancamentos } = await admin.from("lancamentos_financeiros_diarios")
       .select("id", { count: "exact", head: true }).eq("organizacao_id", org.id);
-    assert.equal(lancamentos, 1, "esta é a métrica que impactoExclusaoEmpresa soma como bloqueante — sem catálogo algum, só histórico");
-    // (não precisamos provar o 23503 aqui de novo — lancamentos_financeiros_diarios
-    // é ON DELETE CASCADE; o ponto deste teste é que a CONTAGEM detecta o
-    // histórico ANTES de qualquer tentativa de DELETE, então a guarda bloqueia
-    // mesmo quando o banco sozinho deixaria passar.)
+    assert.equal(lancamentos, 1, "esta é a métrica que impactoExclusaoEmpresa soma pra decidir o AVISO — sem catálogo algum, só histórico");
+    // (lancamentos_financeiros_diarios é ON DELETE CASCADE — o ponto deste
+    // teste é só a CONTAGEM que alimenta o aviso do painel, não o delete.)
   });
 
   it("auditoria: EMPRESA_EXCLUIDA só é gravada quando a exclusão realmente acontece (nunca antes de confirmar que vai suceder)", async () => {
@@ -141,41 +164,72 @@ describe("Exclusão de empresa — impactoExclusaoEmpresa + excluirEmpresa", { s
     assert.ifError(eDel);
     criados.organizacoes.delete(org.id);
     // Nota: este teste exercita só a camada de banco (mesmo padrão dos
-    // outros "it"s aqui) — a auditoria em si é gravada pelo service
-    // (excluirEmpresa), não pelo DELETE bruto. O ponto comprovado aqui é
-    // que a empresa vazia realmente desaparece; a ORDEM correta
-    // (revogar sessão + auditar SÓ depois do impacto confirmar sucesso)
-    // está implementada em plataforma.empresas.service.js e é comentada lá.
+    // outros "it"s aqui) — a auditoria em si é gravada pela função SQL
+    // (excluir_organizacao_definitivamente), não pelo DELETE bruto. O ponto
+    // comprovado aqui é que a empresa vazia realmente desaparece; a ORDEM
+    // correta (auditoria só é gravada se a transação inteira suceder) está
+    // implementada na migration 055 e é comentada lá.
   });
 
   // ---- Testes de ponta a ponta contra o SERVICE de verdade (não só o SQL bruto) ----
 
-  it("SERVICE: excluirEmpresa() numa empresa com catálogo recusa com mensagem clara (400), NUNCA o erro 23503 cru", async () => {
+  it("SERVICE: excluirEmpresa() numa empresa com catálogo (ficha_tecnica via insumo E subproduto) exclui de verdade — antes era o 23503 cru", async () => {
     const { excluirEmpresa } = await import("../src/modules/plataforma/plataforma.empresas.service.js");
     const org = await criarOrg("ServiceComCatalogo");
+    const { data: uni } = await admin.from("unidades").insert({ organizacao_id: org.id, nome: "Matriz", ativo: true }).select("id").single();
     const { data: cat } = await admin.from("categorias").insert({ organizacao_id: org.id, nome: "Cat", tipo: "produto" }).select("id").single();
     const { data: ins } = await admin.from("insumos").insert({ organizacao_id: org.id, categoria_id: cat.id, nome: "Ins", unidade_medida: "g", preco_unitario: 1 }).select("id").single();
+    const { data: submontagem } = await admin.from("produtos").insert({ organizacao_id: org.id, categoria_id: cat.id, nome: "Submontagem", sku: `SKU-${tag}-sub` }).select("id").single();
     const { data: prod } = await admin.from("produtos").insert({ organizacao_id: org.id, categoria_id: cat.id, nome: "Prod", sku: `SKU-${tag}-svc` }).select("id").single();
-    await admin.from("ficha_tecnica").insert({ produto_id: prod.id, insumo_id: ins.id, quantidade: 1 });
+    // Uma linha via insumo_id, outra via subproduto_id — as DUAS colunas
+    // RESTRICT de ficha_tecnica precisam estar cobertas.
+    await admin.from("ficha_tecnica").insert([
+      { produto_id: prod.id, insumo_id: ins.id, quantidade: 1 },
+      { produto_id: prod.id, subproduto_id: submontagem.id, quantidade: 1 },
+    ]);
 
-    await assert.rejects(
-      excluirEmpresa(reqFalso(), org.id, { confirmacao: org.nome }),
-      (erro) => {
-        assert.equal(erro.statusCode, 400, "tem que ser um erro CONTROLADO (badRequest), nunca o 500/23503 cru do Postgres");
-        assert.match(erro.message, /catálogo|histórico/i);
-        assert.ok(erro.details?.metricas, "a mensagem deveria vir com o detalhamento de métricas, pro frontend mostrar");
-        return true;
-      },
-    );
+    const resultado = await excluirEmpresa(reqFalso(), org.id, { confirmacao: org.nome });
+    assert.equal(resultado.excluida, true);
+    criados.organizacoes.delete(org.id);
 
-    // a empresa TEM que continuar existindo — a recusa é preventiva, nunca parcial
-    const { data: aindaExiste } = await admin.from("organizacoes").select("id").eq("id", org.id).maybeSingle();
-    assert.ok(aindaExiste, "a empresa não pode ter sido tocada quando a exclusão é recusada");
+    const { data: orgAinda } = await admin.from("organizacoes").select("id").eq("id", org.id).maybeSingle();
+    assert.equal(orgAinda, null, "a empresa com catálogo deveria ter sido excluída de verdade (era o bug: 23503 cru)");
+    for (const [tabela, id] of [["unidades", uni.id], ["categorias", cat.id], ["insumos", ins.id], ["produtos", prod.id], ["produtos", submontagem.id]]) {
+      const { data } = await admin.from(tabela).select("id").eq("id", id).maybeSingle();
+      assert.equal(data, null, `${tabela}.${id} deveria ter sido apagado junto`);
+    }
+    const { count: fichaRestante } = await admin.from("ficha_tecnica")
+      .select("id", { count: "exact", head: true }).eq("produto_id", prod.id);
+    assert.equal(fichaRestante, 0, "ficha_tecnica desta empresa deveria ter sido limpa (era exatamente o que travava o 23503)");
 
-    await admin.from("ficha_tecnica").delete().eq("produto_id", prod.id);
-    await admin.from("produtos").delete().eq("id", prod.id);
-    await admin.from("insumos").delete().eq("id", ins.id);
-    await admin.from("categorias").delete().eq("id", cat.id);
+    const { data: auditRows } = await admin.from("plataforma_auditoria")
+      .select("detalhes").eq("entidade_id", org.id).eq("acao", "empresa.excluida")
+      .order("created_at", { ascending: false }).limit(1);
+    assert.equal(auditRows.length, 1);
+    assert.equal(auditRows[0].detalhes.catalogo.produtos, 2);
+    assert.equal(auditRows[0].detalhes.catalogo.fichaTecnica, 2);
+  });
+
+  it("SERVICE: excluirEmpresa() limpa também movimentacoes_estoque/pedidos_compra_itens/pedidos_compra/vendas_itens (as outras 4 colunas RESTRICT do schema)", async () => {
+    const { excluirEmpresa } = await import("../src/modules/plataforma/plataforma.empresas.service.js");
+    const org = await criarOrg("ServiceEstoqueComprasVendas");
+    const { data: uni } = await admin.from("unidades").insert({ organizacao_id: org.id, nome: "Matriz", ativo: true }).select("id").single();
+    const { data: cat } = await admin.from("categorias").insert({ organizacao_id: org.id, nome: "Cat", tipo: "insumo" }).select("id").single();
+    const { data: ins } = await admin.from("insumos").insert({ organizacao_id: org.id, categoria_id: cat.id, nome: "Ins", unidade_medida: "g", preco_unitario: 1 }).select("id").single();
+    const { data: prod } = await admin.from("produtos").insert({ organizacao_id: org.id, categoria_id: cat.id, nome: "Prod", sku: `SKU-${tag}-estoque` }).select("id").single();
+    const { data: forn } = await admin.from("fornecedores").insert({ organizacao_id: org.id, nome: "Forn" }).select("id").single();
+    const { data: pedido } = await admin.from("pedidos_compra").insert({ unidade_id: uni.id, fornecedor_id: forn.id }).select("id").single();
+    await admin.from("pedidos_compra_itens").insert({ pedido_compra_id: pedido.id, insumo_id: ins.id, quantidade: 1 });
+    await admin.from("movimentacoes_estoque").insert({ unidade_id: uni.id, insumo_id: ins.id, tipo: "entrada_manual", quantidade: 1 });
+    const { data: venda } = await admin.from("vendas").insert({ unidade_id: uni.id }).select("id").single();
+    await admin.from("vendas_itens").insert({ venda_id: venda.id, produto_id: prod.id });
+
+    const resultado = await excluirEmpresa(reqFalso(), org.id, { confirmacao: org.nome });
+    assert.equal(resultado.excluida, true);
+    criados.organizacoes.delete(org.id);
+
+    const { data: orgAinda } = await admin.from("organizacoes").select("id").eq("id", org.id).maybeSingle();
+    assert.equal(orgAinda, null, "empresa com estoque/compras/vendas antigas deveria ter sido excluída de verdade");
   });
 
   it("SERVICE: excluirEmpresa() numa empresa vazia (Matriz automática) exclui de verdade com a confirmação certa", async () => {
