@@ -26,6 +26,7 @@ plataformaRouter.get("/empresas", c.listarEmpresas);
 plataformaRouter.post("/empresas", c.criarEmpresa);
 plataformaRouter.get("/empresas/:id", c.obterEmpresa);
 plataformaRouter.patch("/empresas/:id", c.atualizarEmpresa);
+plataformaRouter.get("/empresas/:id/impacto-exclusao", c.impactoExclusaoEmpresa);
 plataformaRouter.delete("/empresas/:id", c.excluirEmpresa);
 plataformaRouter.patch("/empresas/:id/status", c.alterarStatusEmpresa);
 plataformaRouter.patch("/empresas/:id/plano", c.alterarPlanoEmpresa);

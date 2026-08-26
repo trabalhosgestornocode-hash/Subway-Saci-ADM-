@@ -41,6 +41,7 @@ export function limparContexto() {
   state.sessao.permissoes = [];
   state.sessao.modulos = [];
   state.sessao.impersonando = false;
+  state.sessao.unidadesDaEmpresa = [];
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,38 @@ export async function restaurarContexto() {
     limparContexto();
     return false;
   }
+}
+
+/**
+ * Troca de unidade a partir do seletor global do topbar — usa uma rota
+ * diferente de `selecionarContexto` porque só ela sabe (no servidor) se a
+ * sessão atual é uma impersonação, e é isso que decide a regra de
+ * autorização (ver sessao.service.js#trocarUnidadeDoContexto no backend).
+ * @param {{unidadeId: string|null}} params
+ */
+export async function trocarUnidadeDoContexto({ unidadeId }) {
+  const { data } = await post("/api/v1/sessao/trocar-unidade", { unidadeId: unidadeId ?? null });
+  aplicarContexto(data);
+  return data;
+}
+
+/**
+ * Unidades da empresa do contexto ATUAL que o seletor global do topbar pode
+ * oferecer (Fase G) — sempre buscado fresco (nunca reaproveita o snapshot de
+ * `state.sessao.acessos` do login), porque é chamado depois de TODA entrada
+ * no shell do tenant: login, F5, troca de unidade e impersonação. É esse
+ * "sempre fresco" que resolve o contexto sem saída (empresa com várias
+ * unidades, `unidadeId` nulo, sem nenhum jeito visível de escolher uma).
+ * Falha de rede não pode travar `mostrarApp()` — o chip só fica informativo.
+ */
+export async function listarUnidadesContexto() {
+  try {
+    const { data } = await get("/api/v1/sessao/unidades");
+    state.sessao.unidadesDaEmpresa = data.unidades ?? [];
+  } catch {
+    state.sessao.unidadesDaEmpresa = [];
+  }
+  return state.sessao.unidadesDaEmpresa;
 }
 
 /** Encerra apenas o contexto (mantém o login). Usado por "Trocar unidade". */

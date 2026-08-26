@@ -14,7 +14,7 @@ import {
 import { auditar, ACOES } from "../../shared/auditoria.js";
 import { clonarCatalogo } from "../../shared/clonarCatalogo.js";
 import { criarSessao, revogarSessoes } from "../sessao/sessao.service.js";
-import { contar, buscar } from "./plataforma.repo.js";
+import { contar, buscar, contarVarios } from "./plataforma.repo.js";
 import * as v from "../../shared/validar.js";
 
 export const STATUS_EMPRESA = ["ativa", "teste", "bloqueada", "suspensa", "cancelada"];
@@ -402,19 +402,83 @@ export async function alterarPlanoEmpresa(req, idBruto, body) {
 }
 
 /**
- * Exclui a empresa DE VERDADE (cascata do banco leva unidades, produtos,
- * vendas, vínculos — tudo).
+ * Contagens de catálogo/histórico/vínculos de uma empresa — mesmo papel de
+ * `impactoExclusaoUnidade` (plataforma.unidades.service.js), aplicado no
+ * nível de empresa. Alimenta o preview de exclusão e decide se a exclusão
+ * física é segura.
+ *
+ * ACHADO (investigação do bug de exclusão): `excluirEmpresa` fazia um
+ * `DELETE FROM organizacoes` cru, confiando cegamente no `ON DELETE CASCADE`
+ * — mas `ficha_tecnica.insumo_id`/`subproduto_id` (e, com Estoque/Distribuidoras,
+ * `movimentacoes_estoque.insumo_id`/`pedidos_compra_itens.insumo_id`) são
+ * `ON DELETE RESTRICT` (decisão original do schema — protege contra apagar
+ * um insumo/produto que uma ficha técnica ainda usa, mesmo dentro de uma
+ * cascata). Qualquer empresa com catálogo configurado — inclusive uma
+ * "vazia" que nunca operou mas nasceu clonada de um Modelo Padrão — batia
+ * nessa constraint e o DELETE falhava com um erro 23503 cru do Postgres.
+ * Catálogo (categorias/insumos/produtos) e histórico operacional (Dashboard
+ * Executivo, Bonificação, Parser FD, Martin Brower, Agente Crescer) agora
+ * bloqueiam a exclusão física ANTES de tentar — mesmo espírito de
+ * `impactoExclusaoUnidade`: nunca destrutivo em silêncio, e nunca um erro de
+ * banco cru na cara do SuperAdmin.
+ * @param {unknown} idBruto
+ */
+export async function impactoExclusaoEmpresa(idBruto) {
+  const id = v.uuid(idBruto, "Empresa");
+  const { data: empresa } = await supabase.from("organizacoes").select("id, nome").eq("id", id).maybeSingle();
+  if (!empresa) throw ApiError.notFound("Empresa não encontrada.");
+
+  const metricas = await contarVarios([
+    { chave: "unidades", tabela: "unidades", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "usuarios", tabela: "usuarios_organizacoes", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "categorias", tabela: "categorias", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "insumos", tabela: "insumos", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "produtos", tabela: "produtos", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "lancamentosDashboardIfood", tabela: "lancamentos_financeiros_diarios", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "bonificacaoLancamentos", tabela: "bonificacao_lancamentos_diarios", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "parserFdImportacoes", tabela: "parser_fd_importacoes", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "martinBrowerIntegracoes", tabela: "martin_brower_integracoes", filtro: (q) => q.eq("organizacao_id", id) },
+    { chave: "agenteConversas", tabela: "agente_conversas", filtro: (q) => q.eq("organizacao_id", id) },
+  ]);
+
+  // `unidades` e `usuarios` sozinhos não bloqueiam — uma empresa pode ter a
+  // Matriz automática (vazia) e ainda assim nunca ter sido usada de verdade;
+  // um vínculo de usuário sozinho também não é "operação" (mesmo raciocínio
+  // de impactoExclusaoUnidade). O que bloqueia é catálogo (a causa raiz do
+  // bug) e histórico operacional real.
+  const totalBloqueante = Object.entries(metricas)
+    .filter(([chave]) => !["unidades", "usuarios"].includes(chave))
+    .reduce((soma, [, valor]) => soma + (valor ?? 0), 0);
+
+  return { id: empresa.id, nome: empresa.nome, metricas, exclusaoFisicaSegura: totalBloqueante === 0 };
+}
+
+/**
+ * Exclui a empresa DE VERDADE — só quando comprovadamente segura (ver
+ * `impactoExclusaoEmpresa`). Nunca destrutivo em silêncio: recusa de cara se
+ * houver catálogo ou histórico operacional, orientando para o status
+ * "cancelada" (arquivar, preservando tudo) em vez disso — mesmo padrão de
+ * `excluirUnidade`.
  *
  * Exige `confirmacao` igual ao nome exato da empresa. Um clique acidental num
  * painel de administração não pode apagar a operação inteira de um cliente, e
- * um `?confirmar=true` é fácil demais de mandar sem ler. A alternativa segura
- * (status 'cancelada') fica sugerida na mensagem de erro.
+ * um `?confirmar=true` é fácil demais de mandar sem ler.
  */
 export async function excluirEmpresa(req, idBruto, body) {
   const id = v.uuid(idBruto, "Empresa");
   const { data: empresa } = await supabase.from("organizacoes")
     .select("id, nome").eq("id", id).maybeSingle();
   if (!empresa) throw ApiError.notFound("Empresa não encontrada.");
+
+  const impacto = await impactoExclusaoEmpresa(id);
+  if (!impacto.exclusaoFisicaSegura) {
+    throw ApiError.badRequest(
+      "Esta empresa tem catálogo e/ou histórico operacional (unidades, produtos/insumos, lançamentos, integrações...) — " +
+      "excluir apagaria tudo isso definitivamente, e o próprio banco recusa por segurança nesses casos. " +
+      "Use o status \"Cancelada\" para encerrar sem perder dados.",
+      { metricas: impacto.metricas },
+    );
+  }
 
   const confirmacao = typeof body?.confirmacao === "string" ? body.confirmacao.trim() : "";
   if (confirmacao !== empresa.nome) {
@@ -423,10 +487,14 @@ export async function excluirEmpresa(req, idBruto, body) {
       "Para apenas encerrar sem perder dados, use o status 'cancelada'.");
   }
 
+  // Só a partir daqui a exclusão física é garantidamente segura (comprovado
+  // acima) — revogar sessões e gravar a auditoria ANTES do DELETE deixou de
+  // ser arriscado: antes disso, um DELETE que falhasse (o caso comum, por
+  // causa do bug corrigido aqui) já tinha derrubado sessões reais e gravado
+  // "EMPRESA_EXCLUIDA" (auditoria é append-only, imutável) para uma empresa
+  // que continuava existindo.
   await revogarSessoes({ organizacaoId: id, motivo: "empresa_excluida" });
 
-  // A auditoria é gravada ANTES: depois do delete não haveria mais como saber
-  // o que foi apagado, e o log é imutável por design.
   await auditar({
     atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
     acao: ACOES.EMPRESA_EXCLUIDA, entidade: "organizacao", entidadeId: id, organizacaoId: id,

@@ -46,6 +46,7 @@ export const adminApi = {
   alterarPlanoEmpresa: (id, planoId) => patch(`/empresas/${id}/plano`, { planoId }),
   // A exclusão exige o nome exato da empresa como confirmação — o backend
   // recusa sem isso, de propósito.
+  impactoExclusaoEmpresa: (id) => get(`/empresas/${id}/impacto-exclusao`),
   excluirEmpresa: (id, confirmacao) => del(`/empresas/${id}`, { confirmacao }),
   usuariosDaEmpresa: (id) => get(`/empresas/${id}/usuarios`),
   unidadesDaEmpresa: (id) => get(`/empresas/${id}/unidades`),

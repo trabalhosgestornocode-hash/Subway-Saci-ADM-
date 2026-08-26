@@ -44,6 +44,17 @@ const view = () => el("#adm-view");
 /** Caches de listas auxiliares — só o que alimenta seletores. */
 const cache = { empresas: [], planos: [], papeis: [] };
 
+/** Rótulos do preview de impacto de exclusão de empresa — mesmo espírito do ROTULO_METRICA de adminUnidadeDetalhe.js. */
+const ROTULO_METRICA_EMPRESA = {
+  unidades: "Unidades", usuarios: "Usuários vinculados",
+  categorias: "Categorias", insumos: "Insumos", produtos: "Produtos",
+  lancamentosDashboardIfood: "Lançamentos — Dashboard Executivo",
+  bonificacaoLancamentos: "Lançamentos — Bonificação Mensal",
+  parserFdImportacoes: "Importações — Parser Food Delivery",
+  martinBrowerIntegracoes: "Integrações Martin Brower",
+  agenteConversas: "Conversas — Agente Crescer",
+};
+
 /** @param {string} telaId */
 export async function renderView(telaId) {
   const render = VIEWS[telaId] ?? VIEWS.dashboard;
@@ -1058,27 +1069,64 @@ const ACOES = {
     },
   }),
 
-  "empresa-excluir": ({ id, nome }) => abrirModal({
-    titulo: `Excluir ${nome}`,
-    perigo: true,
-    corpo: `
-      <div class="adm-aviso adm-aviso--perigo">
-        Esta ação apaga a empresa e todos os dados associados. <b>Não há como desfazer.</b>
-      </div>
-      ${grade(campo({ id: "ex-conf", label: `Digite o nome exato da empresa para confirmar`, ph: nome, obrigatorio: true }))}`,
-    confirmar: "Excluir definitivamente",
-    aoConfirmar: async () => {
-      // A confirmação é validada TAMBÉM no servidor — este campo não é a
-      // única barreira, é só o aviso na frente dela.
-      if (valor("ex-conf") !== nome) {
-        mostrarErroModal("O nome digitado não confere.");
-        throw new Error("confirmação inválida");
-      }
-      await adminApi.excluirEmpresa(id, nome);
-      toast("Empresa excluída.");
-      irParaAdmin("empresas");
-    },
-  }),
+  // Item 8 do pedido de exclusão de empresa: mostra o impacto ANTES de
+  // qualquer coisa (mesmo padrão de adminUnidadeDetalhe.js#abrirExclusao).
+  // Achado da investigação: excluirEmpresa() fazia DELETE cru confiando no
+  // cascade — mas catálogo (ficha_tecnica é ON DELETE RESTRICT) bloqueava
+  // o banco de verdade, e o SuperAdmin via um erro cru do Postgres. Agora o
+  // backend já recusa cedo com uma mensagem clara; isto aqui evita nem
+  // chegar a mostrar o formulário de confirmação quando já se sabe que vai
+  // ser recusado.
+  "empresa-excluir": async ({ id, nome }) => {
+    let impacto;
+    try {
+      impacto = await adminApi.impactoExclusaoEmpresa(id);
+    } catch (e) {
+      toast("Erro: " + e.message);
+      return;
+    }
+
+    const linhasImpacto = Object.entries(impacto.metricas)
+      .map(([chave, valorMetrica]) => `<div class="adm-det-linha"><span>${escapeHtml(ROTULO_METRICA_EMPRESA[chave] ?? chave)}</span><b>${num(valorMetrica)}</b></div>`)
+      .join("");
+
+    if (!impacto.exclusaoFisicaSegura) {
+      abrirModal({
+        titulo: `Excluir ${impacto.nome}`,
+        corpo: `
+          <div class="adm-aviso adm-aviso--perigo">
+            Esta empresa tem catálogo e/ou histórico operacional — excluir apagaria tudo isso definitivamente
+            (e o próprio banco recusa por segurança nesses casos). Use o status <b>"Cancelada"</b>
+            (menu "⋯" desta empresa → Status) para encerrar o acesso preservando todos os dados.
+          </div>
+          <div class="adm-det">${linhasImpacto}</div>`,
+      });
+      return;
+    }
+
+    abrirModal({
+      titulo: `Excluir ${impacto.nome}`,
+      perigo: true,
+      corpo: `
+        <div class="adm-aviso adm-aviso--perigo">
+          Esta ação apaga a empresa permanentemente. <b>Não há como desfazer.</b>
+        </div>
+        <div class="adm-det">${linhasImpacto}</div>
+        ${grade(campo({ id: "ex-conf", label: `Digite o nome exato da empresa para confirmar`, ph: impacto.nome, obrigatorio: true }))}`,
+      confirmar: "Excluir definitivamente",
+      aoConfirmar: async () => {
+        // A confirmação é validada TAMBÉM no servidor — este campo não é a
+        // única barreira, é só o aviso na frente dela.
+        if (valor("ex-conf") !== impacto.nome) {
+          mostrarErroModal("O nome digitado não confere.");
+          throw new Error("confirmação inválida");
+        }
+        await adminApi.excluirEmpresa(id, impacto.nome);
+        toast("Empresa excluída.");
+        irParaAdmin("empresas");
+      },
+    });
+  },
 
   // ---- Estrutura organizacional (promover/converter/transferir) — cada
   // uma abre um modal explicativo + confirmação (nunca executa direto), e
