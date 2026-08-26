@@ -46,6 +46,14 @@ export const ACOES = {
   // (unidade_tabela_comercial_historico), onde o antes/depois fica gravado
   // junto — esta linha em plataforma_auditoria é o espelho geral.
   UNIDADE_TABELA_COMERCIAL_ALTERADA: "unidade.tabela_comercial_alterada",
+  // Estrutura organizacional (Fase D) — as ações em si são gravadas DENTRO
+  // das funções PL/pgSQL da migration 053 (mesma transação da mudança),
+  // não por auditar()/auditarReq(). Estas constantes existem para o
+  // frontend/backend terem uma fonte única do texto exato da ação ao
+  // filtrar/rotular a auditoria (ver adminUi.js e listarLogsDaUnidade).
+  UNIDADE_PROMOVIDA_EMPRESA: "unidade.promovida_para_empresa",
+  UNIDADE_TRANSFERIDA: "unidade.transferida_entre_empresas",
+  EMPRESA_CONVERTIDA_UNIDADE: "empresa.convertida_para_unidade",
 
   // usuários e vínculos
   USUARIO_CRIADO: "usuario.criado",

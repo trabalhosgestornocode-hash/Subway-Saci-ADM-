@@ -33,6 +33,20 @@ export function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Regex construída em runtime (não literal) para não depender de como o
+// editor/terminal salva caracteres combinantes no arquivo-fonte.
+const REGEX_DIACRITICOS = new RegExp("[" + String.fromCharCode(0x0300) + "-" + String.fromCharCode(0x036f) + "]", "g");
+
+/**
+ * Normaliza texto para busca: minúsculas e sem acento ("São Luís" -> "sao luis").
+ * Usado por qualquer busca client-side instantânea do app (seleção de
+ * ambiente, estrutura organizacional do SuperAdmin etc.) — uma fonte só.
+ * @param {unknown} txt
+ */
+export function normalizarBusca(txt) {
+  return (txt ?? "").toString().normalize("NFD").replace(REGEX_DIACRITICOS, "").toLowerCase();
+}
+
 // Classifica o status de CMV a partir do percentual
 export function statusCmv(pct) {
   if (!temValor(pct)) return { chave: "sem", label: "Sem dados", classe: "muted" };

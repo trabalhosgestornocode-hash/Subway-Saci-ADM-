@@ -15,7 +15,7 @@
 
 import { state, tabelaAtiva, emComparacao } from "./state.js";
 import { MENU, SECOES, TABELAS, INTEGRACOES } from "./config.js";
-import { el, els, escapeHtml, toast } from "./utils.js";
+import { el, els, toast } from "./utils.js";
 import { carregarCmv, obterTabelasComerciaisUnidade } from "./api.js";
 import { comparacaoSalvaDaUnidade, salvarComparacao, limparComparacaoSalva } from "./comparacaoTabela.js";
 import {
@@ -24,7 +24,7 @@ import {
   precisaDefinirSenha, definirNovaSenha, temModulo,
 } from "./sessao.js";
 import { irPara, renderRotaAtual, primeiraRotaAcessivel } from "./router.js";
-import { resetarEscopoDeContexto } from "./contextoEscopo.js";
+import { resetarEscopoDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { acoes } from "./actions.js";
 import { getLinha, contarAlertas } from "./views.js";
 import { abrirProdutoModal, abrirProdutoPorNome } from "./produtoModal.js";
@@ -36,6 +36,8 @@ import { abrirPainelAdmin, fecharPainelAdmin } from "./admin.js";
 import { initTooltips } from "./tooltip.js";
 import { icon } from "./icons.js";
 import { montarPainelGlobal, alternarPainel } from "./agentePainel.js";
+import { montarSelecao, registrarAcessoRecente } from "./selecaoAmbiente.js";
+import { montarSeletorUnidade } from "./seletorUnidade.js";
 
 // ---------- Ações de navegação do Agente Crescer (Etapa F.1) ----------
 // Registradas UMA vez, aqui — app.js é o topo do grafo de imports (nada o
@@ -151,7 +153,17 @@ function definirComparacao(valorSelecionado) {
 }
 
 // ---------- carregamento de dados ----------
+// Fase F (auditoria de race condition ao trocar de unidade): esta é a tabela
+// PRINCIPAL do app (Dashboard/CMV) — a mais visível de todas, e a única que
+// ainda não conferia a geração do contexto antes de aplicar a resposta.
+// Sem isto: usuário na unidade A dispara `carregar()` (request lenta), troca
+// pra unidade B pelo seletor global (`mostrarApp()` chama `carregar()` de
+// novo, geração sobe), e se a request da unidade A responder DEPOIS da de B,
+// `state.linhas` acabava sobrescrito com o CMV da unidade errada — a tela
+// mostraria "Unidade B" no topbar com dados da Unidade A na tabela. Mesmo
+// padrão de proteção que vendas.js#carregarSecao e api.js#chamar já usam.
 async function carregar() {
+  const g = geracaoContexto();
   state.carregando = true;
   state.erro = null;
   setSync("sync", "Sincronizando…");
@@ -159,6 +171,7 @@ async function carregar() {
   renderRotaAtual();
   try {
     const r = await carregarCmv(state.canal, state.tabelaComparacao);
+    if (contextoMudou(g)) return; // resposta de uma unidade que já não é mais a atual — descarta
     state.linhas = r.linhas;
     // A resposta é a fonte de verdade da tabela oficial (nunca o que este
     // cliente supôs antes de perguntar) — mantém o seletor em sincronia
@@ -167,6 +180,7 @@ async function carregar() {
     state.atualizadoEm = Date.now();
     setSync("ok", "Sincronizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
+    if (contextoMudou(g)) return;
     // "Tabela comercial não configurada" não é uma falha de rede — é um
     // estado real e esperado (unidade pendente de configurar). Mostra a
     // mensagem certa, sem o banner genérico de "falha na sincronização".
@@ -175,6 +189,7 @@ async function carregar() {
     state.linhas = [];
     setSync(e.codigo ? "aviso" : "erro", e.codigo ? "Tabela comercial não configurada" : "Falha na sincronização");
   } finally {
+    if (contextoMudou(g)) return; // a chamada mais recente (unidade atual) já cuida do próprio ciclo
     state.carregando = false;
     el("#btn-refresh")?.classList.remove("girando");
     popularTabelas(); // reflete a tabela oficial atualizada (rótulo "★ Tabela oficial (E)")
@@ -221,7 +236,7 @@ async function mostrarApp() {
   el("#user-nome").textContent = nome;
   el("#user-avatar").textContent = (nome[0] || "U").toUpperCase();
   el("#user-empresa").textContent = unidade?.nome ? `${empresa?.nome} · ${unidade.nome}` : (empresa?.nome ?? "—");
-  el("#chip-unidade").textContent = "🏪 " + state.unidade;
+  montarSeletorUnidade({ onTrocar: trocarUnidadeRapido });
   el("#um-nome").textContent = nome;
   el("#um-email").textContent = usuario?.email ?? "—";
   el("#um-papel").textContent = impersonando ? "SuperAdmin (suporte)" : (papelRotulo ?? "—");
@@ -275,13 +290,13 @@ function mostrarSelecao(dados) {
   el("#sel-erro").hidden = true;
   el("#sel-admin").hidden = !dados.superadmin;
 
-  const lista = el("#sel-lista");
-
   if (!dados.opcoes.length) {
     // Depois da virada de acessos, este é o estado normal de uma conta nova:
     // existe, autentica, e ainda não foi associada a nenhuma empresa. Dizer
     // isso é melhor que mostrar uma lista vazia sem explicação.
-    lista.innerHTML = `
+    el("#sel-busca-wrap").hidden = true;
+    el("#sel-recentes").hidden = true;
+    el("#sel-lista").innerHTML = `
       <div class="sel-vazio">
         <span class="sel-vazio-ic">🔒</span>
         <h3>Nenhuma empresa vinculada à sua conta</h3>
@@ -292,29 +307,24 @@ function mostrarSelecao(dados) {
     return;
   }
 
-  lista.innerHTML = dados.opcoes.map((o, i) => {
-    const sub = o.unidadeNome ? `${o.unidadeNome} · ${o.papelRotulo}` : o.papelRotulo;
-    const logo = o.logoUrl
-      ? `<img src="${escapeHtml(o.logoUrl)}" alt="" class="sel-logo" />`
-      : `<span class="sel-logo sel-logo--txt">${escapeHtml((o.empresaNome[0] || "?").toUpperCase())}</span>`;
-    return `
-      <div class="sel-item ${o.acessivel ? "" : "sel-item--off"}" role="listitem">
-        ${logo}
-        <div class="sel-item-info">
-          <b>${escapeHtml(o.empresaNome)}</b>
-          <small>${escapeHtml(sub)}</small>
-          ${o.acessivel ? "" : `<span class="pill bad">${escapeHtml(o.motivo ?? "Indisponível")}</span>`}
-        </div>
-        <button class="btn ${o.acessivel ? "btn-primary" : "btn-ghost"} btn-sm sel-btn"
-                data-idx="${i}" ${o.acessivel ? "" : "disabled"}>
-          ${o.acessivel ? "Acessar" : "Bloqueada"}
-        </button>
-      </div>`;
-  }).join("");
+  montarSelecao(dados, { usuarioId: state.sessao.usuario?.id, onEntrar: entrarNoContexto });
+}
 
-  els(".sel-btn", lista).forEach((b) => b.addEventListener("click", () => {
-    entrarNoContexto(dados.opcoes[Number(b.dataset.idx)], b);
-  }));
+/**
+ * Troca de unidade a partir do seletor global do topbar (item 12) — mesma
+ * chamada de `entrarNoContexto`, sem passar pela tela de seleção nem por um
+ * novo login. `mostrarApp()` já é o funil único que reseta o estado de cada
+ * módulo e recarrega os dados para o contexto novo.
+ * @param {object} opcao
+ */
+async function trocarUnidadeRapido(opcao) {
+  await selecionarContexto({
+    organizacaoId: opcao.organizacaoId,
+    unidadeId: opcao.unidadeId ?? null,
+    troca: true,
+  });
+  registrarAcessoRecente(state.sessao.usuario?.id, opcao);
+  mostrarApp();
 }
 
 /** @param {object} opcao @param {HTMLButtonElement} [botao] */
@@ -329,6 +339,7 @@ async function entrarNoContexto(opcao, botao) {
       unidadeId: opcao.unidadeId ?? null,
       troca: true,
     });
+    registrarAcessoRecente(state.sessao.usuario?.id, opcao);
     mostrarApp();
   } catch (e) {
     erroBox.textContent = e.message;
@@ -445,7 +456,9 @@ async function sairDeTudo() {
 
 // ---------- menus de usuário ----------
 function fecharMenusUsuario() {
-  for (const [chip, menu] of [["#user-chip", "#user-menu"], ["#adm-user-chip", "#adm-user-menu"]]) {
+  for (const [chip, menu] of [
+    ["#user-chip", "#user-menu"], ["#adm-user-chip", "#adm-user-menu"], ["#chip-unidade", "#unidade-menu"],
+  ]) {
     const m = el(menu);
     if (m) m.hidden = true;
     el(chip)?.setAttribute("aria-expanded", "false");
@@ -530,13 +543,18 @@ function wireEventos() {
     }
   });
 
-  // Trocar unidade: encerra só o CONTEXTO e volta para a seleção. O login
-  // continua de pé — é exatamente a diferença entre trocar de unidade e sair.
-  el("#um-trocar").addEventListener("click", async () => {
+  // Trocar unidade / trocar de empresa: encerra só o CONTEXTO e volta para a
+  // seleção (login continua de pé). O botão do menu do usuário e o "Trocar de
+  // empresa" do seletor global do topbar levam ao mesmo lugar — trocar
+  // unidade DENTRO da empresa atual tem um caminho mais rápido, direto no
+  // seletor global (ver trocarUnidadeRapido), que não passa por aqui.
+  const trocarDeEmpresa = async () => {
     fecharMenusUsuario();
     await encerrarContexto();
     await encaminhar();
-  });
+  };
+  el("#um-trocar").addEventListener("click", trocarDeEmpresa);
+  el("#um2-empresas").addEventListener("click", trocarDeEmpresa);
 
   el("#um-conta").addEventListener("click", () => {
     fecharMenusUsuario();
@@ -565,6 +583,7 @@ function wireEventos() {
 
   ligarMenuUsuario("#user-chip", "#user-menu");
   ligarMenuUsuario("#adm-user-chip", "#adm-user-menu");
+  ligarMenuUsuario("#chip-unidade", "#unidade-menu");
   document.addEventListener("click", fecharMenusUsuario);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") fecharMenusUsuario(); });
 

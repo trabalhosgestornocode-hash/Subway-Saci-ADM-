@@ -54,7 +54,7 @@ export async function listarAcessos({ usuarioId }) {
       .select("papel, organizacao_id, organizacoes(id, nome, logo_url, status)")
       .eq("usuario_id", usuarioId).eq("ativo", true),
     supabase.from("usuarios_unidades")
-      .select("papel, unidade_id, unidades(id, nome, organizacao_id)")
+      .select("papel, unidade_id, unidades(id, nome, organizacao_id, cidade, cnpj)")
       .eq("usuario_id", usuarioId).eq("ativo", true),
   ]);
 
@@ -66,7 +66,7 @@ export async function listarAcessos({ usuarioId }) {
     const u = r.unidades;
     if (!u) continue;
     const lista = unidadesPorOrg.get(u.organizacao_id) ?? [];
-    lista.push({ id: u.id, nome: u.nome, papel: r.papel });
+    lista.push({ id: u.id, nome: u.nome, papel: r.papel, cidade: u.cidade ?? null, cnpj: u.cnpj ?? null });
     unidadesPorOrg.set(u.organizacao_id, lista);
   }
 
@@ -97,7 +97,7 @@ export async function listarAcessos({ usuarioId }) {
     for (const u of unidades) {
       const papel = u.papel ?? vinculo.papel;   // papel da unidade sobrepõe o da empresa
       opcoes.push({
-        ...base, unidadeId: u.id, unidadeNome: u.nome,
+        ...base, unidadeId: u.id, unidadeNome: u.nome, cidade: u.cidade, cnpj: u.cnpj,
         papel, papelRotulo: rotuloPapel(papel),
       });
     }

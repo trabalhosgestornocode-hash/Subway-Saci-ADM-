@@ -7,6 +7,19 @@ const BUCKET = "vendas-relatorios";
 const n = (v) => Number(v) || 0;
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
+// Fase E (auditoria de "Todas as unidades"): Vendas é 100% escopado por
+// unidade — cada importação, faturamento e vínculo pertence a UMA loja, não
+// existe "vendas consolidadas" nem hoje nem faz sentido inventar (relatório
+// do SWFast é por loja). Sem esta guarda, `unidade_id=eq.null` no contexto
+// "todas as unidades" simplesmente não bate com nenhuma linha (a coluna é
+// not null em toda tabela do módulo) — a tela pareceria "sem nenhuma venda"
+// em vez de dizer que precisa escolher uma unidade. Mesmo padrão de
+// mensagem que bonificacaoMensal.service.js/parserFoodDelivery.service.js
+// já usam.
+function exigirUnidade(unidadeId) {
+  if (!unidadeId) throw ApiError.badRequest("Selecione uma unidade para acessar o módulo Vendas.");
+}
+
 // ---------- normalização da entrada ----------
 // A API aceita o relatório de duas formas:
 //   a) arquivo original em base64 ({ nomeArquivo, conteudoBase64 }) -> parse AQUI no backend
@@ -51,6 +64,7 @@ async function custosPorProduto(organizacaoId, ids) {
 
 // ---------- SERVIÇO CENTRAL (mesma lógica p/ manual, API ou iFood) ----------
 export async function processarImportacaoVendas({ organizacaoId, unidadeId, payload, confirmar = false }) {
+  exigirUnidade(unidadeId);
   if (!payload || (!payload.faturamento && !payload.produtos))
     throw ApiError.badRequest("Envie pelo menos um dos relatórios.");
 
@@ -233,6 +247,7 @@ async function uploadOriginal({ buf, unidadeId, dataMovimento, tipo, arq }) {
 
 // link temporário para baixar o arquivo original de uma importação
 export async function arquivoOriginal({ unidadeId, importacaoId }) {
+  exigirUnidade(unidadeId);
   const { data: imp } = await supabase.from("importacoes_vendas")
     .select("id, nome_arquivo, arquivo_storage").eq("unidade_id", unidadeId).eq("id", importacaoId).single();
   if (!imp) throw ApiError.notFound("Importação não encontrada.");
@@ -252,6 +267,7 @@ function aplicarFiltros(q, filtros = {}) {
 }
 
 export async function visaoGeral({ unidadeId, filtros }) {
+  exigirUnidade(unidadeId);
   let qf = supabase.from("sw_faturamento_diario")
     .select("data_movimento, canal, origem, total, faturamento, descontos, taxas_entrega, diferenca")
     .eq("unidade_id", unidadeId);
@@ -282,6 +298,7 @@ export async function visaoGeral({ unidadeId, filtros }) {
 }
 
 export async function listarFaturamento({ unidadeId, filtros }) {
+  exigirUnidade(unidadeId);
   let q = supabase.from("sw_faturamento_diario").select("*").eq("unidade_id", unidadeId).order("data_movimento", { ascending: false }).limit(400);
   q = aplicarFiltros(q, filtros);
   const { data, error } = await q;
@@ -290,6 +307,7 @@ export async function listarFaturamento({ unidadeId, filtros }) {
 }
 
 export async function listarProdutosVendidos({ unidadeId, filtros }) {
+  exigirUnidade(unidadeId);
   let q = supabase.from("sw_produtos_vendidos")
     .select("id, data_movimento, grupo, codigo_sw, nome_sw, quantidade, valor_total, preco_medio, tipo_item, produto_id, custo_teorico, ignorar_no_cmv, origem, canal, produtos(nome)")
     .eq("unidade_id", unidadeId).order("valor_total", { ascending: false }).limit(1000);
@@ -304,6 +322,7 @@ export async function listarProdutosVendidos({ unidadeId, filtros }) {
 }
 
 export async function listarImportacoes({ unidadeId }) {
+  exigirUnidade(unidadeId);
   const { data, error } = await supabase.from("importacoes_vendas").select("*").eq("unidade_id", unidadeId).order("criado_em", { ascending: false }).limit(200);
   if (error) throw ApiError.internal(error.message);
   return data;
@@ -312,6 +331,7 @@ export async function listarImportacoes({ unidadeId }) {
 // Exclui uma importação. As linhas de faturamento/produtos/divergências dela
 // caem por ON DELETE CASCADE (importacao_id). O arquivo no Storage também é removido.
 export async function excluirImportacao({ unidadeId, importacaoId }) {
+  exigirUnidade(unidadeId);
   const { data: imp } = await supabase.from("importacoes_vendas")
     .select("id, arquivo_storage").eq("unidade_id", unidadeId).eq("id", importacaoId).single();
   if (!imp) throw ApiError.notFound("Importação não encontrada.");
@@ -326,6 +346,7 @@ export async function excluirImportacao({ unidadeId, importacaoId }) {
 }
 
 export async function listarDivergencias({ unidadeId }) {
+  exigirUnidade(unidadeId);
   const { data, error } = await supabase.from("divergencias_vendas").select("*").eq("unidade_id", unidadeId).order("criado_em", { ascending: false }).limit(300);
   if (error) throw ApiError.internal(error.message);
   return data;
@@ -333,6 +354,7 @@ export async function listarDivergencias({ unidadeId }) {
 
 // marca/desmarca uma divergência como resolvida
 export async function resolverDivergencia({ unidadeId, divergenciaId, resolvida = true }) {
+  exigirUnidade(unidadeId);
   const { data, error } = await supabase.from("divergencias_vendas")
     .update({ resolvida: !!resolvida, resolvida_em: resolvida ? new Date().toISOString() : null })
     .eq("unidade_id", unidadeId).eq("id", divergenciaId).select("id, resolvida").single();
@@ -388,12 +410,14 @@ async function aplicarVinculo({ organizacaoId, unidadeId, item }) {
 }
 
 export async function vincularProduto({ organizacaoId, unidadeId, codigoSw, produtoId, tipoItem, nomeSw, componentes }) {
+  exigirUnidade(unidadeId);
   const r = await aplicarVinculo({ organizacaoId, unidadeId, item: { codigoSw, produtoId, tipoItem, nomeSw, componentes } });
   return { ok: true, atualizados: r.atualizados };
 }
 
 // vínculo em massa: vários códigos de uma vez (modal "Vincular em massa")
 export async function vincularLote({ organizacaoId, unidadeId, itens }) {
+  exigirUnidade(unidadeId);
   if (!Array.isArray(itens) || !itens.length) throw ApiError.badRequest("Envie a lista de vínculos.");
   if (itens.length > 200) throw ApiError.badRequest("Máximo de 200 vínculos por lote.");
   const resultados = [];
