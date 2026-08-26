@@ -11,6 +11,7 @@
 // é a importação manual do JSON, ferramenta temporária de validação.
 import { el, els, fmtMoeda, fmtDataHora, fmtRelativo, fmtTexto } from "./utils.js";
 import * as api from "./api.js";
+import { registrarResetDeContexto } from "./contextoEscopo.js";
 
 export const MB_PORTAL_URL = "https://portal.martinbrower.com.br/";
 const MB_LOGO = "/assets/logo-mb.jpeg";
@@ -136,6 +137,25 @@ const integ = { config: null, aba: null, dados: null, carregando: false, session
 // Falhas CONSECUTIVAS de polling toleradas antes de desistir. Oscilação de
 // rede não pode derrubar o acompanhamento de uma sincronização em andamento.
 const MAX_FALHAS_POLLING = 3;
+
+// Fase F (auditoria de troca de contexto): `renderMartinBrower()` já limpa
+// `integ`/o polling quando o usuário NAVEGA de volta pra esta aba — mas
+// trocar de unidade pelo seletor global não passa por essa rota se o
+// usuário estava em OUTRA página no momento. Sem isto, um polling de
+// sincronização iniciado na unidade A continuava rodando (setInterval) por
+// cima do Context Token da unidade B por até MAX_FALHAS_POLLING tentativas
+// (~6s) antes de desistir sozinho — o backend sempre recusou (statusSessao
+// revalida organizacaoId/unidadeId), então nunca houve vazamento de dado
+// entre unidades, mas era request órfã + warning no console à toa.
+// Registrado uma vez (import é singleton) — mesmo padrão do resto do app.
+registrarResetDeContexto(() => {
+  clearInterval(integ.polling);
+  integ.polling = null;
+  integ.sessionId = null;
+  integ.config = null;
+  integ.aba = null;
+  integ.falhasSeguidas = 0;
+});
 
 const escapar = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

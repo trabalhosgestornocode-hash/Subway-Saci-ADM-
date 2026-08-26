@@ -160,6 +160,14 @@
         <p class="sel-sub">Olá, <b id="sel-nome">—</b>. Você tem acesso a mais de um ambiente.</p>
       </header>
 
+      <div id="sel-busca-wrap" class="sel-busca-wrap" hidden>
+        <span class="sel-busca-ic" aria-hidden="true">🔎</span>
+        <input id="sel-busca" type="search" class="sel-busca" autocomplete="off"
+               placeholder="Pesquisar empresa ou unidade..." aria-label="Pesquisar empresa ou unidade" />
+      </div>
+
+      <div id="sel-recentes" class="sel-recentes" hidden></div>
+
       <div id="sel-lista" class="sel-lista" role="list"></div>
 
       <div id="sel-erro" class="lg-erro" hidden></div>
@@ -272,7 +280,33 @@
           <button id="btn-agente" class="icon-btn2 agente-btn-topbar" title="Agente Crescer" aria-label="Abrir Agente Crescer">
             <span aria-hidden="true">✦</span>
           </button>
-          <div class="chip chip-unidade" id="chip-unidade">🏪 —</div>
+          <!-- Seletor global de unidade: troca de unidade dentro da MESMA
+               empresa sem sair do app (item 12). Vira botão só quando o
+               usuário tem mais de uma unidade nesta empresa — ver
+               seletorUnidade.js#montarSeletorUnidade. Com uma unidade só (ou
+               em impersonação), continua um chip estático como sempre foi. -->
+          <div class="unidade-box" id="unidade-box">
+            <button class="chip chip-unidade" id="chip-unidade" type="button" aria-haspopup="true" aria-expanded="false">
+              🏪 <span id="chip-unidade-texto">—</span>
+            </button>
+            <div class="unidade-menu" id="unidade-menu" hidden role="menu">
+              <div class="unidade-menu-head">
+                <small>Trocar de unidade</small>
+                <b id="um2-empresa">—</b>
+              </div>
+              <div id="um2-busca-wrap" class="sel-busca-wrap unidade-menu-busca" hidden>
+                <span class="sel-busca-ic">🔎</span>
+                <input id="um2-busca" type="search" class="sel-busca" autocomplete="off"
+                       placeholder="Pesquisar unidade..." aria-label="Pesquisar unidade" />
+              </div>
+              <div id="um2-lista" class="unidade-menu-lista" role="list"></div>
+              <div class="user-menu-sep"></div>
+              <button class="user-menu-item" id="um2-empresas" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18l-1.5-5h-15L3 9z"/><path d="M5 9v11h14V9"/></svg>
+                Trocar de empresa
+              </button>
+            </div>
+          </div>
 
           <!-- Menu do usuário: nome, empresa atual e as ações de sessão. -->
           <div class="user-box">

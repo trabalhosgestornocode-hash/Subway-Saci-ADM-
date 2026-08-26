@@ -73,6 +73,12 @@ export const adminApi = {
   modulosDaUnidade: (id) => get(`/unidades/${id}/modulos`),
   definirModulosUnidade: (id, modulos) => put(`/unidades/${id}/modulos`, { modulos }),
 
+  // Estrutura organizacional (promover/converter/transferir) — cada uma é
+  // uma transação única no banco (migration 053).
+  promoverUnidade: (id, nomeEmpresa) => post(`/unidades/${id}/promover`, { nomeEmpresa }),
+  transferirUnidade: (id, novaOrganizacaoId) => post(`/unidades/${id}/transferir`, { novaOrganizacaoId }),
+  converterEmpresaParaUnidade: (id, empresaMaeId) => post(`/empresas/${id}/converter-em-unidade`, { empresaMaeId }),
+
   // Usuários globais
   usuarios: (f) => get(`/usuarios${qs(f)}`),
   usuario: (id) => get(`/usuarios/${id}`),

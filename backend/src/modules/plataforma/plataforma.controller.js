@@ -10,6 +10,7 @@ import * as v from "../../shared/validar.js";
 import * as dashboard from "./plataforma.dashboard.service.js";
 import * as empresas from "./plataforma.empresas.service.js";
 import * as unidades from "./plataforma.unidades.service.js";
+import * as estrutura from "./plataforma.estrutura.service.js";
 import * as usuarios from "./plataforma.usuarios.service.js";
 import * as financeiro from "./plataforma.financeiro.service.js";
 import * as monitoramento from "./plataforma.monitoramento.service.js";
@@ -110,6 +111,18 @@ export const usuariosDaUnidade = asyncHandler(async (req, res) =>
 
 export const logsDaUnidade = asyncHandler(async (req, res) =>
   ok(res, await unidades.listarLogsDaUnidade(req.params.id, req.query.limite)));
+
+// ------------------------------------------------------- Estrutura organizacional
+// Promover/converter/transferir — cada um roda numa transação única do
+// banco (ver plataforma.estrutura.service.js e a migration 053).
+export const promoverUnidade = asyncHandler(async (req, res) =>
+  ok(res, await estrutura.promoverUnidade(req, req.params.id, v.corpo(req.body)), 201));
+
+export const transferirUnidade = asyncHandler(async (req, res) =>
+  ok(res, await estrutura.transferirUnidade(req, req.params.id, v.corpo(req.body))));
+
+export const converterEmpresaParaUnidade = asyncHandler(async (req, res) =>
+  ok(res, await estrutura.converterEmpresaParaUnidade(req, req.params.id, v.corpo(req.body)), 201));
 
 export const modulosDaUnidade = asyncHandler(async (req, res) =>
   ok(res, await unidades.modulosDaUnidadeAdmin(req.params.id)));

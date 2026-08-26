@@ -1499,7 +1499,52 @@ body {
 .sel-titulo { font-size: clamp(20px, 3vw, 26px); letter-spacing: -.5px; margin-bottom: 6px; }
 .sel-sub { color: var(--cinza); font-size: 14px; }
 
+.sel-busca-wrap {
+  position: relative; margin-bottom: 16px;
+}
+.sel-busca-ic {
+  position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+  font-size: 15px; opacity: .55; pointer-events: none;
+}
+.sel-busca {
+  width: 100%; height: 46px; padding: 0 14px 0 42px; border: 1.5px solid var(--linha);
+  border-radius: var(--raio); background: var(--card); color: var(--texto);
+  font: inherit; font-size: 14.5px; transition: var(--t);
+}
+.sel-busca::placeholder { color: var(--cinza); }
+.sel-busca:focus { outline: none; border-color: var(--verde); box-shadow: 0 0 0 3px rgba(216,19,36,.12); }
+/* -webkit-search-cancel-button some no Chrome por padrão; deixa consistente entre navegadores */
+.sel-busca::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+.sel-recentes { margin-bottom: 18px; }
+.sel-recentes-titulo {
+  display: block; color: var(--cinza); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px;
+}
+.sel-recentes-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.sel-recente-chip {
+  display: flex; align-items: center; gap: 7px; padding: 6px 12px 6px 6px;
+  border: 1.5px solid var(--linha); border-radius: 999px; background: var(--card);
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--texto); cursor: pointer; transition: var(--t);
+}
+.sel-recente-chip:hover { border-color: var(--verde); box-shadow: var(--sombra-md); }
+.sel-recente-chip .sel-logo { width: 24px; height: 24px; border-radius: 7px; font-size: 11px; }
+
 .sel-lista { display: grid; gap: 11px; }
+
+/* Empresa com 2+ unidades — cabeçalho expansível + as unidades dentro. */
+.sel-grupo { border: 1.5px solid var(--linha); border-radius: var(--raio); overflow: hidden; background: var(--card); }
+.sel-grupo-cab {
+  width: 100%; display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 14px;
+  padding: 13px 15px; border: none; background: none; font: inherit; text-align: left; cursor: pointer; transition: var(--t);
+}
+.sel-grupo-cab:hover { background: var(--fundo, rgba(0,0,0,.02)); }
+.sel-grupo-seta { color: var(--cinza); transition: transform .2s; font-size: 13px; }
+.sel-grupo--aberto .sel-grupo-seta { transform: rotate(180deg); }
+.sel-grupo-corpo { display: grid; gap: 9px; padding: 0 12px 12px; }
+.sel-grupo-corpo .sel-item { border-color: var(--linha); grid-template-columns: 38px 1fr auto; }
+.sel-grupo-corpo .sel-item .sel-logo { width: 38px; height: 38px; font-size: 15px; }
+
 .sel-item {
   display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 14px;
   padding: 13px 15px; border: 1.5px solid var(--linha); border-radius: var(--raio);
@@ -1562,6 +1607,33 @@ body {
 .user-menu-item--danger svg { color: var(--bad); }
 .user-menu-item--danger:hover { background: var(--bad-bg); }
 .user-menu-sep { height: 1px; background: var(--linha); margin: 6px 4px; }
+
+/* ---------- Seletor global de unidade (topbar) — item 12 ---------- */
+.unidade-box { position: relative; }
+.chip-unidade { border: none; font: inherit; }
+.chip-unidade--clicavel { cursor: pointer; }
+.chip-unidade--clicavel:hover { box-shadow: inset 0 0 0 1.5px rgba(216,19,36,.3); }
+.chip-unidade:disabled { cursor: default; }
+.unidade-menu {
+  position: absolute; left: 0; top: calc(100% + 8px); z-index: 60; width: 280px;
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
+  box-shadow: var(--sombra-lg); padding: 9px; animation: pop .16s;
+}
+.unidade-menu-head { padding: 3px 3px 10px; }
+.unidade-menu-head small { display: block; color: var(--cinza); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.unidade-menu-head b { font-size: 14px; }
+.unidade-menu-busca { margin: 0 2px 8px; }
+.unidade-menu-busca .sel-busca { height: 38px; font-size: 13.5px; }
+.unidade-menu-lista { display: grid; gap: 2px; max-height: 280px; overflow-y: auto; }
+.unidade-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 9px 10px; background: none; border: 0; border-radius: var(--raio-sm);
+  cursor: pointer; font: inherit; font-size: 13.5px; color: var(--texto); text-align: left; transition: var(--t);
+}
+.unidade-menu-item:hover { background: var(--superficie-2); }
+.unidade-menu-item--atual { color: var(--verde-med); font-weight: 650; background: rgba(216,19,36,.06); }
+.unidade-menu-check { color: var(--verde-med); font-weight: 700; }
+.unidade-menu-vazio { padding: 14px 10px; color: var(--cinza); font-size: 13px; text-align: center; }
 
 /* =========================================================================
    3. BARRA DE IMPERSONAÇÃO
@@ -1722,6 +1794,20 @@ body {
 .adm-reservado b { font-size: 14px; display: block; margin-bottom: 4px; }
 .adm-reservado p { font-size: 12.5px; color: var(--cinza); line-height: 1.55; }
 
+.adm-secao-estrutura { margin-top: 18px; padding: 15px; border: 1.5px solid var(--linha); border-radius: var(--raio); background: var(--superficie-2); }
+.adm-secao-estrutura b { font-size: 14px; display: block; margin-bottom: 5px; }
+.adm-secao-estrutura p { font-size: 12.5px; color: var(--cinza); line-height: 1.55; margin-bottom: 11px; }
+
+.adm-estrutura-acoes { display: grid; gap: 8px; }
+.adm-estrutura-op {
+  display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left;
+  padding: 12px 14px; border: 1.5px solid var(--linha); border-radius: var(--raio-sm);
+  background: var(--card); cursor: pointer; transition: var(--t); font: inherit; color: var(--texto);
+}
+.adm-estrutura-op:hover { border-color: var(--verde); box-shadow: var(--sombra-sm); }
+.adm-estrutura-op b { font-size: 13.5px; }
+.adm-estrutura-op small { color: var(--cinza); font-size: 12px; }
+
 .adm-zona-perigo { margin-top: 18px; padding: 15px; border: 1.5px solid var(--bad); border-radius: var(--raio); background: var(--bad-bg); }
 [data-theme="dark"] .adm-zona-perigo { background: rgba(219,59,59,.12); }
 .adm-zona-perigo b { color: var(--bad); font-size: 14px; display: block; margin-bottom: 5px; }
@@ -1799,6 +1885,41 @@ body {
 
 .adm-filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 11px; align-items: end; padding-bottom: 16px; margin-bottom: 14px; border-bottom: 1px solid var(--linha); }
 .adm-filtros-acoes { display: flex; gap: 8px; align-items: end; }
+
+/* ---------- Estrutura Organizacional (árvore Empresa > Unidades) ---------- */
+.adm-estr-busca { max-width: 420px; margin-bottom: 18px; }
+.adm-arvore { display: grid; gap: 10px; }
+.adm-arvore-emp { border: 1px solid var(--linha); border-radius: var(--raio); overflow: hidden; }
+.adm-arvore-emp-cab { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.adm-arvore-emp-cab .adm-cel-empresa { flex: 1; min-width: 0; }
+.adm-arvore-toggle {
+  flex: 0 0 auto; width: 26px; height: 26px; display: grid; place-items: center;
+  border: 1px solid var(--linha); border-radius: 8px; background: var(--card); cursor: pointer;
+  color: var(--cinza); transition: var(--t);
+}
+.adm-arvore-toggle:disabled { opacity: .35; cursor: default; }
+.adm-arvore-toggle:not(:disabled):hover { border-color: var(--verde); color: var(--verde); }
+.adm-arvore-seta { transition: transform .2s; font-size: 12px; display: inline-block; }
+.adm-arvore-emp--aberta .adm-arvore-seta { transform: rotate(180deg); }
+.adm-arvore-emp-acoes { flex: 0 0 auto; }
+.adm-arvore-uni-lista { display: grid; gap: 8px; padding: 0 14px 14px 52px; background: var(--superficie-2); }
+.adm-arvore-uni-vazia { padding: 10px 0; }
+.adm-arvore-uni {
+  display: flex; align-items: center; gap: 11px; padding: 9px 12px;
+  border: 1px solid var(--linha); border-radius: var(--raio-sm); background: var(--card);
+}
+.adm-arvore-uni-logo { width: 28px; height: 28px; font-size: 12px; border-radius: 8px; }
+.adm-arvore-uni-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.adm-arvore-uni-info b { font-size: 13.5px; }
+.adm-arvore-uni-info small { color: var(--cinza); font-size: 11.5px; }
+
+@media (max-width: 640px) {
+  .adm-arvore-emp-cab { flex-wrap: wrap; }
+  .adm-arvore-emp-acoes { width: 100%; }
+  .adm-arvore-emp-acoes .btn { flex: 1; }
+  .adm-arvore-uni-lista { padding-left: 14px; }
+  .adm-arvore-uni { flex-wrap: wrap; }
+}
 
 /* ---------- Modal do painel ---------- */
 .admod { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 18px; animation: fadeIn .18s; }

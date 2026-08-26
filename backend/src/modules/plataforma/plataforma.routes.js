@@ -54,6 +54,13 @@ plataformaRouter.get("/unidades/:id/logs", c.logsDaUnidade);
 plataformaRouter.get("/unidades/:id/modulos", c.modulosDaUnidade);
 plataformaRouter.put("/unidades/:id/modulos", c.definirModulosUnidade);
 
+// ---- Estrutura organizacional (promover/converter/transferir) — cada uma
+// roda em transação única no banco (migration 053). Só SuperAdmin chega
+// aqui (requireSuperadmin já protege o router inteiro, ver topo do arquivo).
+plataformaRouter.post("/unidades/:id/promover", c.promoverUnidade);
+plataformaRouter.post("/unidades/:id/transferir", c.transferirUnidade);
+plataformaRouter.post("/empresas/:id/converter-em-unidade", c.converterEmpresaParaUnidade);
+
 // ---- Usuários globais
 plataformaRouter.get("/usuarios", c.listarUsuarios);
 plataformaRouter.post("/usuarios", c.criarUsuario);

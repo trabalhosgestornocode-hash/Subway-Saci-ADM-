@@ -9,7 +9,7 @@
 // (`data-adm-acao`), o que mantém os listeners válidos depois de qualquer
 // re-render.
 
-import { el, toast } from "./utils.js";
+import { el, toast, normalizarBusca } from "./utils.js";
 import { adminApi } from "./adminApi.js";
 import { entrarComoEmpresa, recarregarAdmin, irParaAdmin } from "./admin.js";
 import { abrirAssistenteNovaEmpresa } from "./adminEmpresaWizard.js";
@@ -26,6 +26,7 @@ import {
 /** Menu do painel. A ordem é a da especificação. */
 export const TELAS_ADMIN = [
   { id: "dashboard",     label: "Dashboard Global",       icone: "📊", secao: "VISÃO GERAL" },
+  { id: "estrutura",     label: "Estrutura Organizacional", icone: "🌳", secao: "GESTÃO" },
   { id: "empresas",      label: "Empresas",               icone: "🏢", secao: "GESTÃO" },
   { id: "unidades",      label: "Unidades",               icone: "🏬", secao: "GESTÃO" },
   { id: "usuarios",      label: "Usuários",               icone: "👥", secao: "GESTÃO" },
@@ -239,6 +240,124 @@ function acoesUnidade(u) {
     <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-acessos" ${d}>Acessos</button>
     <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-status" ${d} data-ativo="${u.ativo ? "1" : ""}">${u.ativo ? "Desativar" : "Ativar"}</button>
   </div>`;
+}
+
+// ===========================================================================
+// 2c. ESTRUTURA ORGANIZACIONAL — mesmos dados de Empresas/Unidades (nenhum
+// endpoint novo), só numa árvore: Empresa > Unidades, com busca instantânea.
+// As telas "Empresas" e "Unidades" continuam existindo (listas filtráveis,
+// úteis pra outra tarefa) — esta é a visão de hierarquia que faltava.
+// ===========================================================================
+
+async function viewEstrutura() {
+  const [empresas, unidades] = await Promise.all([adminApi.empresas(), adminApi.unidades({})]);
+  cache.empresas = empresas;
+
+  const unidadesPorEmpresa = new Map();
+  for (const u of unidades) {
+    const orgId = u.empresa?.id ?? u.organizacaoId;
+    if (!unidadesPorEmpresa.has(orgId)) unidadesPorEmpresa.set(orgId, []);
+    unidadesPorEmpresa.get(orgId).push(u);
+  }
+  const grupos = empresas.map((e) => ({ empresa: e, unidades: unidadesPorEmpresa.get(e.id) ?? [] }));
+
+  // Só uma empresa no total: abrir ela de cara não custa nada e poupa um clique.
+  const expandido = new Set(grupos.length === 1 ? grupos.map((g) => g.empresa.id) : []);
+
+  view().innerHTML = secao({
+    titulo: "Estrutura Organizacional",
+    acoes: `<button class="btn btn-primary btn-sm" data-adm-acao="empresa-nova">+ Nova empresa</button>`,
+    corpo: `
+      <div class="sel-busca-wrap adm-estr-busca" ${empresas.length > 4 ? "" : "hidden"}>
+        <span class="sel-busca-ic">🔎</span>
+        <input id="est-busca" type="search" class="sel-busca" autocomplete="off"
+               placeholder="Pesquisar empresa ou unidade..." aria-label="Pesquisar empresa ou unidade" />
+      </div>
+      <div id="est-arvore" class="adm-arvore"></div>`,
+  });
+
+  function corresponde(nomeEmpresa, u, termo) {
+    if (!termo) return true;
+    const alvo = [nomeEmpresa, u?.nome, u?.cidade, u?.cnpj].filter(Boolean).map(normalizarBusca).join(" | ");
+    return alvo.includes(termo);
+  }
+
+  function render() {
+    const termo = normalizarBusca(el("#est-busca")?.value.trim() ?? "");
+    const filtrados = grupos
+      .map((g) => ({
+        empresa: g.empresa,
+        unidades: termo ? g.unidades.filter((u) => corresponde(g.empresa.nome, u, termo)) : g.unidades,
+        empresaCasa: corresponde(g.empresa.nome, null, termo),
+      }))
+      .filter((g) => g.empresaCasa || g.unidades.length);
+
+    const arvore = el("#est-arvore");
+    if (!filtrados.length) {
+      arvore.innerHTML = vazio(`Nenhuma empresa ou unidade encontrada para "${el("#est-busca").value.trim()}".`);
+      return;
+    }
+
+    arvore.innerHTML = filtrados.map((g) => {
+      const e = g.empresa;
+      const logo = e.logoUrl
+        ? `<img src="${escapeHtml(e.logoUrl)}" alt="" class="adm-logo" />`
+        : `<span class="adm-logo adm-logo--txt">${escapeHtml((e.nome[0] || "?").toUpperCase())}</span>`;
+      const aberto = termo ? true : expandido.has(e.id);
+      const d = `data-id="${escapeHtml(e.id)}" data-nome="${escapeHtml(e.nome)}"`;
+
+      return `
+        <div class="adm-arvore-emp ${aberto ? "adm-arvore-emp--aberta" : ""}">
+          <div class="adm-arvore-emp-cab">
+            <button type="button" class="adm-arvore-toggle" data-toggle-est="${escapeHtml(e.id)}"
+                    aria-expanded="${aberto}" ${g.unidades.length ? "" : "disabled"}>
+              <span class="adm-arvore-seta" aria-hidden="true">▾</span>
+            </button>
+            <div class="adm-cel-empresa">
+              ${logo}
+              <span><b>${escapeHtml(e.nome)}</b><small>${g.unidades.length} unidade${g.unidades.length === 1 ? "" : "s"}</small></span>
+            </div>
+            ${pill(STATUS_EMPRESA, e.status)}
+            <div class="adm-acoes-cel adm-arvore-emp-acoes">
+              <button class="btn btn-ghost btn-sm" data-adm-acao="empresa-ver" ${d}>Detalhes</button>
+              <button class="btn btn-primary btn-sm" data-adm-acao="empresa-entrar" ${d}>Entrar</button>
+              <button class="btn btn-ghost btn-sm" data-adm-acao="empresa-menu" ${d} data-status="${escapeHtml(e.status)}">⋯</button>
+            </div>
+          </div>
+          <div class="adm-arvore-uni-lista" ${aberto ? "" : "hidden"}>
+            ${g.unidades.length ? g.unidades.map((u) => {
+              const du = `data-id="${escapeHtml(u.id)}" data-nome="${escapeHtml(u.nome)}" data-org="${escapeHtml(e.id)}" data-empresa="${escapeHtml(e.nome)}"`;
+              return `
+                <div class="adm-arvore-uni">
+                  <span class="adm-logo adm-logo--txt adm-arvore-uni-logo">${escapeHtml((u.nome[0] || "?").toUpperCase())}</span>
+                  <span class="adm-arvore-uni-info">
+                    <b>${escapeHtml(u.nome)}</b>
+                    <small>${escapeHtml([u.cidade, u.estado].filter(Boolean).join("/") || u.cnpj || "—")}</small>
+                  </span>
+                  ${u.ativo ? '<span class="pill ok">Ativa</span>' : '<span class="pill muted">Inativa</span>'}
+                  <div class="adm-acoes-cel">
+                    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-ver" ${du}>Visualizar</button>
+                    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-acessos" ${du}>Acessos</button>
+                    <button class="btn btn-ghost btn-sm" data-adm-acao="unidade-estrutura-menu" ${du}>⋮</button>
+                  </div>
+                </div>`;
+            }).join("") : `<div class="estado-mini adm-arvore-uni-vazia">Nenhuma unidade cadastrada nesta empresa ainda.</div>`}
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  el("#est-arvore").onclick = (e) => {
+    const toggle = e.target.closest("[data-toggle-est]");
+    if (!toggle || toggle.disabled) return;
+    const id = toggle.dataset.toggleEst;
+    if (expandido.has(id)) expandido.delete(id); else expandido.add(id);
+    render();
+  };
+  const busca = el("#est-busca");
+  if (busca) busca.oninput = render;
+
+  render();
 }
 
 // ===========================================================================
@@ -856,6 +975,7 @@ function itemConfig(i) {
 
 const VIEWS = {
   dashboard: viewDashboard,
+  estrutura: viewEstrutura,
   empresas: viewEmpresas,
   unidades: viewUnidades,
   usuarios: viewUsuarios,
@@ -913,6 +1033,12 @@ const ACOES = {
           opcoes: cache.planos.map((p) => ({ valor: p.id, rotulo: `${p.nome} · ${fmtMoeda(p.preco_mensal)}/mês` })),
         })
       )}
+      <div class="adm-secao-estrutura">
+        <b>Converter em unidade</b>
+        <p>Transforma esta empresa numa unidade dentro de outra — só funciona quando ela não tem nenhuma
+        unidade própria cadastrada (transfira/promova as unidades dela antes, se houver).</p>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="empresa-converter-form" data-id="${escapeHtml(id)}" data-nome="${escapeHtml(nome)}">Converter em unidade…</button>
+      </div>
       <div class="adm-zona-perigo">
         <b>Excluir permanentemente</b>
         <p>Apaga a empresa e TODOS os dados dela (unidades, produtos, vendas, vínculos). Não há como desfazer.
@@ -951,6 +1077,95 @@ const ACOES = {
       await adminApi.excluirEmpresa(id, nome);
       toast("Empresa excluída.");
       irParaAdmin("empresas");
+    },
+  }),
+
+  // ---- Estrutura organizacional (promover/converter/transferir) — cada
+  // uma abre um modal explicativo + confirmação (nunca executa direto), e
+  // roda como transação única no banco (ver plataforma.estrutura.service.js).
+  "empresa-converter-form": ({ id, nome }) => abrirModal({
+    titulo: `Converter ${nome} em unidade`,
+    corpo: `
+      <div class="adm-aviso adm-aviso--info">
+        <b>${escapeHtml(nome)}</b> deixará de ser uma empresa independente e passará a ser uma unidade dentro
+        da empresa escolhida abaixo. Todos os dados são preservados — nada é apagado. O catálogo próprio desta
+        empresa (produtos, insumos, fichas técnicas), se existir, NÃO é mesclado automaticamente ao catálogo
+        da empresa-mãe: fica preservado, só fica desvinculado.
+      </div>
+      ${grade(selecao({
+        id: "conv-mae", label: "Empresa-mãe", vazio: "Selecione…",
+        opcoes: cache.empresas.filter((e) => e.id !== id).map((e) => ({ valor: e.id, rotulo: e.nome })),
+      }))}`,
+    confirmar: "Confirmar conversão",
+    aoConfirmar: async () => {
+      const maeId = valor("conv-mae");
+      if (!maeId) { mostrarErroModal("Escolha a empresa-mãe."); throw new Error("empresa-mãe não escolhida"); }
+      await adminApi.converterEmpresaParaUnidade(id, maeId);
+      toast(`"${nome}" agora é uma unidade.`);
+      irParaAdmin("estrutura");
+    },
+  }),
+
+  // Picker: as duas ações estruturais de unidade num só menu — cada botão
+  // fecha este modal e abre o de confirmação real (mesmo encadeamento de
+  // empresa-menu -> empresa-excluir).
+  "unidade-estrutura-menu": ({ id, nome, org, empresa }) => abrirModal({
+    titulo: nome,
+    corpo: `
+      <div class="adm-estrutura-acoes">
+        <button type="button" class="adm-estrutura-op" data-adm-acao="unidade-promover-form"
+                data-id="${escapeHtml(id)}" data-nome="${escapeHtml(nome)}" data-org="${escapeHtml(org)}" data-empresa="${escapeHtml(empresa)}">
+          <b>Promover para empresa</b>
+          <small>${escapeHtml(nome)} vira uma empresa independente, com o próprio catálogo.</small>
+        </button>
+        <button type="button" class="adm-estrutura-op" data-adm-acao="unidade-transferir-form"
+                data-id="${escapeHtml(id)}" data-nome="${escapeHtml(nome)}" data-org="${escapeHtml(org)}" data-empresa="${escapeHtml(empresa)}">
+          <b>Transferir unidade</b>
+          <small>Move ${escapeHtml(nome)} para outra empresa já existente.</small>
+        </button>
+      </div>`,
+  }),
+
+  "unidade-promover-form": ({ id, nome, empresa }) => abrirModal({
+    titulo: `Promover ${nome} para empresa?`,
+    corpo: `
+      <div class="adm-aviso adm-aviso--info">
+        <b>${escapeHtml(nome)}</b> deixará de fazer parte de <b>${escapeHtml(empresa)}</b> e passará a
+        funcionar como uma empresa independente. Todos os dados operacionais (vendas, estoque, Dashboard
+        Executivo, Bonificação, Parser Food Delivery, histórico, usuários) são preservados — o ID da unidade
+        não muda. Só o catálogo (produtos, insumos, fichas técnicas), que hoje pertence a ${escapeHtml(empresa)},
+        é copiado para a empresa nova.
+      </div>
+      ${grade(campo({ id: "prom-nome", label: "Nome da nova empresa", valor: nome, obrigatorio: true }))}`,
+    confirmar: "Confirmar promoção",
+    aoConfirmar: async () => {
+      const nomeEmpresa = valor("prom-nome");
+      await adminApi.promoverUnidade(id, nomeEmpresa || undefined);
+      toast(`"${nome}" agora é uma empresa independente.`);
+      irParaAdmin("estrutura");
+    },
+  }),
+
+  "unidade-transferir-form": ({ id, nome, org, empresa }) => abrirModal({
+    titulo: `Transferir ${nome}`,
+    corpo: `
+      <div class="adm-aviso adm-aviso--info">
+        A unidade sai de <b>${escapeHtml(empresa)}</b> e passa a pertencer à empresa escolhida abaixo.
+        Histórico, lançamentos e vínculos da unidade são preservados integralmente. O catálogo (produtos/
+        insumos) NÃO é remapeado automaticamente — a unidade passa a usar o catálogo da empresa nova a
+        partir de agora; o histórico continua legível porque nada é apagado da empresa anterior.
+      </div>
+      ${grade(selecao({
+        id: "transf-empresa", label: "Empresa de destino", vazio: "Selecione…",
+        opcoes: cache.empresas.filter((e) => e.id !== org).map((e) => ({ valor: e.id, rotulo: e.nome })),
+      }))}`,
+    confirmar: "Confirmar transferência",
+    aoConfirmar: async () => {
+      const novaOrgId = valor("transf-empresa");
+      if (!novaOrgId) { mostrarErroModal("Escolha a empresa de destino."); throw new Error("empresa não escolhida"); }
+      await adminApi.transferirUnidade(id, novaOrgId);
+      toast(`"${nome}" transferida.`);
+      irParaAdmin("estrutura");
     },
   }),
 
