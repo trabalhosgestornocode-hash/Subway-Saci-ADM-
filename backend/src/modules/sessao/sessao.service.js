@@ -206,6 +206,88 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
 }
 
 /**
+ * Troca de unidade a partir do seletor global do topbar — ou seja, a partir
+ * de uma sessão que JÁ TEM contexto (diferente de `selecionarContexto`, que
+ * é usado sem contexto prévio: tela de login e tela de seleção). É por isso
+ * que existe separado: aqui já se sabe se a sessão atual é uma impersonação,
+ * e é exatamente essa informação que muda a regra de autorização:
+ *
+ *   * impersonação -> continua impersonação. Pode ir para QUALQUER unidade
+ *     ativa da MESMA empresa: a confiança que abriu a impersonação (ver
+ *     plataforma.empresas.service.js#entrarComoEmpresa) já cobre a empresa
+ *     inteira — não é escalação de privilégio, é navegação dentro do mesmo
+ *     atendimento de suporte. Sem este caminho, o SuperAdmin em suporte
+ *     ficava sem como trocar de unidade a não ser saindo da empresa e
+ *     reentrando (o problema relatado no Grupo Saci).
+ *   * sessão normal -> delega para `selecionarContexto`, que já faz a
+ *     checagem de vínculo de sempre (nada muda aqui pro caso comum).
+ *
+ * @param {object} params
+ * @param {{id: string, email: string}} params.usuario
+ * @param {string} params.organizacaoId  da sessão ATUAL (req.tenant), nunca do cliente
+ * @param {unknown} params.unidadeId     candidato vindo do cliente
+ * @param {boolean} params.impersonando  da sessão ATUAL (req.acesso), nunca do cliente
+ * @param {string|null} [params.ip]
+ * @param {string|null} [params.userAgent]
+ */
+export async function trocarUnidadeDoContexto({ usuario, organizacaoId, unidadeId, impersonando, ip = null, userAgent = null }) {
+  if (!impersonando) {
+    return selecionarContexto({ usuario, organizacaoId, unidadeId, ip, userAgent, troca: true });
+  }
+
+  const uniId = v.uuidOpcional(unidadeId, "Unidade");
+
+  const { data: org } = await supabase.from("organizacoes")
+    .select("id, nome, logo_url, status").eq("id", organizacaoId).maybeSingle();
+  if (!org) throw ApiError.notFound("Empresa não encontrada.");
+  const bloqueio = STATUS_BLOQUEANTES[org.status];
+  if (bloqueio) throw ApiError.forbidden(`${bloqueio} Fale com o suporte da plataforma.`);
+
+  let unidade = null;
+  if (uniId) {
+    const { data: u } = await supabase.from("unidades")
+      .select("id, nome, organizacao_id, ativo").eq("id", uniId).maybeSingle();
+    if (!u || u.organizacao_id !== organizacaoId || !u.ativo) {
+      throw ApiError.forbidden("Esta unidade não pertence à empresa em suporte.");
+    }
+    unidade = { id: u.id, nome: u.nome };
+  }
+
+  const papel = "organization_admin";
+  const permissoes = permissoesDoPapel(papel);
+  const modulos = unidade
+    ? await modulosEfetivosDaUnidade(organizacaoId, unidade.id)
+    : await modulosDaEmpresa(organizacaoId);
+
+  const sessao = await criarSessao({
+    usuarioId: usuario.id, organizacaoId, unidadeId: unidade?.id ?? null,
+    papel, permissoes, modulos, impersonadoPor: usuario.id, ip, userAgent,
+    validadeS: 60 * 60,
+  });
+
+  await auditar({
+    atorId: usuario.id, atorEmail: usuario.email, atorTipo: "superadmin",
+    acao: ACOES.CONTEXTO_TROCADO, entidade: "organizacao", entidadeId: organizacaoId, organizacaoId,
+    impersonadoPor: usuario.id,
+    detalhes: { unidadeId: unidade?.id ?? null, empresa: org.nome },
+    ip, userAgent,
+  });
+
+  return {
+    contextToken: sessao.token,
+    expiraEm: sessao.expiraEm,
+    sessionId: sessao.id,
+    empresa: { id: org.id, nome: org.nome, logoUrl: org.logo_url ?? null, status: org.status },
+    unidade,
+    papel,
+    papelRotulo: rotuloPapel(papel),
+    permissoes,
+    modulos,
+    impersonando: true,
+  };
+}
+
+/**
  * Cria a linha em `sessoes_contexto` e emite o token correspondente.
  * Compartilhado com a impersonação do SuperAdmin — por isso é exportado.
  *
@@ -353,6 +435,59 @@ export async function definirNovaSenha({ usuario, senha, ip = null, userAgent = 
   });
 
   return { ok: true, senhaProvisoria: false };
+}
+
+/** Unidades ativas de uma organização, para o modo impersonação de `listarUnidadesContexto`. */
+async function buscarUnidadesAtivasDaOrg(organizacaoId) {
+  const { data, error } = await supabase
+    .from("unidades")
+    .select("id, nome, cidade")
+    .eq("organizacao_id", organizacaoId).eq("ativo", true)
+    .order("nome");
+  if (error) throw ApiError.internal(error.message);
+  return data ?? [];
+}
+
+/**
+ * Unidades da EMPRESA DO CONTEXTO ATUAL que a sessão pode escolher no
+ * seletor global do topbar (Fase G — corrige o "contexto sem saída": empresa
+ * com várias unidades, `unidadeId` nulo, e nenhum jeito visível de escolher
+ * uma). Propositalmente DIFERENTE de `listarAcessos`:
+ *
+ *   * `listarAcessos` é o snapshot de login (todas as empresas do usuário) —
+ *     só é buscado nos pontos de entrada (login, F5 quando ainda não há
+ *     contexto), nunca depois de restaurar sessão ou de uma impersonação.
+ *     Reaproveitar aquele snapshot para o chip do topbar é exatamente o que
+ *     deixava o seletor vazio/desabilitado num F5 ou numa entrada via
+ *     impersonação — o dado nunca tinha sido buscado.
+ *   * esta função é chamada toda vez que `mostrarApp()` monta o shell do
+ *     tenant (login, F5, troca de unidade E impersonação), sempre escopada à
+ *     empresa do Context Token vigente.
+ *
+ * Impersonação (suporte do SuperAdmin) não nasce de um vínculo pessoal — por
+ * isso enxerga TODAS as unidades ativas da empresa, o mesmo bypass que
+ * `pode()`/`temModulo()` já aplicam. Sessão normal usa a mesma regra de
+ * autorização de `listarAcessos` (vínculo em `usuarios_unidades`), só
+ * filtrada para a empresa do contexto atual — nunca confia em nada vindo do
+ * cliente.
+ *
+ * @param {{usuarioId: string, organizacaoId: string, impersonando: boolean}} params
+ * @param {{buscarUnidadesAtivas: typeof buscarUnidadesAtivasDaOrg, listarAcessos: typeof listarAcessos}} [deps] injeção para teste (mesmo padrão de cmv.service.js#listarMargensOficialOuComparacao).
+ */
+export async function listarUnidadesContexto(
+  { usuarioId, organizacaoId, impersonando },
+  deps = { buscarUnidadesAtivas: buscarUnidadesAtivasDaOrg, listarAcessos },
+) {
+  if (impersonando) {
+    const unidades = await deps.buscarUnidadesAtivas(organizacaoId);
+    return { modo: "impersonacao", unidades };
+  }
+
+  const { opcoes } = await deps.listarAcessos({ usuarioId });
+  const unidades = opcoes
+    .filter((o) => o.organizacaoId === organizacaoId && o.acessivel && o.unidadeId)
+    .map((o) => ({ id: o.unidadeId, nome: o.unidadeNome, cidade: o.cidade ?? null }));
+  return { modo: "vinculo", unidades };
 }
 
 /**

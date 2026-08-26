@@ -23,6 +23,17 @@ sessaoRouter.post("/selecionar", exigirSenhaDefinitiva, controller.selecionar);
 // `atual` exige contexto (é o que ele descreve).
 sessaoRouter.get("/atual", exigirSenhaDefinitiva, requireContexto, controller.atual);
 
+// `unidades` também exige contexto — alimenta o seletor global do topbar
+// (item 4/10 do pedido: fonte única para trocar de unidade sem sair da
+// empresa), inclusive quando já se está em "Todas as unidades".
+sessaoRouter.get("/unidades", exigirSenhaDefinitiva, requireContexto, controller.unidades);
+
+// `trocar-unidade` exige contexto: é a troca a partir do seletor do topbar,
+// diferente de `/selecionar` (usado sem contexto prévio). Só ela sabe se a
+// sessão atual é uma impersonação e aplica a regra certa (ver
+// sessao.service.js#trocarUnidadeDoContexto).
+sessaoRouter.post("/trocar-unidade", exigirSenhaDefinitiva, requireContexto, controller.trocarUnidade);
+
 // `encerrar` funciona com ou sem contexto: revoga o que houver. Se exigisse
 // contexto, um token já expirado impediria o logout — o pior momento para
 // travar o usuário.

@@ -47,6 +47,42 @@ const COLUNAS_PEDIDO_LEITURA = [
 /** Number(x), mas preserva null/undefined — "não informado" nunca vira 0. */
 const numOuNulo = (x) => (x == null ? null : Number(x));
 
+// Tamanho de página deliberadamente abaixo do limite padrão do PostgREST
+// (`db.max_rows`, 1000 neste projeto) — nunca pedir num único .range() mais
+// linhas do que o Supabase devolveria de qualquer forma, senão a paginação
+// herdaria o mesmo truncamento silencioso que ela existe pra evitar.
+const PAGINA_PEDIDOS = 500;
+
+/**
+ * Busca TODAS as linhas de parser_fd_pedidos de uma importação, paginando
+ * explicitamente com `.range()`. Um `select()` sem paginação é truncado
+ * silenciosamente em `db.max_rows` pelo PostgREST — sem erro, sem aviso.
+ * Causa raiz real encontrada em produção (25/08/2026): uma importação com
+ * 1330 pedidos aparecia com `taxasValidas` diferente na Visão Geral
+ * (recalculada aqui, truncada em 1000 linhas) e no Histórico (calculada em
+ * memória em `confirmarImportacao`, nunca lida de volta, por isso nunca
+ * truncada). Toda leitura de pedidos de UMA importação inteira precisa
+ * passar por aqui — nunca por um `.select()` direto na tabela.
+ * Ordena por (data_hora, id) como critério de desempate estável: sem um
+ * desempate determinístico, linhas com a mesma `data_hora` podem ser
+ * puladas ou repetidas entre páginas.
+ * @param {{importacaoId: string, colunas?: string}} p
+ * @returns {Promise<object[]>} sempre um array (nunca null/undefined)
+ */
+async function buscarTodosPedidos({ importacaoId, colunas = COLUNAS_PEDIDO_LEITURA }) {
+  const todos = [];
+  for (let offset = 0; ; offset += PAGINA_PEDIDOS) {
+    const { data, error } = await supabase.from(TABELA_PEDIDOS).select(colunas)
+      .eq("importacao_id", importacaoId)
+      .order("data_hora", { ascending: true }).order("id", { ascending: true })
+      .range(offset, offset + PAGINA_PEDIDOS - 1);
+    if (error) throw ApiError.internal(error.message);
+    todos.push(...(data || []));
+    if (!data || data.length < PAGINA_PEDIDOS) break;
+  }
+  return todos;
+}
+
 // ---------------------------------------------------------------------------
 // UNIDADE-ALVO — mesmo princípio do Dashboard iFood/Bonificação Mensal:
 // nunca confia em unidadeId vindo do cliente sem checar contra a sessão.
@@ -449,11 +485,9 @@ export async function obterImportacao({ organizacaoId, unidadeId, importacaoId }
   if (error) throw ApiError.internal(error.message);
   if (!importacao) throw ApiError.notFound("Importação não encontrada.");
 
-  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS)
-    .select(COLUNAS_PEDIDO_LEITURA).eq("importacao_id", importacaoId).order("data_hora", { ascending: true });
-  if (e2) throw ApiError.internal(e2.message);
+  const pedidosRows = await buscarTodosPedidos({ importacaoId });
 
-  const todosPedidos = (pedidosRows || []).map(paraApiPedido);
+  const todosPedidos = pedidosRows.map(paraApiPedido);
   const pedidos = todosPedidos.filter(ehElegivelConciliacao);
   const pedidosIgnorados = todosPedidos.filter((p) => !ehElegivelConciliacao(p)).map(paraApiPedidoIgnorado);
   const resumo = resumoConciliacao(pedidos);
@@ -481,8 +515,7 @@ export async function editarCodigosSemTaxa({ organizacaoId, unidadeId, importaca
   if (error) throw ApiError.internal(error.message);
   if (!importacao) throw ApiError.notFound("Importação não encontrada.");
 
-  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA).eq("importacao_id", importacaoId);
-  if (e2) throw ApiError.internal(e2.message);
+  const pedidosRows = await buscarTodosPedidos({ importacaoId });
 
   const codigosAntes = importacao.codigos_sem_taxa || [];
   const codigosDepois = [...new Set((novosCodigos || []).map((c) => String(c).trim()).filter(Boolean))];
@@ -579,9 +612,8 @@ export async function alterarClassificacaoCancelamento({ organizacaoId, unidadeI
   });
 
   // Recalcula o resumo da importação inteira (mesma técnica de editarCodigosSemTaxa).
-  const { data: pedidosRows, error: e2 } = await supabase.from(TABELA_PEDIDOS).select(COLUNAS_PEDIDO_LEITURA).eq("importacao_id", importacaoId);
-  if (e2) throw ApiError.internal(e2.message);
-  const pedidosApi = (pedidosRows || []).map(paraApiPedido);
+  const pedidosRows = await buscarTodosPedidos({ importacaoId });
+  const pedidosApi = pedidosRows.map(paraApiPedido);
   const pedidosElegiveisApi = pedidosApi.filter(ehElegivelConciliacao);
   const pedidosIgnoradosApi = pedidosApi.filter((p) => !ehElegivelConciliacao(p)).map(paraApiPedidoIgnorado);
   const resumo = resumoConciliacao(pedidosElegiveisApi);

@@ -28,8 +28,36 @@ const cardDestaque = (label, valor, sub = "") =>
 const estadoVazio = (nomeIcone, titulo, msg) =>
   `<div class="estado"><span class="estado-ic">${icon(nomeIcone, { size: 24 })}</span><h3>${titulo}</h3><p>${escapeHtml(msg)}</p></div>`;
 
-const bannerErro = () =>
-  state.erro ? `<div class="banner-erro">Erro ao carregar: ${escapeHtml(state.erro)}</div>` : "";
+// `state.erroCodigo` distingue uma FALHA real (rede, servidor) de uma
+// RESTRIÇÃO de contexto esperada (ex.: "Todas as unidades" olhando um módulo
+// por unidade) — a segunda não é erro, é um estado normal, e por isso nunca
+// usa o vermelho de `.banner-erro` (item 12/13 do pedido: reservar vermelho
+// pra erro real).
+const bannerErro = () => {
+  if (!state.erro) return "";
+  if (state.erroCodigo) return `<div class="banner-aviso">${escapeHtml(state.erro)}</div>`;
+  return `<div class="banner-erro">Erro ao carregar: ${escapeHtml(state.erro)}</div>`;
+};
+
+// Estado dedicado para "esta área precisa de uma unidade" (código
+// UNIDADE_NAO_SELECIONADA, ver cmv.service.js#listarMargensOficialOuComparacao).
+// Substitui a tela INTEIRA — nunca ao lado de cards/tabela zerados (item 13/14:
+// "CMV geral —, Total de produtos 0, ✓ Tabela da unidade" com contexto
+// consolidado parecia um dashboard real vazio, não uma restrição de contexto).
+// O botão reabre o MESMO seletor global do topbar (item 10/11: nenhum fluxo
+// paralelo) via o evento que app.js escuta.
+const estadoUnidadeObrigatoria = () => `
+  <div class="estado estado-unidade-obrigatoria">
+    <span class="estado-ic">${icon("building", { size: 24 })}</span>
+    <h3>Esta área precisa de uma unidade específica</h3>
+    <p>Você está visualizando todas as unidades de ${escapeHtml(state.sessao?.empresa?.nome ?? "sua empresa")}. Selecione uma unidade para continuar.</p>
+    <button type="button" class="btn btn-primary btn-sm" id="btn-selecionar-unidade">${icon("building", { size: 14 })} Selecionar unidade</button>
+  </div>`;
+
+function ligarEstadoUnidadeObrigatoria(root) {
+  root.querySelector("#btn-selecionar-unidade")?.addEventListener("click", () =>
+    document.dispatchEvent(new CustomEvent("app:abrir-seletor-unidade")));
+}
 
 // ---------- banner Canal · Tabela (Dashboard comum + Produtos/CMV) ----------
 // Distinção visual EXPLÍCITA, não só cor: modo de comparação tem rótulo
@@ -93,6 +121,12 @@ const alertaItem = (label, valor, classe, nota = "") =>
   </li>`;
 
 export function renderDashboard() {
+  if (state.erroCodigo === "UNIDADE_NAO_SELECIONADA") {
+    el("#view").innerHTML = estadoUnidadeObrigatoria();
+    ligarEstadoUnidadeObrigatoria(el("#view"));
+    return;
+  }
+
   const rows = state.linhas;
   const carregando = state.carregando;
   const s = statsDashboard(rows);
@@ -245,6 +279,12 @@ export function renderTabela() {
 }
 
 export function renderProdutos() {
+  if (state.erroCodigo === "UNIDADE_NAO_SELECIONADA") {
+    el("#view").innerHTML = estadoUnidadeObrigatoria();
+    ligarEstadoUnidadeObrigatoria(el("#view"));
+    return;
+  }
+
   el("#view").innerHTML = `
     ${bannerErro()}
     ${bannerTabela()}

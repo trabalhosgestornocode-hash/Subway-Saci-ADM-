@@ -22,6 +22,7 @@ import {
   login, logout, restaurarSessao, listarAcessos, selecionarContexto,
   restaurarContexto, encerrarContexto, aplicarContexto,
   precisaDefinirSenha, definirNovaSenha, temModulo,
+  listarUnidadesContexto, trocarUnidadeDoContexto,
 } from "./sessao.js";
 import { irPara, renderRotaAtual, primeiraRotaAcessivel } from "./router.js";
 import { resetarEscopoDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
@@ -224,9 +225,39 @@ async function mostrarApp() {
   // memória limpa, senão mostra dado da unidade anterior por alguns
   // milissegundos (ver contextoEscopo.js).
   resetarEscopoDeContexto();
+  const g = geracaoContexto();
 
   const { usuario, empresa, unidade, papelRotulo, impersonando } = state.sessao;
   const nome = usuario?.nome || usuario?.email || "usuário";
+
+  // Unidades escolhíveis no seletor global do topbar — buscado FRESCO a cada
+  // entrada no shell (nunca reaproveita o snapshot de login em
+  // `state.sessao.acessos`). É isto que resolve o "contexto sem saída": sem
+  // isso, um F5 ou uma entrada por impersonação chegavam aqui com a lista
+  // vazia e o seletor ficava sem nenhuma opção pra oferecer (ver
+  // seletorUnidade.js). Falha de rede não trava a tela — o chip só fica
+  // informativo (listarUnidadesContexto já trata o próprio erro).
+  await listarUnidadesContexto();
+  if (contextoMudou(g)) return; // outra troca já aconteceu enquanto isto buscava (Fase F)
+
+  // Empresa com exatamente 1 unidade acessível e nenhuma selecionada: entra
+  // direto nela — não faz sentido obrigar a escolher algo sem alternativa
+  // (item 6 do pedido). Vale também em impersonação: `entrarComoEmpresa`
+  // começa consolidado de propósito (o suporte pode querer o Dashboard
+  // Executivo primeiro), mas se a empresa só TEM uma unidade, ficar preso no
+  // aviso "selecione uma unidade" sem nenhuma alternativa é exatamente o bug
+  // relatado — `trocarUnidadeDoContexto` já sabe continuar a impersonação.
+  if (!unidade && state.sessao.unidadesDaEmpresa.length === 1) {
+    try {
+      await trocarUnidadeDoContexto({ unidadeId: state.sessao.unidadesDaEmpresa[0].id });
+      mostrarApp();
+      return;
+    } catch {
+      // Não foi possível entrar sozinho na única unidade — segue no modo
+      // consolidado; o seletor (não interativo, com 1 unidade só) e os
+      // avisos de módulo cobrem o que falta.
+    }
+  }
 
   // Espelhos de compatibilidade para as views que ainda leem state.usuario.
   state.usuario = usuario?.email ?? nome;
@@ -318,12 +349,11 @@ function mostrarSelecao(dados) {
  * @param {object} opcao
  */
 async function trocarUnidadeRapido(opcao) {
-  await selecionarContexto({
-    organizacaoId: opcao.organizacaoId,
-    unidadeId: opcao.unidadeId ?? null,
-    troca: true,
-  });
-  registrarAcessoRecente(state.sessao.usuario?.id, opcao);
+  await trocarUnidadeDoContexto({ unidadeId: opcao.unidadeId ?? null });
+  // Impersonação não é um acesso pessoal do usuário — não faz sentido
+  // aparecer nos "recentes" da tela de seleção (entrarPorImpersonacao já não
+  // registrava; a troca rápida durante impersonação segue a mesma regra).
+  if (!state.sessao.impersonando) registrarAcessoRecente(state.sessao.usuario?.id, opcao);
   mostrarApp();
 }
 
@@ -595,6 +625,16 @@ function wireEventos() {
   document.addEventListener("app:contexto-invalido", async (e) => {
     toast(e.detail || "Contexto encerrado. Escolha a unidade novamente.");
     try { await encaminhar(); } catch { mostrarLogin(); }
+  });
+
+  // "Selecionar unidade" dentro do aviso de um módulo bloqueado (item 11) —
+  // abre o MESMO seletor global do topbar, nunca um fluxo paralelo (item 10).
+  // Se não houver outra unidade pra oferecer (chip desabilitado), avisa em
+  // vez de não fazer nada silenciosamente.
+  document.addEventListener("app:abrir-seletor-unidade", () => {
+    const chip = el("#chip-unidade");
+    if (!chip || chip.disabled) { toast("Nenhuma outra unidade disponível para selecionar."); return; }
+    chip.click();
   });
 
   // Mostrar/ocultar senha (UI apenas — não altera a lógica de login)

@@ -46,6 +46,9 @@ export const alterarStatusEmpresa = asyncHandler(async (req, res) =>
 export const alterarPlanoEmpresa = asyncHandler(async (req, res) =>
   ok(res, await empresas.alterarPlanoEmpresa(req, req.params.id, v.corpo(req.body))));
 
+export const impactoExclusaoEmpresa = asyncHandler(async (req, res) =>
+  ok(res, await empresas.impactoExclusaoEmpresa(req.params.id)));
+
 export const excluirEmpresa = asyncHandler(async (req, res) =>
   ok(res, await empresas.excluirEmpresa(req, req.params.id, req.body ?? {})));
 

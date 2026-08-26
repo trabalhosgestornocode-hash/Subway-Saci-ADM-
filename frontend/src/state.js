@@ -7,6 +7,7 @@ import { registrarResetDeContexto } from "./contextoEscopo.js";
  * @property {{id: string, nome: string, email: string, superadmin: boolean}|null} usuario
  * @property {boolean} superadmin
  * @property {Array<object>} acessos           empresas/unidades disponíveis
+ * @property {Array<{id: string, nome: string, cidade: string|null}>} unidadesDaEmpresa  unidades da empresa do contexto ATUAL, escolhíveis no seletor global (ver sessao.js#listarUnidadesContexto)
  * @property {{id: string, nome: string, logoUrl: string|null, status: string}|null} empresa
  * @property {{id: string, nome: string}|null} unidade
  * @property {string|null} papel
@@ -25,6 +26,7 @@ export const state = {
     usuario: null,
     superadmin: false,
     acessos: [],
+    unidadesDaEmpresa: [],
     empresa: null,
     unidade: null,
     papel: null,

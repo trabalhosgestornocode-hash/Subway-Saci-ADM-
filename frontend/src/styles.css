@@ -337,6 +337,10 @@ body {
 .sk { display: block; height: 13px; border-radius: 7px; background: linear-gradient(90deg, #eef2f0 25%, #e0e6e3 37%, #eef2f0 63%); background-size: 400% 100%; animation: shimmer 1.3s infinite; }
 .spinner { width: 28px; height: 28px; border: 3px solid var(--linha); border-top-color: var(--verde-vivo); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 10px; }
 .banner-erro { background: var(--bad-bg); color: var(--bad); padding: 11px 15px; border-radius: 11px; font-size: 14px; margin-bottom: 14px; border: 1px solid rgba(219,59,59,.2); animation: fadeInUp .3s; }
+/* Restrição de contexto esperada (ex.: código UNIDADE_NAO_SELECIONADA/
+   TABELA_NAO_CONFIGURADA) — nunca vermelho, reservado pra erro real. */
+.banner-aviso { background: var(--warn-bg); color: var(--warn); padding: 11px 15px; border-radius: 11px; font-size: 14px; margin-bottom: 14px; border: 1px solid rgba(196,138,18,.2); animation: fadeInUp .3s; }
+.estado-unidade-obrigatoria #btn-selecionar-unidade { margin-top: 14px; }
 
 /* Banner Canal · Tabela (Dashboard comum + Produtos/CMV) — distinção
    EXPLÍCITA entre "tabela oficial da unidade" e "modo de comparação", não só
@@ -1614,6 +1618,11 @@ body {
 .chip-unidade--clicavel { cursor: pointer; }
 .chip-unidade--clicavel:hover { box-shadow: inset 0 0 0 1.5px rgba(216,19,36,.3); }
 .chip-unidade:disabled { cursor: default; }
+/* Seta só aparece quando o chip é de fato clicável (item 19: não parecer
+   seletor sem ser) — escondida, não removida, pra não pular o layout do
+   texto ao lado quando a empresa tem 1 unidade só. */
+.chip-unidade-seta { width: 13px; height: 13px; margin-left: 1px; opacity: 0; vertical-align: -2px; }
+.chip-unidade--clicavel .chip-unidade-seta { opacity: .65; }
 .unidade-menu {
   position: absolute; left: 0; top: calc(100% + 8px); z-index: 60; width: 280px;
   background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);

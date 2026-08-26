@@ -29,9 +29,36 @@ export const selecionar = asyncHandler(async (req, res) => {
   res.status(201).json({ data });
 });
 
+// POST /api/v1/sessao/trocar-unidade — troca de unidade a partir do seletor
+// global do topbar (exige contexto prévio; ver
+// sessao.service.js#trocarUnidadeDoContexto para a regra de impersonação).
+export const trocarUnidade = asyncHandler(async (req, res) => {
+  const body = v.corpo(req.body);
+  const data = await service.trocarUnidadeDoContexto({
+    usuario: req.user,
+    organizacaoId: req.tenant.organizacaoId,
+    unidadeId: body.unidadeId,
+    impersonando: !!req.acesso.impersonando,
+    ...origem(req),
+  });
+  res.status(201).json({ data });
+});
+
 // GET /api/v1/sessao/atual — contexto vigente (recarregamento de página).
 export const atual = asyncHandler(async (req, res) => {
   res.json({ data: service.contextoAtual(req) });
+});
+
+// GET /api/v1/sessao/unidades — unidades da empresa do contexto ATUAL que a
+// sessão pode escolher no seletor global do topbar (inclusive em "Todas as
+// unidades", unidadeId nulo — ver sessao.service.js#listarUnidadesContexto).
+export const unidades = asyncHandler(async (req, res) => {
+  const data = await service.listarUnidadesContexto({
+    usuarioId: req.user.id,
+    organizacaoId: req.tenant.organizacaoId,
+    impersonando: !!req.acesso.impersonando,
+  });
+  res.json({ data });
 });
 
 // POST /api/v1/sessao/encerrar — revoga o contexto. Serve tanto para "Sair"
