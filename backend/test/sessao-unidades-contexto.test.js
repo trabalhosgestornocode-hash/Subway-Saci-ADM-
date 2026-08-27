@@ -10,8 +10,13 @@
 //   * empresa bloqueada/inacessível -> não entra na lista;
 //   * impersonação -> ignora vínculo pessoal, usa TODAS as unidades ativas
 //     da empresa (é o caminho que resolve o caso do Grupo Saci);
-//   * vínculo puramente de empresa (sem nenhuma unidade individual) -> lista
-//     vazia (limitação conhecida e documentada, não regressão desta fase).
+//   * `listarAcessos` devolvendo só a opção consolidada (org sem nenhuma
+//     unidade cadastrada ainda) -> lista vazia, corretamente (não há nada
+//     pra oferecer). NÃO é mais o caso de "vínculo só de empresa com
+//     unidades reais" — isso listarAcessos já resolve por herança desde a
+//     correção em sessao-heranca-empresa-unidade.test.js; este teste aqui
+//     cobre só o filtro de listarUnidadesContexto em cima do que
+//     listarAcessos devolver.
 //
 // Rodar: node --env-file-if-exists=.env --test test/sessao-unidades-contexto.test.js
 import { test, describe } from "node:test";
@@ -63,7 +68,7 @@ describe("listarUnidadesContexto — sessão normal (com vínculo)", () => {
     assert.deepEqual(r.unidades, []);
   });
 
-  test("vínculo puramente de empresa (sem usuarios_unidades) -> lista vazia (limitação conhecida)", async () => {
+  test("listarAcessos devolve só a opção consolidada (empresa sem nenhuma unidade cadastrada) -> lista vazia, nada pra oferecer", async () => {
     const deps = {
       buscarUnidadesAtivas: async () => { throw new Error("não deveria chamar"); },
       listarAcessos: async () => ({

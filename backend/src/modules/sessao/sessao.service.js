@@ -4,6 +4,40 @@
 // "onde você vai trabalhar": lista as empresas vinculadas, valida a escolha e
 // emite o Context Token. Nenhum company_id entra aqui sem passar pela
 // verificação de vínculo — e o que o cliente manda é apenas um CANDIDATO.
+//
+// ---------------------------------------------------------------------------
+// REGRA DE ACESSO EFETIVO (empresa -> unidade) — fonte única desta regra;
+// todo outro lugar do sistema que decide "quais unidades esta pessoa
+// enxerga" (listarUnidadesContexto, o seletor global do topbar, a tela de
+// seleção pós-login) só existe porque lê o que `listarAcessos`/
+// `selecionarContexto` decidem aqui. Não duplique esta lógica em outro
+// arquivo — se um novo lugar precisar dela, chame estas funções.
+//
+//   podeAcessarUnidade(usuário, unidade) =
+//       superadmin (bypass tratado à parte, fora deste módulo — impersonação)
+//       OU vínculo ATIVO em usuarios_unidades para aquela unidade
+//       OU vínculo ATIVO em usuarios_organizacoes para a organização dona dela
+//
+// Ou seja: acesso de EMPRESA (usuarios_organizacoes) implica acesso a TODAS
+// as unidades ATIVAS dela — as de hoje e as criadas depois — sem precisar
+// duplicar uma linha em usuarios_unidades pra cada uma. Nenhum dos dois
+// vínculos é pré-requisito do outro: um usuário pode ter só o de unidade
+// (sem nunca ter tido acesso de empresa) e isso já basta pra essa unidade
+// específica — é o suporte real por trás do comentário em
+// plataforma.usuarios.service.js#removerVinculo ("a unidade sozinha também
+// autoriza a seleção"), que o `selecionarContexto` antigo não respeitava
+// (exigia o vínculo de empresa ATIVO como porta de entrada obrigatória,
+// mesmo pra selecionar uma unidade com vínculo direto).
+//
+// PAPEL EFETIVO: quando os dois vínculos existem para a mesma unidade
+// (acesso de empresa + vínculo direto nela), o papel do vínculo DIRETO
+// sobrepõe o da empresa quando definido (comportamento pré-existente,
+// preservado — não é uma regra nova desta correção).
+//
+// "Todas as unidades" (unidadeId nulo) é conceitualmente da EMPRESA: exige
+// especificamente o vínculo ativo com ela — um vínculo só de unidade nunca
+// autoriza o modo consolidado (ver `selecionarContexto`).
+// ---------------------------------------------------------------------------
 
 import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
@@ -32,49 +66,94 @@ const STATUS_BLOQUEANTES = { bloqueada: "Empresa bloqueada.", suspensa: "Empresa
 
 /**
  * Opções de acesso do usuário — o que a tela "Qual unidade deseja acessar?"
- * renderiza.
+ * renderiza, e a mesma fonte que o seletor global do topbar consulta
+ * (sessao.service.js#listarUnidadesContexto) para uma empresa específica.
+ * Implementa a REGRA DE ACESSO EFETIVO descrita no topo do arquivo.
  *
- * Regras:
- *  * a base é o vínculo com a EMPRESA (usuarios_organizacoes);
- *  * se o usuário também tiver vínculo com unidades daquela empresa, cada
- *    unidade aparece como uma opção própria (e o papel da unidade sobrepõe o
- *    da empresa, quando definido);
- *  * empresas bloqueadas/suspensas APARECEM, porém desabilitadas e com o
- *    motivo. Esconder geraria o pior suporte possível: "minha empresa
- *    desapareceu".
+ * Formato do resultado, por empresa:
+ *  * empresa SEM nenhuma unidade cadastrada ainda -> 1 opção consolidada
+ *    (unidadeId nulo) — nada pra "expandir".
+ *  * empresa com vínculo de EMPRESA e exatamente 1 unidade ativa -> 1 opção,
+ *    JÁ apontando pra essa unidade (nunca duas opções — "a empresa" e "a
+ *    unidade" — que levariam ao mesmo lugar).
+ *  * empresa com vínculo de EMPRESA e 2+ unidades ativas -> TODAS elas,
+ *    cada uma sua própria opção (herança — nenhuma precisa de vínculo
+ *    direto em usuarios_unidades pra aparecer aqui, nem as criadas depois
+ *    desta consulta).
+ *  * empresa SEM vínculo de empresa (ativo), só vínculo(s) direto(s) de
+ *    unidade -> só essas unidades, nunca as outras da mesma empresa.
+ *  * unidade com os DOIS vínculos (empresa + direto) -> aparece uma única
+ *    vez, com o papel do vínculo DIRETO quando definido.
+ *  * unidade inativa nunca aparece, nem por herança nem por vínculo direto.
+ *
+ * Empresas bloqueadas/suspensas/canceladas APARECEM, porém desabilitadas e
+ * com o motivo. Esconder geraria o pior suporte possível: "minha empresa
+ * desapareceu".
  *
  * @param {{usuarioId: string}} params
+ * @param {{buscarVinculos: typeof buscarVinculosOrgEUnidade, buscarUnidadesAtivas: typeof buscarUnidadesAtivasDasOrgs, buscarInfoOrganizacoes: typeof buscarInfoDasOrganizacoes}} [deps] injeção para teste (mesmo padrão de cmv.service.js#listarMargensOficialOuComparacao) — sem isto a lógica de herança só seria exercitável contra um Supabase real.
  * @returns {Promise<{superadmin: boolean, opcoes: OpcaoAcesso[]}>}
  */
-export async function listarAcessos({ usuarioId }) {
-  const [superRes, vinculosOrgRes, vinculosUniRes] = await Promise.all([
-    supabase.from("plataforma_admins").select("usuario_id")
-      .eq("usuario_id", usuarioId).eq("ativo", true).maybeSingle(),
-    supabase.from("usuarios_organizacoes")
-      .select("papel, organizacao_id, organizacoes(id, nome, logo_url, status)")
-      .eq("usuario_id", usuarioId).eq("ativo", true),
-    supabase.from("usuarios_unidades")
-      .select("papel, unidade_id, unidades(id, nome, organizacao_id, cidade, cnpj)")
-      .eq("usuario_id", usuarioId).eq("ativo", true),
-  ]);
+export async function listarAcessos(
+  { usuarioId },
+  deps = { buscarVinculos: buscarVinculosOrgEUnidade, buscarUnidadesAtivas: buscarUnidadesAtivasDasOrgs, buscarInfoOrganizacoes: buscarInfoDasOrganizacoes },
+) {
+  const { superadmin, vinculosOrg, vinculosUni } = await deps.buscarVinculos(usuarioId);
 
-  if (vinculosOrgRes.error) throw ApiError.internal(vinculosOrgRes.error.message);
-  if (vinculosUniRes.error) throw ApiError.internal(vinculosUniRes.error.message);
-
-  const unidadesPorOrg = new Map();
-  for (const r of vinculosUniRes.data ?? []) {
+  // Vínculo direto por unidade, agrupado pela empresa DONA dela agora — não
+  // pela empresa de quando o vínculo foi criado. É isto que faz uma unidade
+  // TRANSFERIDA (migration 053) aparecer sob a empresa nova automaticamente,
+  // sem precisar remapear nada aqui: a query já lê o organizacao_id atual.
+  const diretoPorOrg = new Map(); // organizacaoId -> Map(unidadeId -> {papel, unidade})
+  for (const r of vinculosUni) {
     const u = r.unidades;
-    if (!u) continue;
-    const lista = unidadesPorOrg.get(u.organizacao_id) ?? [];
-    lista.push({ id: u.id, nome: u.nome, papel: r.papel, cidade: u.cidade ?? null, cnpj: u.cnpj ?? null });
-    unidadesPorOrg.set(u.organizacao_id, lista);
+    if (!u || !u.ativo) continue; // unidade inativa não conta, nem por vínculo direto
+    const mapa = diretoPorOrg.get(u.organizacao_id) ?? new Map();
+    mapa.set(u.id, { papel: r.papel, unidade: u });
+    diretoPorOrg.set(u.organizacao_id, mapa);
+  }
+
+  const papelPorOrg = new Map();  // organizacaoId -> papel (só orgs com vínculo de EMPRESA ativo)
+  const infoPorOrg = new Map();   // organizacaoId -> {id, nome, logo_url, status}
+  for (const vinculo of vinculosOrg) {
+    if (!vinculo.organizacoes) continue;
+    papelPorOrg.set(vinculo.organizacao_id, vinculo.papel);
+    infoPorOrg.set(vinculo.organizacao_id, vinculo.organizacoes);
+  }
+
+  // Empresas a considerar = quem tem vínculo de EMPRESA UNIÃO quem tem pelo
+  // menos um vínculo DIRETO de unidade nela — é a união que resolve o
+  // "acesso só de unidade, sem nunca ter tido acesso de empresa".
+  const organizacaoIds = new Set([...papelPorOrg.keys(), ...diretoPorOrg.keys()]);
+
+  // Empresas com vínculo de EMPRESA herdam TODAS as unidades ATIVAS dela —
+  // 1 query só para todas elas (nunca N+1, mesmo com dezenas de empresas).
+  const orgsComHeranca = [...papelPorOrg.keys()];
+  const unidadesHerdadasPorOrg = new Map();
+  if (orgsComHeranca.length) {
+    const unidadesData = await deps.buscarUnidadesAtivas(orgsComHeranca);
+    for (const u of unidadesData) {
+      const lista = unidadesHerdadasPorOrg.get(u.organizacao_id) ?? [];
+      lista.push(u);
+      unidadesHerdadasPorOrg.set(u.organizacao_id, lista);
+    }
+  }
+
+  // Empresas que só apareceram por vínculo DIRETO de unidade (sem vínculo de
+  // empresa) ainda precisam do nome/logo/status pra montar a opção — busca
+  // avulsa, tipicamente pouquíssimas.
+  const organizacaoIdsSemInfo = [...organizacaoIds].filter((id) => !infoPorOrg.has(id));
+  if (organizacaoIdsSemInfo.length) {
+    const orgsData = await deps.buscarInfoOrganizacoes(organizacaoIdsSemInfo);
+    for (const org of orgsData) infoPorOrg.set(org.id, org);
   }
 
   /** @type {OpcaoAcesso[]} */
   const opcoes = [];
-  for (const vinculo of vinculosOrgRes.data ?? []) {
-    const org = vinculo.organizacoes;
-    if (!org) continue;
+  for (const organizacaoId of organizacaoIds) {
+    const org = infoPorOrg.get(organizacaoId);
+    if (!org) continue; // vínculo órfão (empresa removida) — ignora silenciosamente
+
     const motivo = STATUS_BLOQUEANTES[org.status] ?? null;
     const base = {
       organizacaoId: org.id,
@@ -85,17 +164,36 @@ export async function listarAcessos({ usuarioId }) {
       motivo,
     };
 
-    const unidades = unidadesPorOrg.get(org.id) ?? [];
-    if (!unidades.length) {
-      // Acesso no nível da empresa (vê todas as unidades dela).
-      opcoes.push({
-        ...base, unidadeId: null, unidadeNome: null,
-        papel: vinculo.papel, papelRotulo: rotuloPapel(vinculo.papel),
-      });
+    const papelEmpresa = papelPorOrg.get(organizacaoId) ?? null;
+    const diretoMapa = diretoPorOrg.get(organizacaoId) ?? new Map();
+
+    if (papelEmpresa) {
+      const herdadas = unidadesHerdadasPorOrg.get(organizacaoId) ?? [];
+      if (!herdadas.length) {
+        // Empresa sem unidade cadastrada ainda — opção consolidada, como sempre.
+        opcoes.push({
+          ...base, unidadeId: null, unidadeNome: null,
+          papel: papelEmpresa, papelRotulo: rotuloPapel(papelEmpresa),
+        });
+        continue;
+      }
+      // 1 unidade ou 2+: SEMPRE uma opção por unidade (nunca uma opção
+      // "consolidada" a mais quando já existe só 1 lugar pra ir). O papel do
+      // vínculo DIRETO nela, se houver, sobrepõe o da empresa.
+      for (const u of herdadas) {
+        const papel = diretoMapa.get(u.id)?.papel ?? papelEmpresa;
+        opcoes.push({
+          ...base, unidadeId: u.id, unidadeNome: u.nome, cidade: u.cidade, cnpj: u.cnpj,
+          papel, papelRotulo: rotuloPapel(papel),
+        });
+      }
       continue;
     }
-    for (const u of unidades) {
-      const papel = u.papel ?? vinculo.papel;   // papel da unidade sobrepõe o da empresa
+
+    // Sem vínculo de empresa (ou inativo): só as unidades com vínculo DIRETO
+    // autorizam — nunca as outras da mesma empresa.
+    for (const { papel, unidade: u } of diretoMapa.values()) {
+      if (!papel) continue; // "herda o papel da empresa", mas não há empresa pra herdar — vínculo incompleto, não autoriza sozinho
       opcoes.push({
         ...base, unidadeId: u.id, unidadeNome: u.nome, cidade: u.cidade, cnpj: u.cnpj,
         papel, papelRotulo: rotuloPapel(papel),
@@ -107,7 +205,98 @@ export async function listarAcessos({ usuarioId }) {
     a.empresaNome.localeCompare(b.empresaNome, "pt-BR") ||
     (a.unidadeNome ?? "").localeCompare(b.unidadeNome ?? "", "pt-BR"));
 
-  return { superadmin: !!superRes.data, opcoes };
+  return { superadmin, opcoes };
+}
+
+/** Busca-padrão (Supabase real) das três fontes de vínculo que `listarAcessos` combina. */
+async function buscarVinculosOrgEUnidade(usuarioId) {
+  const [superRes, vinculosOrgRes, vinculosUniRes] = await Promise.all([
+    supabase.from("plataforma_admins").select("usuario_id")
+      .eq("usuario_id", usuarioId).eq("ativo", true).maybeSingle(),
+    supabase.from("usuarios_organizacoes")
+      .select("papel, organizacao_id, organizacoes(id, nome, logo_url, status)")
+      .eq("usuario_id", usuarioId).eq("ativo", true),
+    supabase.from("usuarios_unidades")
+      .select("papel, unidade_id, unidades(id, nome, organizacao_id, cidade, cnpj, ativo)")
+      .eq("usuario_id", usuarioId).eq("ativo", true),
+  ]);
+  if (vinculosOrgRes.error) throw ApiError.internal(vinculosOrgRes.error.message);
+  if (vinculosUniRes.error) throw ApiError.internal(vinculosUniRes.error.message);
+  return { superadmin: !!superRes.data, vinculosOrg: vinculosOrgRes.data ?? [], vinculosUni: vinculosUniRes.data ?? [] };
+}
+
+/** Busca-padrão das unidades ATIVAS de um conjunto de organizações — a base da herança Empresa -> Unidade em `listarAcessos`. */
+async function buscarUnidadesAtivasDasOrgs(organizacaoIds) {
+  const { data, error } = await supabase.from("unidades")
+    .select("id, nome, organizacao_id, cidade, cnpj")
+    .in("organizacao_id", organizacaoIds).eq("ativo", true);
+  if (error) throw ApiError.internal(error.message);
+  return data ?? [];
+}
+
+/** Busca-padrão de dados básicos de organizações (nome/logo/status) — usada quando `listarAcessos` só sabe de uma empresa por vínculo direto de unidade. */
+async function buscarInfoDasOrganizacoes(organizacaoIds) {
+  const { data, error } = await supabase.from("organizacoes")
+    .select("id, nome, logo_url, status").in("id", organizacaoIds);
+  if (error) throw ApiError.internal(error.message);
+  return data ?? [];
+}
+
+/**
+ * Acesso efetivo a UMA unidade específica (ver "REGRA DE ACESSO EFETIVO" no
+ * topo do arquivo): vínculo ATIVO direto com ela OU vínculo ATIVO com a
+ * empresa dona dela — qualquer um dos dois basta. `papelDaEmpresa` vem do
+ * chamador (que já consultou `usuarios_organizacoes` de qualquer forma, pra
+ * decidir "todas as unidades") — evita uma segunda consulta idêntica.
+ *
+ * Só valida UMA unidade por vez — de propósito mais simples/direta que
+ * `listarAcessos` (que enumera todas de uma vez para a tela inteira); as
+ * duas implementam a MESMA regra, cada uma na forma que seu chamador precisa.
+ *
+ * @param {{usuarioId: string, unidadeId: string, organizacaoId: string, papelDaEmpresa: string|null}} params
+ * @returns {Promise<{autorizado: boolean, papel: string|null, unidade: {id: string, nome: string}|null}>}
+ */
+export async function acessoEfetivoDaUnidade(
+  { usuarioId, unidadeId, organizacaoId, papelDaEmpresa },
+  deps = { buscarVinculoDireto: buscarVinculoDiretoDaUnidade, buscarUnidade: buscarUnidadePorId },
+) {
+  const vinculoUni = await deps.buscarVinculoDireto({ usuarioId, unidadeId });
+
+  const unidadeViaVinculoDireto = vinculoUni?.unidades?.organizacao_id === organizacaoId ? vinculoUni.unidades : null;
+  const autorizado = papelDaEmpresa != null || !!unidadeViaVinculoDireto;
+  if (!autorizado) return { autorizado: false, papel: null, unidade: null };
+
+  // Já temos a unidade (veio junto do vínculo direto) ou precisamos buscar
+  // (autorização só pela empresa) — nos dois casos confere ativo/dono antes
+  // de aceitar.
+  const unidade = unidadeViaVinculoDireto ?? await deps.buscarUnidade(unidadeId);
+  if (!unidade || !unidade.ativo || unidade.organizacao_id !== organizacaoId) {
+    return { autorizado: false, papel: null, unidade: null };
+  }
+
+  // Papel do vínculo DIRETO sobrepõe o da empresa quando definido (regra
+  // pré-existente, preservada — não inventada por esta correção).
+  const papel = vinculoUni?.papel ?? papelDaEmpresa ?? null;
+  return { autorizado: true, papel, unidade: { id: unidade.id, nome: unidade.nome } };
+}
+
+/** Busca-padrão do vínculo direto (usuarios_unidades) de `acessoEfetivoDaUnidade`. */
+async function buscarVinculoDiretoDaUnidade({ usuarioId, unidadeId }) {
+  const { data, error } = await supabase
+    .from("usuarios_unidades")
+    .select("papel, unidades(id, nome, organizacao_id, ativo)")
+    .eq("usuario_id", usuarioId).eq("unidade_id", unidadeId).eq("ativo", true)
+    .maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  return data;
+}
+
+/** Busca-padrão de uma unidade por id, usada por `acessoEfetivoDaUnidade` quando o único caminho de autorização é o vínculo de empresa (sem vínculo direto pra já trazer a unidade junto). */
+async function buscarUnidadePorId(unidadeId) {
+  const { data, error } = await supabase
+    .from("unidades").select("id, nome, organizacao_id, ativo").eq("id", unidadeId).maybeSingle();
+  if (error) throw ApiError.internal(error.message);
+  return data;
 }
 
 /**
@@ -130,44 +319,68 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
   const orgId = v.uuid(organizacaoId, "Empresa");
   const uniId = v.uuidOpcional(unidadeId, "Unidade");
 
-  // --- vínculo com a EMPRESA (é isto que autoriza, não o que o cliente disse)
-  const { data: vinculo, error: eVinculo } = await supabase
-    .from("usuarios_organizacoes")
-    .select("papel, organizacoes(id, nome, logo_url, status)")
-    .eq("usuario_id", usuario.id).eq("organizacao_id", orgId).eq("ativo", true)
-    .maybeSingle();
-  if (eVinculo) throw ApiError.internal(eVinculo.message);
-
-  if (!vinculo?.organizacoes) {
+  const negarAcesso = async () => {
     await auditar({
       atorId: usuario.id, atorEmail: usuario.email, acao: ACOES.LOGIN_NEGADO,
       entidade: "organizacao", entidadeId: orgId, organizacaoId: orgId, ip, userAgent,
       detalhes: { motivo: "sem_vinculo" },
     });
-    // Mesma mensagem para "empresa não existe" e "sem vínculo": responder
-    // coisas diferentes revelaria quais empresas existem na plataforma.
+    // Mesma mensagem para "empresa/unidade não existe" e "sem vínculo":
+    // responder coisas diferentes revelaria o que existe na plataforma.
     throw ApiError.forbidden("Você não tem acesso a esta empresa.");
+  };
+
+  // --- vínculo com a EMPRESA (buscado sempre — mesmo pra unidade via
+  //     vínculo direto, "empresa bloqueada" tem que valer igual)
+  const { data: vinculoOrg, error: eVinculo } = await supabase
+    .from("usuarios_organizacoes")
+    .select("papel, organizacoes(id, nome, logo_url, status)")
+    .eq("usuario_id", usuario.id).eq("organizacao_id", orgId).eq("ativo", true)
+    .maybeSingle();
+  if (eVinculo) throw ApiError.internal(eVinculo.message);
+  const papelDaEmpresa = vinculoOrg?.organizacoes ? vinculoOrg.papel : null;
+
+  let empresa;
+  let papel;
+  let unidade = null;
+
+  if (!uniId) {
+    // "Todas as unidades" é um conceito de EMPRESA — exige especificamente
+    // esse vínculo (ver REGRA DE ACESSO EFETIVO no topo do arquivo). Um
+    // vínculo só de unidade nunca autoriza o modo consolidado.
+    if (!papelDaEmpresa) return negarAcesso();
+    empresa = vinculoOrg.organizacoes;
+    papel = papelDaEmpresa;
+  } else {
+    // Acesso efetivo: vínculo de empresa OU vínculo direto com a unidade —
+    // é aqui que a herança Empresa -> Unidade passa a valer de verdade
+    // (antes, chegar até aqui já exigia vínculo de empresa ATIVO, o que
+    // quebrava o acesso de quem só tinha vínculo direto de unidade).
+    const acesso = await acessoEfetivoDaUnidade({ usuarioId: usuario.id, unidadeId: uniId, organizacaoId: orgId, papelDaEmpresa });
+    if (!acesso.autorizado) return negarAcesso();
+    unidade = acesso.unidade;
+    papel = acesso.papel;
+
+    empresa = vinculoOrg?.organizacoes ?? null;
+    if (!empresa) {
+      // Autorizado só pelo vínculo direto (sem vínculo de empresa ativo) —
+      // precisamos dos dados da empresa mesmo assim (nome/status/bloqueio).
+      const { data, error: eEmpresa } = await supabase
+        .from("organizacoes").select("id, nome, logo_url, status").eq("id", orgId).maybeSingle();
+      if (eEmpresa) throw ApiError.internal(eEmpresa.message);
+      empresa = data;
+    }
+    if (!empresa) return negarAcesso(); // defensivo: vínculo apontando pra empresa inexistente
   }
 
-  const empresa = vinculo.organizacoes;
   const bloqueio = STATUS_BLOQUEANTES[empresa.status];
   if (bloqueio) throw ApiError.forbidden(`${bloqueio} Fale com o suporte da plataforma.`);
-
-  // --- unidade (opcional): precisa de vínculo ativo E pertencer à empresa
-  let papel = vinculo.papel;
-  let unidade = null;
-  if (uniId) {
-    const { data: vu } = await supabase
-      .from("usuarios_unidades")
-      .select("papel, unidades(id, nome, organizacao_id)")
-      .eq("usuario_id", usuario.id).eq("unidade_id", uniId).eq("ativo", true)
-      .maybeSingle();
-    if (!vu?.unidades) throw ApiError.forbidden("Você não tem acesso a esta unidade.");
-    if (vu.unidades.organizacao_id !== orgId) {
-      throw ApiError.badRequest("A unidade não pertence à empresa informada.");
-    }
-    unidade = { id: vu.unidades.id, nome: vu.unidades.nome };
-    papel = vu.papel ?? vinculo.papel;
+  if (!papel) {
+    // Vínculo direto com papel nulo ("herda da empresa") sem nenhum vínculo
+    // de empresa pra herdar — configuração incompleta, não meu lugar de
+    // adivinhar uma precedência nova. Recusa com uma mensagem que aponta o
+    // problema real (não é "sem acesso", é "vínculo mal configurado").
+    throw ApiError.forbidden("Não foi possível determinar seu cargo nesta unidade — vínculo incompleto. Fale com o administrador.");
   }
 
   const permissoes = permissoesDoPapel(papel);
