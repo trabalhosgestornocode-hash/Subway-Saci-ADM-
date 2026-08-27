@@ -163,3 +163,37 @@ describe("interseccaoModulos", () => {
     assert.deepEqual(interseccaoModulos(empresa, unidade), unidade);
   });
 });
+
+// ---------------------------------------------------------------------------
+// HERANÇA INICIAL da Matriz — plataforma.empresas.service.js#criarEmpresa
+// chama provisionarModulosUnidade(matriz, moduloIds, moduloIds, ...): a
+// Matriz herda EXATAMENTE os módulos da empresa no instante da criação.
+// O que garante isso, no nível puro, é interseccaoModulos(x, x) === x.
+// (A escrita de fato em unidade_modulos é coberta pelo teste de integração
+// criar-empresa-heranca-modulos.test.js, gated por TEST_SUPABASE_*.)
+// ---------------------------------------------------------------------------
+describe("herança inicial Matriz — interseccaoModulos(moduloIds, moduloIds)", () => {
+  test("empresa com 1 módulo -> Matriz recebe o mesmo 1", () => {
+    const ids = [MODULOS.DASHBOARD];
+    assert.deepEqual(interseccaoModulos(ids, ids), ids);
+  });
+
+  test("empresa com vários módulos -> Matriz recebe os mesmos N, na mesma ordem", () => {
+    const ids = validarModulos([
+      MODULOS.DASHBOARD, MODULOS.PRODUTOS_CMV, MODULOS.INGREDIENTS,
+      MODULOS.IFOOD_DASHBOARD, MODULOS.MONTHLY_BONUS, MODULOS.PARSER_FOOD_DELIVERY,
+    ]);
+    assert.deepEqual(interseccaoModulos(ids, ids), ids);
+  });
+
+  test("empresa sem módulos -> Matriz nasce sem nenhum (nada a herdar)", () => {
+    assert.deepEqual(interseccaoModulos([], []), []);
+  });
+
+  test("não duplica: entrada já sem repetição (validarModulos) sai sem repetição", () => {
+    const ids = validarModulos([MODULOS.DASHBOARD, MODULOS.DASHBOARD, MODULOS.SALES]);
+    const herdado = interseccaoModulos(ids, ids);
+    assert.deepEqual(herdado, [MODULOS.DASHBOARD, MODULOS.SALES]);
+    assert.equal(new Set(herdado).size, herdado.length);
+  });
+});

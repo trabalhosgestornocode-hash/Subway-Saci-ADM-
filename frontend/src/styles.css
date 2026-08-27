@@ -1871,6 +1871,7 @@ body {
   grid-column: 1 / -1; font-size: 12.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--cinza);
   font-weight: 700; padding: 0 0 8px;
 }
+.adm-modulos-acoes { display: flex; gap: 8px; margin: 0 0 14px; }
 
 /* ---------- Formulários do painel ---------- */
 .adm-form-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); gap: 13px; }

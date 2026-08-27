@@ -59,9 +59,12 @@ export async function abrirAssistenteNovaUnidade(empresas = [], organizacaoIdIni
 async function carregarModulosDaEmpresa(organizacaoId) {
   const resp = await adminApi.modulosDaEmpresa(organizacaoId);
   modulosDaEmpresaSelecionada = (resp.modulos ?? []).filter((m) => m.habilitado).map((m) => m.id);
-  // Trocar de empresa não pode deixar uma seleção "fantasma" marcada — remove
-  // do estado qualquer módulo que a empresa nova não tenha.
-  for (const id of [...estado.modulos]) if (!modulosDaEmpresaSelecionada.includes(id)) estado.modulos.delete(id);
+  // "Herdar acessos da empresa" LIGADO por padrão: a unidade nova nasce com
+  // todos os módulos que a empresa tem — o SuperAdmin só desmarca o que não
+  // quiser antes de criar (mesmo espírito da Matriz, que herda automaticamente
+  // na criação da empresa). Trocar de empresa redefine para o conjunto da
+  // empresa nova, sem sobrar seleção "fantasma" da anterior.
+  estado.modulos = new Set(modulosDaEmpresaSelecionada);
 }
 
 function renderPasso() {
@@ -70,6 +73,18 @@ function renderPasso() {
   el("#adm-modal-body").innerHTML = CORPOS[passo]();
   el("#adm-modal-foot").innerHTML = rodape();
   ligarRodape();
+  ligarCorpo(passo);
+}
+
+/** Liga os controles que vivem no CORPO de um passo (o rodapé é `ligarRodape`). */
+function ligarCorpo(passo) {
+  if (passo !== "acessos") return;
+  const marcar = (ligado) => {
+    for (const c of document.querySelectorAll(".wiz-modulo")) c.checked = ligado;
+    estado.modulos = new Set(ligado ? modulosDaEmpresaSelecionada : []);
+  };
+  el("#wiz-modulos-todos")?.addEventListener("click", () => marcar(true));
+  el("#wiz-modulos-nenhum")?.addEventListener("click", () => marcar(false));
 }
 
 function rodape() {
@@ -198,9 +213,13 @@ const CORPOS = {
         </fieldset>`;
     };
     return `
-      <p class="adm-nota">Só aparecem aqui os módulos que a empresa escolhida já contratou — a unidade nunca pode
-      ter acesso a mais do que a própria empresa (item 4 do pedido). Nada aqui é definitivo — ajustável depois na
-      aba <b>Acessos</b> da unidade.</p>
+      <p class="adm-nota">A unidade <b>herda por padrão todos os módulos da empresa</b> — desmarque só o que esta
+      unidade não deve ter. Só aparecem os módulos que a empresa já contratou (a unidade nunca pode ter mais que a
+      própria empresa). Nada aqui é definitivo — ajustável depois na aba <b>Acessos</b> da unidade.</p>
+      <div class="adm-modulos-acoes">
+        <button type="button" class="btn btn-ghost btn-sm" id="wiz-modulos-todos">Herdar todos</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="wiz-modulos-nenhum">Limpar</button>
+      </div>
       ${grupo("operacao", "Operação")}
       ${grupo("integracao", "Integrações")}`;
   },

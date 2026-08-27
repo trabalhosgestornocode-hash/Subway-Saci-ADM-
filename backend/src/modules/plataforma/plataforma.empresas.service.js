@@ -9,7 +9,7 @@ import { ApiError } from "../../shared/ApiError.js";
 import { permissoesDoPapel, rotuloPapel, PAPEIS_VINCULO } from "../../shared/permissoes.js";
 import {
   CATALOGO_MODULOS, modulosDaEmpresa, validarModulos,
-  provisionarModulosEmpresa, definirModulosEmpresa, rotuloModulo,
+  provisionarModulosEmpresa, provisionarModulosUnidade, definirModulosEmpresa, rotuloModulo,
 } from "../../shared/modulos.js";
 import { auditar, ACOES } from "../../shared/auditoria.js";
 import { clonarCatalogo } from "../../shared/clonarCatalogo.js";
@@ -209,12 +209,34 @@ export async function criarEmpresa(req, body) {
   }
 
   const nomeUnidade = v.textoOpcional(body.unidadeNome, "Unidade", { max: 120 }) ?? "Matriz";
-  const { error: eUnidade } = await supabase.from("unidades")
-    .insert({ organizacao_id: empresa.id, nome: nomeUnidade, ativo: true });
-  if (eUnidade) console.error("[plataforma] empresa criada sem unidade inicial:", eUnidade.message);
+  const { data: matriz, error: eUnidade } = await supabase.from("unidades")
+    .insert({ organizacao_id: empresa.id, nome: nomeUnidade, ativo: true })
+    .select("id").single();
+  if (eUnidade || !matriz) console.error("[plataforma] empresa criada sem unidade inicial:", eUnidade?.message);
 
-  // Provisiona os módulos escolhidos no assistente.
+  // Provisiona os módulos escolhidos no assistente na EMPRESA e — HERANÇA
+  // INICIAL — na MATRIZ recém-criada, com o mesmo conjunto. É o que faz a
+  // empresa "nascer configurada": sem esta linha o SuperAdmin tinha que
+  // reabrir a Matriz e remarcar os mesmos módulos à mão.
+  //
+  // Herança INICIAL, não sincronização permanente (decisão registrada): a
+  // partir daqui cada uma segue sua própria configuração — mexer nos módulos
+  // da empresa depois NÃO reescreve a Matriz (definirModulosEmpresa nem toca
+  // unidade_modulos), e o SuperAdmin pode estreitar a Matriz sozinha.
+  //
+  // Não é transacional (o cliente supabase-js não tem transação entre
+  // chamadas — mesmo motivo documentado na migration 053). O risco é
+  // simétrico ao provisionarModulosEmpresa logo acima: se o insert de
+  // unidade_modulos falhar, o erro sobe (500) com empresa+Matriz+módulos da
+  // empresa já gravados — recuperável pela aba Acessos da Matriz, nunca um
+  // estado silencioso.
   await provisionarModulosEmpresa(empresa.id, moduloIds, req.user.id);
+  let modulosMatriz = [];
+  if (matriz && moduloIds.length) {
+    // A Matriz herda exatamente os módulos da empresa neste instante — por
+    // isso `moduloIds` entra como catálogo-da-empresa E como desejado.
+    modulosMatriz = await provisionarModulosUnidade(matriz.id, moduloIds, moduloIds, req.user.id);
+  }
 
   // Clona o catálogo do modelo (categorias/insumos/produtos/ficha técnica/
   // preços) — se um modelo foi escolhido. NÃO fatal: a empresa, a unidade e
@@ -239,7 +261,7 @@ export async function criarEmpresa(req, body) {
     organizacaoId: empresa.id,
     detalhes: {
       nome: empresa.nome, status: empresa.status, unidade: nomeUnidade,
-      modulos: moduloIds, modeloOrigemId, clone, cloneErro,
+      modulos: moduloIds, modulosMatriz, modeloOrigemId, clone, cloneErro,
     },
     ...origemDe(req),
   });
