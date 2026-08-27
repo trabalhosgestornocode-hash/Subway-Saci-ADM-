@@ -1,5 +1,5 @@
 // Testes do adapter HTTP para o worker remoto.
-// Servidor FALSO local — nenhuma chamada real ao Cloud Run nem à Martin Brower.
+// Servidor FALSO local — nenhuma chamada real ao worker nem à Martin Brower.
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -45,7 +45,6 @@ before(async () => {
 
   process.env.MB_WORKER_URL = baseUrl;
   process.env.MB_WORKER_SECRET = SEGREDO;
-  process.env.MB_WORKER_SKIP_OIDC = "true";   // fora do GCP, sem metadata server
 });
 
 after(() => servidor?.close());

@@ -1,12 +1,21 @@
 # Render Blueprint — Subway Saci
 # O backend serve a API + o frontend estático (serviço único).
-# As 3 chaves do Supabase são marcadas como "sync: false" → você as define
-# no painel do Render (nunca ficam no repositório).
+# Segredos ("sync: false") são definidos no painel do Render, nunca no repositório.
+#
+# DOIS serviços na MESMA region (obrigatório para a rede privada do Render):
+#   - subway-saci  (web)   → API + frontend
+#   - mb-worker    (pserv) → worker Playwright da integração Martin Brower
+#
+# Deploy e memória: ver docs/martin-brower-worker-render.md
 services:
+  # ---------------------------------------------------------------------------
+  # Backend — API + frontend
+  # ---------------------------------------------------------------------------
   - type: web
     name: subway-saci
     runtime: node
     plan: free
+    region: oregon        # precisa casar com a region do mb-worker
     # Sem rootDir: assim mudanças no frontend/ TAMBÉM disparam auto-deploy.
     buildCommand: cd backend && npm install
     startCommand: cd backend && npm start
@@ -22,3 +31,40 @@ services:
         value: "00000000-0000-0000-0000-000000000001"
       - key: DEFAULT_UNIDADE_ID
         value: "00000000-0000-0000-0000-0000000000a1"
+      # --- Integração Martin Brower (worker no serviço mb-worker) -------------
+      # Com MB_PLAYWRIGHT_ENABLED=false, tudo abaixo é ignorado e as rotas de
+      # sincronização respondem WORKER_DISABLED — este é o rollback (seção 13).
+      - key: MB_PLAYWRIGHT_ENABLED
+        value: "true"
+      - key: MB_WORKER_URL
+        value: "http://mb-worker:8080"   # hostname interno do Private Service
+      - key: MB_WORKER_SECRET
+        sync: false                       # MESMO valor do mb-worker
+      - key: MB_WORKER_TIMEOUT_MS
+        value: "300000"
+
+  # ---------------------------------------------------------------------------
+  # Worker Martin Brower — Chromium/Playwright, Private Service (sem URL pública)
+  # ---------------------------------------------------------------------------
+  - type: pserv
+    name: mb-worker
+    runtime: docker
+    plan: standard        # 2 GB / 1 CPU — Chromium não cabe em Starter (512 MB)
+    region: oregon        # MESMA region do subway-saci
+    numInstances: 1       # MB_MAX_SESSOES=1 — um Chromium por vez
+    autoDeploy: false     # deploy manual: correções de seletor são deliberadas
+    rootDir: worker-martinbrower
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: MB_WORKER_SECRET
+        sync: false                       # MESMO valor do subway-saci
+      - key: MB_PORTAL_URL
+        value: "https://portal.martinbrower.com.br/"
+      - key: MB_ALLOW_REAL_PORTAL
+        value: "true"                     # o worker recusa subir sem esta
+      - key: PORT
+        value: "8080"                     # casa com MB_WORKER_URL do backend
+      - key: NODE_ENV
+        value: "production"

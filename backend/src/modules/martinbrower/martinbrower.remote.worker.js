@@ -1,15 +1,15 @@
-// Adapter HTTP para o worker Playwright remoto (Cloud Run).
+// Adapter HTTP para o worker Playwright remoto (Render, Private Service).
 //
 // Implementa a interface de martinbrower.worker.contract.js — `iniciar`,
 // `informarCodigo`, `coletar`, `encerrar`. O controller, o normalizador, os
 // filtros, o sync e o repositório NÃO sabem que existe um worker remoto: para
 // eles, isto é apenas "o worker".
 //
-// DUAS CAMADAS DE AUTENTICAÇÃO
-//   1. IAM do Cloud Run — o serviço sobe com --no-allow-unauthenticated. Como
-//      o Render não roda no GCP, usamos uma service account e um ID token OIDC
-//      obtido do metadata server (ou de GOOGLE_APPLICATION_CREDENTIALS).
-//   2. HMAC — assinatura própria de cada requisição, independente da primeira.
+// AUTENTICAÇÃO SERVIDOR-SERVIDOR: HMAC SHA-256 por requisição — timestamp,
+// nonce de uso único (anti-replay), janela de 60 s e compare em tempo
+// constante, espelhado em worker-martinbrower/src/auth.middleware.js. Backend e
+// worker ficam na MESMA rede privada do Render (o worker não tem URL pública),
+// então não há IAM, OIDC nem service account — o HMAC é a barreira.
 //
 // O QUE ATRAVESSA A FRONTEIRA
 //   ida:   organizationId, unidadeId, userId, clientId, credenciais, código 2FA
@@ -29,39 +29,7 @@ const config = () => ({
   timeoutMs: Number(process.env.MB_WORKER_TIMEOUT_MS ?? MB_WORKER.timeoutPadraoMs),
 });
 
-// --- camada 1: identidade do Cloud Run ------------------------------------
-
-let tokenCache = { valor: null, expiraEm: 0 };
-
-/**
- * ID token OIDC com `audience` = URL do worker. Vem do metadata server do GCP
- * quando disponível. Fora do GCP (dev local), devolve null e seguimos só com
- * HMAC — o worker local sobe sem exigir IAM.
- */
-async function obterTokenIdentidade(audience) {
-  if (process.env.MB_WORKER_SKIP_OIDC === "true") return null;
-  if (tokenCache.valor && tokenCache.expiraEm > Date.now()) return tokenCache.valor;
-
-  try {
-    const url = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity"
-      + `?audience=${encodeURIComponent(audience)}`;
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 3000);
-    const r = await fetch(url, { headers: { "Metadata-Flavor": "Google" }, signal: ctrl.signal });
-    clearTimeout(timer);
-    if (!r.ok) return null;
-
-    const token = (await r.text()).trim();
-    // Renova com folga: o token vale ~1h.
-    tokenCache = { valor: token, expiraEm: Date.now() + 45 * 60_000 };
-    return token;
-  } catch {
-    // Sem metadata server (ex.: rodando fora do GCP). O HMAC segue valendo.
-    return null;
-  }
-}
-
-// --- camada 2: HMAC -------------------------------------------------------
+// --- HMAC ----------------------------------------------------------------
 
 // Mensagem canônica — precisa ser IDÊNTICA à do worker
 // (worker-martinbrower/src/auth.middleware.js). Alterar uma exige alterar a
@@ -95,9 +63,6 @@ async function chamar(metodo, caminho, corpoObj, { sinal } = {}) {
     "X-MB-Signature": assinatura,
   };
   if (corpo) headers["Content-Type"] = "application/json";
-
-  const tokenId = await obterTokenIdentidade(url);
-  if (tokenId) headers.Authorization = `Bearer ${tokenId}`;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -144,8 +109,9 @@ function traduzirErro(status, json) {
   const codigo = json?.error;
   if (codigo && MB_ERROS[codigo]) return mbErro(codigo);
 
-  // 401/403 aqui NÃO são do portal — são do worker recusando a NOSSA
-  // assinatura ou o IAM. Não é problema do usuário; é configuração.
+  // 401/403 aqui NÃO são do portal — são o worker recusando a NOSSA
+  // assinatura HMAC (segredo divergente ou relógio fora da janela de 60 s).
+  // Não é problema do usuário; é configuração.
   if (status === 401 || status === 403) {
     mbLog("error", "worker.autenticacao_recusada", { status });
     return mbErro(MB_ERROS.MARTIN_BROWER_WORKER_UNREACHABLE);
