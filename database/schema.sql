@@ -99,20 +99,11 @@ create table unidades (
 );
 create index idx_unidades_org on unidades(organizacao_id);
 
--- Configuração operacional por unidade (Configurações -> Metas e Limites de
--- CMV). Migration 058. Uma linha por loja; ausência de linha = defaults do
--- sistema (cmv_saudavel=32, cmv_atencao=40; metas/margem = null). Isolamento
--- por unidade_id (PK/FK); o backend filtra sempre por req.tenant.unidadeId.
-create table unidade_config (
-  unidade_id uuid primary key references unidades(id) on delete cascade,
-  cmv_saudavel  numeric(5,2),
-  cmv_atencao   numeric(5,2),
-  meta_fat_dia  numeric(14,2),
-  meta_fat_mes  numeric(14,2),
-  margem_minima numeric(5,2),
-  updated_at    timestamptz not null default now(),
-  atualizado_por uuid
-);
+-- `unidade_config` (Configurações -> Metas e Limites de CMV) NÃO fica aqui:
+-- é criada — completa, com os 6 CHECK constraints e o trigger de updated_at —
+-- pela migration 058_unidade_config.sql. Mesmo critério de `unidade_modulos`,
+-- `organizacao_modulos`, `bonificacao_metas` etc.: tabelas de migrations
+-- pós-020 não são backportadas para este schema base, para não divergir.
 
 create table perfis (
   id uuid primary key references auth.users(id) on delete cascade,
