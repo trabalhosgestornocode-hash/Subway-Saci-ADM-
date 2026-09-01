@@ -11,7 +11,11 @@
 // lá cada abertura é um conteúdo novo; aqui é a MESMA conversa persistente).
 import { montarChatAgente } from "./agenteChat.js";
 import { obterPageContextAtual } from "./agentePageContext.js";
-import { rotuloBotaoContextual } from "./agenteSugestoes.js";
+import {
+  botaoContextualHtml as construirBotaoContextual,
+  botaoDiagnosticoHtml as construirBotaoDiagnostico,
+  textoSementeDiagnostico,
+} from "./agenteBotoes.js";
 import { registrarResetDeContexto } from "./contextoEscopo.js";
 import { state } from "./state.js";
 
@@ -57,7 +61,13 @@ export function montarPainelGlobal() {
   document.addEventListener("keydown", (e) => { if (aberto && e.key === "Escape") fecharPainel(); });
 }
 
-/** @param {{sugestaoChave?: string}} [opts] — chave de TEXTO_SUGERIDO pra pré-preencher o input (nunca envia sozinho). */
+/**
+ * @param {{sugestaoChave?: string, textoSemente?: string}} [opts]
+ *   `sugestaoChave` — chave de TEXTO_SUGERIDO pra pré-preencher o input.
+ *   `textoSemente` — texto explícito (vence a chave); usado pelos cards do
+ *   Plano de Ação, cujo texto-semente varia pela classificação. Nunca envia
+ *   sozinho (mesma regra do item 9 / Etapa F).
+ */
 export function abrirPainel(opts = {}) {
   montarPainelGlobal();
   aberto = true;
@@ -65,7 +75,7 @@ export function abrirPainel(opts = {}) {
   document.body.classList.add("agente-painel-aberto");
   sincronizarContextoPainel();
 
-  const sugestao = opts.sugestaoChave ? TEXTO_SUGERIDO[opts.sugestaoChave] : null;
+  const sugestao = opts.textoSemente ?? (opts.sugestaoChave ? TEXTO_SUGERIDO[opts.sugestaoChave] : null);
   const campo = corpoEl.querySelector("[data-agente-input]");
   if (campo) {
     if (sugestao && !campo.value) campo.value = sugestao;
@@ -106,19 +116,19 @@ export function sincronizarContextoPainel() {
  * @param {string} chave
  */
 export function botaoContextualHtml(chave) {
-  return `<button type="button" class="btn btn-ghost btn-sm agente-btn-contextual" data-agente-contextual="${chave}">✦ ${rotuloBotaoContextual(chave)}</button>`;
+  return construirBotaoContextual(chave);
 }
 
 /**
- * Etapa H — botão por ponto de atenção do Plano de Ação (dashboardExecutivo.js#planoAcaoHtml).
- * Mesma mecânica de `botaoContextualHtml` (mesmo data-agente-contextual="dashboard_diagnostico",
- * mesma sugestão de texto), só carrega também QUAL ponto de atenção foi
- * clicado via `data-attention-point` — lido por `ligarBotoesContextuais`
- * antes de abrir o painel, nunca inventado no backend.
- * @param {string} attentionPoint categoria do achado (ex.: "taxas_entregadores") — ver dashboardExecutivo.diagnostico.js
+ * Etapa H — botão por ponto de atenção do Plano de Ação (dashboardExecutivoPlano.js#planoAcaoHtml).
+ * Carrega QUAL ponto de atenção foi clicado (`data-attention-point`) e, quando
+ * conhecido, a classificação do card (`data-diagnostico-tipo`), lidos por
+ * `ligarBotoesContextuais` para escolher o texto-semente. Nunca inventado no backend.
+ * @param {string} attentionPoint categoria do achado (ex.: "taxas_entregadores")
+ * @param {string} [tipo] CRITICAL | WARNING | HEALTHY | DATA_PENDING
  */
-export function botaoDiagnosticoHtml(attentionPoint) {
-  return `<button type="button" class="btn btn-ghost btn-sm agente-btn-contextual" data-agente-contextual="dashboard_diagnostico" data-attention-point="${attentionPoint}">✦ ${rotuloBotaoContextual("dashboard_diagnostico")}</button>`;
+export function botaoDiagnosticoHtml(attentionPoint, tipo) {
+  return construirBotaoDiagnostico(attentionPoint, tipo);
 }
 
 /** Liga o(s) botão(ões) contextual(is) já renderizado(s) dentro de `root` (ou do documento, se omitido). */
@@ -132,7 +142,14 @@ export function ligarBotoesContextuais(root = document) {
       // Etapa H — grava a INTENÇÃO no espelho de estado (state.js#detalheAberto)
       // antes de abrir, pra obterPageContextAtual() já ler o ponto certo.
       if (btn.dataset.attentionPoint) state.detalheAberto.attentionPoint = btn.dataset.attentionPoint;
-      abrirPainel({ sugestaoChave: btn.dataset.agenteContextual });
+      // Reformulação do Plano de Ação — a classificação do card decide o
+      // texto-semente (nunca "por que está ruim?" num indicador saudável).
+      const tipo = btn.dataset.diagnosticoTipo || null;
+      state.detalheAberto.attentionTipo = tipo;
+      abrirPainel({
+        sugestaoChave: btn.dataset.agenteContextual,
+        textoSemente: tipo ? textoSementeDiagnostico(tipo) : undefined,
+      });
     });
   });
 }

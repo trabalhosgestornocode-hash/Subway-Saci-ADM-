@@ -1,5 +1,5 @@
 // Motor central de diagnóstico do Dashboard iFood — "Diagnóstico via Crescer
-// c/ Delivery" (o que está acontecendo) + "Plano de Ação" (o que fazer).
+// c/ Delivery" (o que está acontecendo) + "Plano de Ação" (o que fazer agora).
 //
 // REGRA DE OURO: só afirma o que os dados sustentam. Nunca inventa causa
 // ("caiu porque as promoções…") — descreve o desvio e calcula o que dá pra
@@ -12,10 +12,34 @@
 // listou, e os dois nunca divergem porque são a mesma passada de dados.
 //
 // EXTENSÍVEL de propósito: cada tipo de achado é uma função `analisar*()`
-// independente que devolve `{achado, acao}` ou `null`. Novos diagnósticos
-// (CMV alto, ticket médio baixo, queda de pedidos…) entram como mais uma
-// função na lista `ANALISADORES`, sem tocar no motor central nem nos outros
-// analisadores.
+// independente que devolve `{achado, acao, manutencao}` ou `null`. Novos
+// diagnósticos entram como mais uma função na lista `ANALISADORES`, sem tocar
+// no motor central nem nos outros analisadores.
+//
+// ---------------------------------------------------------------------------
+// PLANO DE AÇÃO — CLASSIFICAÇÃO SEMÂNTICA (reformulação)
+// ---------------------------------------------------------------------------
+// O Plano deixou de ser só um detector de problemas. Cada item tem um `tipo`:
+//
+//   CRITICAL      indicador acima do LIMITE / queda forte de faturamento
+//   WARNING       indicador acima da meta ideal, ainda dentro do limite
+//   HEALTHY       indicador dentro da meta ideal — vira AÇÃO DE PRESERVAÇÃO
+//   DATA_PENDING  qualidade dos dados (dias pendentes / detalhamento ausente)
+//
+// A classificação NÃO tem regra própria: consome `statusIndicador`
+// (dashboardExecutivo.calc.js), a mesma fonte única dos cards. Quando
+// `metaIdeal == limite` (ex.: Taxas e Comissões), não existe faixa WARNING —
+// e isso é consequência natural da regra de domínio, não um caso especial.
+//
+// SEPARAÇÃO SEMÂNTICA: ações corretivas/preventivas ficam em `acoes`
+// (CRITICAL + WARNING + DATA_PENDING). Preservação de resultado saudável fica
+// em `manutencao` (HEALTHY) — estrutura própria, mais enxuta, para não
+// misturar "preciso corrigir" com "preciso preservar" nem inflar o payload
+// consumido pelo Agente Crescer.
+//
+// OPPORTUNITY: deliberadamente NÃO implementado — a meta ideal é um teto
+// operacional, não um benchmark de excelência; não há base objetiva para
+// afirmar "excepcionalmente bem" sem uma heurística escondida.
 import { statusIndicador } from "./dashboardExecutivo.calc.js";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +73,44 @@ const ROTULO_INDICADOR = {
   taxas_entregadores: "Taxas de Entregadores",
 };
 
+/** Rótulo de qualquer categoria de achado — usado pelos textos do resumo. */
+const ROTULO_ACHADO = {
+  ...ROTULO_INDICADOR,
+  total_deducoes: "Total de Deduções",
+  faturamento: "Faturamento",
+};
+
+// Orientação por indicador — sempre "o que ANALISAR/fazer", nunca uma causa
+// afirmada (respeita a REGRA DE OURO). Uma variante mais firme para CRITICAL,
+// uma mais branda para WARNING.
+const ACAO_RECOMENDADA = {
+  taxas_comissoes: {
+    CRITICAL: "Confira o extrato do iFood do período linha a linha: comissão e taxa de transação online são contratuais, então um valor acima do limite merece conferência antes de qualquer ação.",
+    WARNING: "Acompanhe a composição de Taxas e Comissões nos próximos dias e verifique se o mix de canais e formas de pagamento mudou em relação ao habitual.",
+  },
+  servicos_promocoes: {
+    CRITICAL: "Reveja todas as campanhas e promoções ativas no período e o retorno de cada uma; desative as que não se pagam antes de mexer nas demais.",
+    WARNING: "Reveja o retorno das campanhas ativas e evite acumular novas promoções enquanto o indicador estiver acima da faixa ideal.",
+  },
+  taxas_entregadores: {
+    CRITICAL: "Reveja os repasses a entregadores no período e os dias de maior volume; confirme se o modelo logístico e as taxas praticadas estão corretos no iFood.",
+    WARNING: "Acompanhe os repasses a entregadores nos dias de maior volume e confirme se as taxas seguem as praticadas no início do mês.",
+  },
+};
+const ACAO_RECOMENDADA_DEDUCOES = {
+  CRITICAL: "Abra o detalhamento das deduções (aba Indicadores) e comece pelo componente de maior participação — é onde uma redução tem mais efeito no total.",
+  WARNING: "Acompanhe os componentes das deduções pelo detalhamento (aba Indicadores) e atue cedo no que estiver crescendo.",
+};
+
+// Orientação curta de preservação (cards HEALTHY, bloco "Como manter este
+// resultado"). Linguagem de manutenção — nunca sugere que há um problema.
+const COMO_PRESERVAR = {
+  taxas_comissoes: "Acompanhe mudanças nas taxas do iFood e no mix de canais e formas de pagamento — são os fatores que mais mexem neste indicador.",
+  servicos_promocoes: "Controle quantas campanhas ficam ativas ao mesmo tempo e revise o retorno de cada uma periodicamente.",
+  taxas_entregadores: "Acompanhe os repasses a entregadores nos dias de maior volume e qualquer mudança no modelo logístico da unidade.",
+  total_deducoes: "Acompanhe a evolução de cada componente das deduções e atue cedo se algum começar a subir.",
+};
+
 // ---------------------------------------------------------------------------
 // CONFIABILIDADE DOS DADOS — quão bem sustentado está o diagnóstico do mês.
 // Regras objetivas e centralizadas (ver LIMIARES_DIAGNOSTICO acima); nada de
@@ -74,103 +136,210 @@ export function confiabilidadeDados({ diasComDados, diasPendentes, diasEstimados
 }
 
 // ---------------------------------------------------------------------------
-// ANALISADORES — cada um cuida de UM tipo de achado.
+// ANALISADORES — cada um cuida de UM tipo de achado. Devolvem sempre um objeto
+// { achado, acao, manutencao } (qualquer campo pode ser null) ou null.
 // ---------------------------------------------------------------------------
 
-/** Taxas e Comissões / Serviços e Promoções — meta ideal x limite, em % e R$. */
+/**
+ * Taxas e Comissões / Serviços e Promoções / Taxas de Entregadores —
+ * meta ideal x limite, em % e R$. Dentro da meta -> item de MANUTENÇÃO
+ * (HEALTHY); acima -> ação corretiva (WARNING/CRITICAL).
+ */
 function analisarIndicadorPercentual(chave, dado, faturamentoBase) {
   if (!dado || dado.naoAplicavel || dado.atual == null || !dado.meta) return null;
   const rotulo = ROTULO_INDICADOR[chave];
+  const metaIdeal = dado.meta.metaIdeal;
+  const limite = dado.meta.limite;
   const st = statusIndicador(dado.atual, dado.meta);
 
+  // -- HEALTHY: dentro da meta ideal ---------------------------------------
   if (st.chave === "dentro_da_meta") {
+    const margemPp = metaIdeal - dado.atual;
     return {
       achado: {
         id: `${chave}_dentro_da_meta`, categoria: chave, severidade: "forte",
         titulo: `${rotulo} dentro da meta ideal`,
-        descricao: `${rotulo} está em ${fmtPct1(dado.atual)}, dentro da meta ideal de ${fmtPct1(dado.meta.metaIdeal)}.`,
-        metricas: { percentualAtual: dado.atual, percentualIdeal: dado.meta.metaIdeal, percentualLimite: dado.meta.limite, valorAtual: dado.valor },
+        descricao: `${rotulo} está em ${fmtPct1(dado.atual)}, dentro da meta ideal de ${fmtPct1(metaIdeal)}.`,
+        metricas: { percentualAtual: dado.atual, percentualIdeal: metaIdeal, percentualLimite: limite, valorAtual: dado.valor },
       },
       acao: null,
+      manutencao: {
+        diagnosticoId: `${chave}_dentro_da_meta`,
+        tipo: "HEALTHY",
+        categoria: chave,
+        titulo: `Manter ${rotulo} sob controle`,
+        situacao: `${fmtPct1(dado.atual)} do faturamento`,
+        status: "Dentro da meta",
+        meta: { ideal: metaIdeal, limite },
+        // Margem abaixo do teto — só quando é uma folga real (> 0).
+        diferenca: margemPp > 0.05 ? { pp: margemPp } : null,
+        explicacao: `O indicador está em ${fmtPct1(dado.atual)}, dentro da faixa saudável (meta ideal ${fmtPct1(metaIdeal)}), e atualmente não exige correção.`,
+        comoPreservar: COMO_PRESERVAR[chave],
+        objetivo: { proximo: null, ideal: `permanecer ≤ ${fmtPct1(metaIdeal)}` },
+        cta: { label: `Analisar ${rotulo}`, aba: "indicadores" },
+      },
     };
   }
 
-  const valorIdeal = faturamentoBase != null ? (faturamentoBase * dado.meta.metaIdeal) / 100 : null;
-  const excesso = valorIdeal != null && dado.valor != null ? dado.valor - valorIdeal : null;
+  // -- WARNING / CRITICAL: acima da meta ----------------------------------
+  const tipo = st.chave === "atencao" ? "WARNING" : "CRITICAL";
+  const severidade = tipo === "WARNING" ? "atencao" : "alerta";
+  const valorIdeal = faturamentoBase != null ? (faturamentoBase * metaIdeal) / 100 : null;
+  const excessoSobreIdeal = valorIdeal != null && dado.valor != null ? dado.valor - valorIdeal : null;
   const limiteReais = dado.saldo?.limiteReais ?? null;
+  const excessoSobreLimite = limiteReais != null && dado.valor != null ? dado.valor - limiteReais : null;
   const margemReais = dado.saldo?.disponivelReais ?? null;
   const margemPp = dado.saldo?.disponivelPp ?? null;
-  const severidade = st.chave === "atencao" ? "atencao" : "alerta";
-  const titulo = severidade === "atencao" ? `${rotulo} acima da meta ideal` : `${rotulo} acima do limite máximo`;
 
-  let descricaoAcao;
-  if (severidade === "atencao") {
-    descricaoAcao = excesso != null
-      ? `Para retornar à meta ideal de ${fmtPct1(dado.meta.metaIdeal)} considerando o faturamento registrado até agora, seria necessário reduzir aproximadamente ${fmtR(excesso)} em ${rotulo}.`
-      : `${rotulo} está acima da meta ideal (${fmtPct1(dado.atual)} > ${fmtPct1(dado.meta.metaIdeal)}), ainda dentro do limite de ${fmtPct1(dado.meta.limite)}.`;
-    if (margemReais != null && margemReais > 0) {
-      descricaoAcao += ` Ainda existe margem até o limite máximo (${fmtPp1(margemPp)} · ${fmtR(margemReais)}), mas como a unidade já está acima da meta ideal, não é recomendável ampliar os gastos sem avaliar o retorno das campanhas existentes.`;
+  const titulo = tipo === "WARNING" ? `${rotulo} acima da faixa ideal` : `${rotulo} acima do limite`;
+
+  let explicacao;
+  let impacto = null;
+  let objetivo;
+  if (tipo === "WARNING") {
+    explicacao = `${rotulo} está em ${fmtPct1(dado.atual)} do faturamento — acima da meta ideal de ${fmtPct1(metaIdeal)}, mas ainda dentro do limite de ${fmtPct1(limite)}.`;
+    if (excessoSobreIdeal != null) {
+      impacto = `Para voltar à meta ideal de ${fmtPct1(metaIdeal)} considerando o faturamento registrado até agora, seria necessário reduzir aproximadamente ${fmtR(excessoSobreIdeal)} em ${rotulo}.`;
     }
+    if (margemReais != null && margemReais > 0) {
+      explicacao += ` Ainda há margem até o limite (${fmtPp1(margemPp)} · ${fmtR(margemReais)}), mas como já está acima da faixa ideal não é recomendável ampliar os gastos sem avaliar o retorno.`;
+    }
+    objetivo = { proximo: `≤ ${fmtPct1(metaIdeal)}`, ideal: null };
   } else {
-    const excessoSobreLimite = limiteReais != null && dado.valor != null ? dado.valor - limiteReais : null;
-    descricaoAcao = `${rotulo} ultrapassou o limite máximo de ${fmtPct1(dado.meta.limite)}.`;
-    if (excessoSobreLimite != null) descricaoAcao += ` Para voltar ao limite, reduza aproximadamente ${fmtR(excessoSobreLimite)}`;
-    if (excesso != null) descricaoAcao += `${excessoSobreLimite != null ? "; para voltar à meta ideal" : "Para voltar à meta ideal"}, aproximadamente ${fmtR(excesso)}.`;
+    explicacao = `${rotulo} está em ${fmtPct1(dado.atual)} do faturamento e ultrapassou o limite máximo de ${fmtPct1(limite)} (meta ideal ${fmtPct1(metaIdeal)}).`;
+    if (excessoSobreLimite != null) {
+      impacto = `Para retornar ao limite de ${fmtPct1(limite)}, é necessário reduzir aproximadamente ${fmtR(excessoSobreLimite)} em ${rotulo} no período`;
+      impacto += excessoSobreIdeal != null ? `; para retornar à meta ideal, aproximadamente ${fmtR(excessoSobreIdeal)}.` : ".";
+    } else if (excessoSobreIdeal != null) {
+      impacto = `Para retornar à meta ideal de ${fmtPct1(metaIdeal)}, seria necessário reduzir aproximadamente ${fmtR(excessoSobreIdeal)} em ${rotulo}.`;
+    }
+    objetivo = { proximo: `≤ ${fmtPct1(limite)}`, ideal: metaIdeal < limite ? `aproximar de ${fmtPct1(metaIdeal)}` : null };
   }
+
+  // `descricao` da ação: preservada com o mesmo espírito da versão anterior
+  // (compatibilidade com o Agente Crescer, que a lê via consultar_diagnostico).
+  const descricao = [explicacao, impacto].filter(Boolean).join(" ");
 
   return {
     achado: {
       id: `${chave}_${st.chave}`, categoria: chave, severidade, titulo,
-      descricao: `${rotulo} está em ${fmtPct1(dado.atual)} — meta ideal ${fmtPct1(dado.meta.metaIdeal)}, limite ${fmtPct1(dado.meta.limite)}.`,
+      descricao: `${rotulo} está em ${fmtPct1(dado.atual)} — meta ideal ${fmtPct1(metaIdeal)}, limite ${fmtPct1(limite)}.`,
       metricas: {
-        percentualAtual: dado.atual, percentualIdeal: dado.meta.metaIdeal, percentualLimite: dado.meta.limite,
-        valorAtual: dado.valor, valorIdeal, excesso, limiteReais, margemAteLimiteReais: margemReais, margemAteLimitePp: margemPp,
+        percentualAtual: dado.atual, percentualIdeal: metaIdeal, percentualLimite: limite,
+        valorAtual: dado.valor, valorIdeal, excesso: excessoSobreIdeal, limiteReais,
+        excessoSobreLimite, margemAteLimiteReais: margemReais, margemAteLimitePp: margemPp,
       },
     },
     acao: {
-      diagnosticoId: `${chave}_${st.chave}`, titulo,
-      descricao: descricaoAcao,
+      diagnosticoId: `${chave}_${st.chave}`,
+      tipo,
+      categoria: chave,
+      titulo,
+      situacao: `${fmtPct1(dado.atual)} do faturamento`,
+      meta: { ideal: metaIdeal, limite },
+      diferenca: {
+        pp: dado.atual - metaIdeal,
+        reais: tipo === "WARNING" ? excessoSobreIdeal : (excessoSobreLimite ?? excessoSobreIdeal),
+      },
+      impacto,
+      explicacao,
+      acaoRecomendada: ACAO_RECOMENDADA[chave]?.[tipo] ?? null,
+      objetivo,
+      descricao,
       cta: { label: `Analisar ${rotulo}`, aba: "indicadores" },
+      ordenacao: {
+        temImpacto: (tipo === "WARNING" ? excessoSobreIdeal : excessoSobreLimite) != null,
+        excessoReais: tipo === "WARNING" ? excessoSobreIdeal : (excessoSobreLimite ?? null),
+        distanciaLimitePp: dado.atual - limite,
+      },
     },
+    manutencao: null,
   };
 }
 
 /** Total de Deduções — meta ideal x limite + qual componente mais contribui (sem inferir causa). */
 function analisarTotalDeducoes(dado, componentes, faturamentoBase) {
   if (!dado || dado.atual == null || !dado.meta) return null;
+  const metaIdeal = dado.meta.metaIdeal;
+  const limite = dado.meta.limite;
   const st = statusIndicador(dado.atual, dado.meta);
 
   if (st.chave === "dentro_da_meta") {
+    const margemPp = metaIdeal - dado.atual;
     return {
       achado: {
         id: "total_deducoes_dentro_da_meta", categoria: "total_deducoes", severidade: "forte",
         titulo: "Total de Deduções dentro da meta ideal",
-        descricao: `Total de deduções em ${fmtPct1(dado.atual)}, dentro da meta ideal de ${fmtPct1(dado.meta.metaIdeal)}.`,
-        metricas: { percentualAtual: dado.atual, percentualIdeal: dado.meta.metaIdeal, percentualLimite: dado.meta.limite },
+        descricao: `Total de deduções em ${fmtPct1(dado.atual)}, dentro da meta ideal de ${fmtPct1(metaIdeal)}.`,
+        metricas: { percentualAtual: dado.atual, percentualIdeal: metaIdeal, percentualLimite: limite },
       },
       acao: null,
+      manutencao: {
+        diagnosticoId: "total_deducoes_dentro_da_meta",
+        tipo: "HEALTHY",
+        categoria: "total_deducoes",
+        titulo: "Manter o total de deduções sob controle",
+        situacao: `${fmtPct1(dado.atual)} do faturamento`,
+        status: "Dentro da meta",
+        meta: { ideal: metaIdeal, limite },
+        diferenca: margemPp > 0.05 ? { pp: margemPp } : null,
+        explicacao: `O total de deduções está em ${fmtPct1(dado.atual)}, dentro da faixa saudável (meta ideal ${fmtPct1(metaIdeal)}), e atualmente não exige correção.`,
+        comoPreservar: COMO_PRESERVAR.total_deducoes,
+        objetivo: { proximo: null, ideal: `permanecer ≤ ${fmtPct1(metaIdeal)}` },
+        cta: { label: "Ver Indicadores", aba: "indicadores" },
+      },
     };
   }
 
   const conhecidos = componentes.filter((c) => c.percentual != null).sort((a, b) => b.percentual - a.percentual);
   const maior = conhecidos[0] ?? null;
   const composicaoTexto = maior ? ` O componente com maior participação é ${maior.rotulo} (${fmtPct1(maior.percentual)} do faturamento) — não significa necessariamente a causa da variação, só onde está a maior parcela.` : "";
-  const severidade = st.chave === "atencao" ? "atencao" : "alerta";
-  const excesso = faturamentoBase != null && dado.valor != null ? dado.valor - (faturamentoBase * dado.meta.metaIdeal) / 100 : null;
-  const titulo = severidade === "atencao" ? "Total de Deduções acima da meta ideal" : "Total de Deduções acima do limite máximo";
+  const tipo = st.chave === "atencao" ? "WARNING" : "CRITICAL";
+  const severidade = tipo === "WARNING" ? "atencao" : "alerta";
+  const excesso = faturamentoBase != null && dado.valor != null ? dado.valor - (faturamentoBase * metaIdeal) / 100 : null;
+  const limiteReais = faturamentoBase != null ? (faturamentoBase * limite) / 100 : null;
+  const excessoSobreLimite = limiteReais != null && dado.valor != null ? dado.valor - limiteReais : null;
+  const titulo = tipo === "WARNING" ? "Total de Deduções acima da faixa ideal" : "Total de Deduções acima do limite";
+
+  const explicacao = tipo === "WARNING"
+    ? `O total de deduções está em ${fmtPct1(dado.atual)} do faturamento — acima da meta ideal de ${fmtPct1(metaIdeal)}, mas ainda dentro do limite de ${fmtPct1(limite)}.${composicaoTexto}`
+    : `O total de deduções está em ${fmtPct1(dado.atual)} do faturamento e ultrapassou o limite máximo de ${fmtPct1(limite)}.${composicaoTexto}`;
+  const impacto = tipo === "CRITICAL" && excessoSobreLimite != null
+    ? `Para retornar ao limite de ${fmtPct1(limite)}, é necessário reduzir aproximadamente ${fmtR(excessoSobreLimite)} no total de deduções.`
+    : excesso != null
+      ? `Para retornar à meta ideal de ${fmtPct1(metaIdeal)}, é necessário reduzir aproximadamente ${fmtR(excesso)} no total de deduções.`
+      : null;
+  const objetivo = tipo === "WARNING"
+    ? { proximo: `≤ ${fmtPct1(metaIdeal)}`, ideal: null }
+    : { proximo: `≤ ${fmtPct1(limite)}`, ideal: metaIdeal < limite ? `aproximar de ${fmtPct1(metaIdeal)}` : null };
 
   return {
     achado: {
       id: `total_deducoes_${st.chave}`, categoria: "total_deducoes", severidade, titulo,
-      descricao: `Total de deduções em ${fmtPct1(dado.atual)} — meta ideal ${fmtPct1(dado.meta.metaIdeal)}, limite ${fmtPct1(dado.meta.limite)}.${composicaoTexto}`,
-      metricas: { percentualAtual: dado.atual, percentualIdeal: dado.meta.metaIdeal, percentualLimite: dado.meta.limite, excesso, composicao: conhecidos },
+      descricao: `Total de deduções em ${fmtPct1(dado.atual)} — meta ideal ${fmtPct1(metaIdeal)}, limite ${fmtPct1(limite)}.${composicaoTexto}`,
+      metricas: { percentualAtual: dado.atual, percentualIdeal: metaIdeal, percentualLimite: limite, excesso, excessoSobreLimite, composicao: conhecidos },
     },
     acao: {
       diagnosticoId: `total_deducoes_${st.chave}`,
-      titulo: "Revisar a composição das deduções",
-      descricao: (excesso != null ? `Para retornar à meta ideal, é necessário reduzir aproximadamente ${fmtR(excesso)} no total de deduções.` : "Total de deduções acima do esperado.") + composicaoTexto,
+      tipo,
+      categoria: "total_deducoes",
+      titulo: tipo === "WARNING" ? "Revisar a composição das deduções" : "Reduzir o total de deduções",
+      situacao: `${fmtPct1(dado.atual)} do faturamento`,
+      meta: { ideal: metaIdeal, limite },
+      diferenca: { pp: dado.atual - metaIdeal, reais: tipo === "CRITICAL" ? (excessoSobreLimite ?? excesso) : excesso },
+      impacto,
+      explicacao,
+      acaoRecomendada: ACAO_RECOMENDADA_DEDUCOES[tipo],
+      objetivo,
+      descricao: (impacto ?? "Total de deduções acima do esperado.") + composicaoTexto,
       cta: { label: "Ver Indicadores", aba: "indicadores" },
+      ordenacao: {
+        temImpacto: (tipo === "CRITICAL" ? excessoSobreLimite : excesso) != null,
+        excessoReais: tipo === "CRITICAL" ? (excessoSobreLimite ?? null) : (excesso ?? null),
+        distanciaLimitePp: dado.atual - limite,
+      },
     },
+    manutencao: null,
   };
 }
 
@@ -179,6 +348,10 @@ function analisarTotalDeducoes(dado, componentes, faturamentoBase) {
  * recuperação. `comparativo` já vem pronto do service (mesmo período quando
  * o mês está em andamento, mês fechado x mês fechado quando não está — ver
  * dashboardExecutivo.service.js#calcularComparativoFaturamento).
+ *
+ * Crescimento -> ponto forte (sem ação nem manutenção: não há meta/limite de
+ * faturamento, o conceito HEALTHY do Plano é ancorado em meta). Queda -> ação
+ * corretiva (CRITICAL/WARNING) com o plano de recuperação como detalhe.
  */
 function analisarFaturamento(comparativo, recuperacao) {
   if (!comparativo || comparativo.tipo === "indisponivel" || comparativo.pct == null) return null;
@@ -195,15 +368,18 @@ function analisarFaturamento(comparativo, recuperacao) {
         metricas: { ...comparativo },
       },
       acao: null,
+      manutencao: null,
     };
   }
   if (comparativo.pct > L.quedaAtencaoPct) return null; // queda pequena — não vira achado
 
-  const severidade = comparativo.pct <= L.quedaAlertaPct ? "alerta" : "atencao";
+  const tipo = comparativo.pct <= L.quedaAlertaPct ? "CRITICAL" : "WARNING";
+  const severidade = tipo === "CRITICAL" ? "alerta" : "atencao";
+  const explicacao = `Faturamento caiu ${fmtPct1(Math.abs(comparativo.pct))} ${rotuloRecorte}, comparado ao mesmo recorte do mês anterior (${fmtR(comparativo.anterior)} → ${fmtR(comparativo.atual)}, diferença de ${fmtR(comparativo.diferenca)}).${notaEstimativa} Dados insuficientes para determinar a causa com segurança — este diagnóstico aponta o desvio, não o motivo.`;
   const achado = {
     id: "faturamento_caiu", categoria: "faturamento", severidade,
     titulo: "Faturamento em queda",
-    descricao: `Faturamento caiu ${fmtPct1(Math.abs(comparativo.pct))} ${rotuloRecorte}, comparado ao mesmo recorte do mês anterior (${fmtR(comparativo.anterior)} → ${fmtR(comparativo.atual)}, diferença de ${fmtR(comparativo.diferenca)}).${notaEstimativa} Dados insuficientes para determinar a causa com segurança — este diagnóstico aponta o desvio, não o motivo.`,
+    descricao: explicacao,
     metricas: { ...comparativo },
   };
 
@@ -216,16 +392,34 @@ function analisarFaturamento(comparativo, recuperacao) {
         : `Para atingir o faturamento de referência de ${fmtR(recuperacao.referencia)} até o final do mês, a unidade precisa elevar sua média diária de aproximadamente ${fmtR(recuperacao.mediaAtual ?? 0)} para ${fmtR(recuperacao.mediaNecessaria)} nos próximos ${recuperacao.diasRestantes} dia(s) — faltam ${fmtR(recuperacao.faltante)}.`;
     acao = {
       diagnosticoId: "faturamento_caiu",
+      tipo,
+      categoria: "faturamento",
       titulo: recuperacao.diasRestantes <= 0 ? "Mês encerrado — ver fechamento" : (recuperacao.poucoProvavel ? "Cenários para o restante do mês" : "Plano de recuperação do faturamento"),
+      situacao: `${fmtPct1(Math.abs(comparativo.pct))} abaixo do mês anterior (${rotuloRecorte})`,
+      meta: null,
+      diferenca: { pp: null, reais: comparativo.diferenca },
+      impacto: recuperacao.faltante != null ? `Faltam ${fmtR(recuperacao.faltante)} para o faturamento de referência de ${fmtR(recuperacao.referencia)}.` : null,
+      explicacao,
+      acaoRecomendada: recuperacao.diasRestantes <= 0
+        ? "O período está encerrado — use o fechamento para planejar o próximo mês."
+        : recuperacao.poucoProvavel
+          ? "Avalie os cenários de faturamento para o restante do mês e defina uma meta realista de média diária."
+          : "Siga o plano de recuperação: eleve a média diária para o valor indicado no restante do mês.",
+      objetivo: { proximo: null, ideal: `atingir ${fmtR(recuperacao.referencia)}` },
       descricao,
       cta: { label: "Ver plano de recuperação", expandir: "recuperacao" },
       detalhe: recuperacao,
+      ordenacao: {
+        temImpacto: recuperacao.faltante != null,
+        excessoReais: recuperacao.faltante ?? null,
+        distanciaLimitePp: null,
+      },
     };
   }
-  return { achado, acao };
+  return { achado, acao, manutencao: null };
 }
 
-/** Dias sem lançamento — sempre acionável, aponta exatamente quais dias. */
+/** Dias sem lançamento — sempre acionável, aponta exatamente quais dias. DATA_PENDING. */
 function analisarDiasPendentes(diasPendentes, datas) {
   if (!diasPendentes) return null;
   const L = LIMIARES_DIAGNOSTICO;
@@ -233,55 +427,153 @@ function analisarDiasPendentes(diasPendentes, datas) {
   const amostra = datas.slice(0, L.diasParaAmostraPendentes).map(fmtDataBrCurta).join(", ");
   const resto = datas.length > L.diasParaAmostraPendentes ? ` e +${datas.length - L.diasParaAmostraPendentes} dia(s)` : "";
   const plural = diasPendentes > 1 ? "s" : "";
+  const explicacao = `Existem ${diasPendentes} dia${plural} sem lançamento neste mês (${amostra}${resto}). Enquanto existirem lançamentos pendentes, faturamento, médias, projeções e comparações deste mês podem estar subestimados.`;
   return {
     achado: {
       id: "dias_pendentes", categoria: "dados", severidade,
       titulo: `${diasPendentes} lançamento${plural} pendente${plural}`,
-      descricao: `Existem ${diasPendentes} dia${plural} sem lançamento neste mês (${amostra}${resto}). Enquanto existirem lançamentos pendentes, faturamento, médias, projeções e comparações deste mês podem estar subestimados.`,
+      descricao: explicacao,
       metricas: { diasPendentes, datas },
     },
     acao: {
       diagnosticoId: "dias_pendentes",
+      tipo: "DATA_PENDING",
+      categoria: "dados",
       titulo: `Regularizar ${diasPendentes} dia${plural}`,
+      situacao: `${diasPendentes} dia${plural} sem lançamento no período`,
+      meta: null,
+      diferenca: null,
+      impacto: null, // pendência de dado não é impacto financeiro operacional (ver item 10 do pedido)
+      explicacao,
+      acaoRecomendada: `Lance os dias pendentes (${amostra}${resto}) para estabilizar médias, projeções e comparações do mês.`,
+      objetivo: { proximo: "regularizar os lançamentos pendentes", ideal: null },
       descricao: `Os seguintes dias ainda não possuem lançamento: ${amostra}${resto}.`,
       cta: { label: `Regularizar ${diasPendentes} dia${plural}`, aba: "lancamentos" },
+      ordenacao: { temImpacto: false, excessoReais: null, distanciaLimitePp: null },
     },
+    manutencao: null,
   };
 }
 
-/** Detalhamento financeiro (taxas/serviços/deduções) totalmente ausente no mês — ex.: mês só com lançamento mensal. */
+/** Detalhamento financeiro (taxas/serviços/deduções) totalmente ausente no mês — ex.: mês só com lançamento mensal. DATA_PENDING. */
 function analisarDetalhamentoAusente(indicadores) {
   const chaves = ["taxas_comissoes", "servicos_promocoes", "total_deducoes"];
   const relevantes = chaves.filter((c) => !indicadores[c]?.naoAplicavel);
   if (!relevantes.length || !relevantes.every((c) => indicadores[c]?.atual == null)) return null;
+  const explicacao = "Taxas e Comissões, Serviços e Promoções e Total de Deduções — dados insuficientes para avaliação neste mês.";
   return {
     achado: {
       id: "detalhamento_financeiro_ausente", categoria: "dados", severidade: "atencao",
       titulo: "Detalhamento financeiro ainda não disponível",
-      descricao: "Taxas e Comissões, Serviços e Promoções e Total de Deduções — dados insuficientes para avaliação neste mês.",
+      descricao: explicacao,
       metricas: {},
     },
     acao: {
       diagnosticoId: "detalhamento_financeiro_ausente",
+      tipo: "DATA_PENDING",
+      categoria: "dados",
       titulo: "Completar dados financeiros",
+      situacao: "Detalhamento de taxas, serviços e deduções ainda não informado",
+      meta: null,
+      diferenca: null,
+      impacto: null,
+      explicacao,
+      acaoRecomendada: "Complete os dados financeiros dos lançamentos para habilitar a análise dos indicadores de rentabilidade.",
+      objetivo: { proximo: "informar o detalhamento financeiro do mês", ideal: null },
       descricao: "Complete os dados financeiros dos lançamentos para habilitar esta análise.",
       cta: { label: "Ir para Lançamentos", aba: "lancamentos" },
+      ordenacao: { temImpacto: false, excessoReais: null, distanciaLimitePp: null },
     },
+    manutencao: null,
   };
 }
 
 // ---------------------------------------------------------------------------
 // PRIORIDADE DO PLANO DE AÇÃO — única regra de ordenação, nunca duplicada.
-//   1. Alertas críticos (financeiro acima do limite / queda forte)
-//   2. Pontos de atenção financeiros
-//   3. Problemas de qualidade dos dados (pendências, detalhamento ausente)
-//   4. Demais (reservado para oportunidades de melhoria futuras)
+//   1. CRITICAL  (financeiro acima do limite / queda forte)
+//   2. WARNING   (financeiro acima da meta ideal)
+//   3. DATA_PENDING (pendências que comprometem a confiabilidade)
+//   4. (reservado)
+// HEALTHY não entra em `acoes` — vai para `manutencao`, com estrutura própria.
+// Desempate DENTRO de um mesmo nível (só com dados que já existem):
+//   a) tem impacto financeiro conhecido antes de não tem;
+//   b) maior excesso financeiro em R$;
+//   c) maior `atual - limite` (mais acima / mais perto de estourar o limite);
+//   d) ordem estável dos analisadores (Array.sort é estável no Node).
 // ---------------------------------------------------------------------------
 function prioridadeDe(achado) {
   if (achado.categoria === "dados") return 3;
   if (achado.severidade === "alerta") return 1;
   if (achado.severidade === "atencao") return 2;
   return 4;
+}
+
+function ordenarAcoes(acoes) {
+  return acoes.sort((a, b) =>
+    a.prioridade - b.prioridade
+    || Number(b.ordenacao?.temImpacto) - Number(a.ordenacao?.temImpacto)
+    || (b.ordenacao?.excessoReais ?? -Infinity) - (a.ordenacao?.excessoReais ?? -Infinity)
+    || (b.ordenacao?.distanciaLimitePp ?? -Infinity) - (a.ordenacao?.distanciaLimitePp ?? -Infinity));
+}
+
+// ---------------------------------------------------------------------------
+// RESUMO OPERACIONAL — determinístico, montado por template a partir dos
+// achados. NUNCA usa IA. NUNCA afirma "operação excelente" com confiabilidade
+// baixa (ver item 13 do pedido).
+// ---------------------------------------------------------------------------
+function rotulosDe(achados) {
+  return achados.filter((a) => a.categoria !== "dados").map((a) => ROTULO_ACHADO[a.categoria] ?? a.categoria);
+}
+const listar = (arr) => (arr.length ? ` (${arr.join(", ")})` : "");
+
+function montarResumo({ alertas, pontosAtencao, manutencao, confiabilidade }) {
+  const listaCriticos = rotulosDe(alertas);
+  const listaAtencao = rotulosDe(pontosAtencao);
+  const listaSaudaveis = manutencao.map((m) => ROTULO_ACHADO[m.categoria] ?? m.categoria);
+  const dadosPendentes = [...alertas, ...pontosAtencao].filter((a) => a.categoria === "dados").length;
+
+  const criticos = listaCriticos.length;
+  const atencoes = listaAtencao.length;
+  const saudaveis = listaSaudaveis.length;
+  const contadores = { criticos, atencoes, saudaveis, dadosPendentes };
+
+  const confFraca = confiabilidade.nivel === "baixa" || confiabilidade.nivel === "indisponivel";
+  const notaPendencias = dadosPendentes > 0
+    ? ` Há ${dadosPendentes} pendência(s) de dados que podem alterar médias, projeções e comparações do mês.`
+    : "";
+
+  let estado, manchete, texto;
+  if (criticos > 0) {
+    estado = "CRITICO";
+    manchete = "Operação com pontos críticos";
+    texto = `${criticos} indicador(es) ultrapassou(aram) o limite${listar(listaCriticos)}.`;
+    if (atencoes > 0) texto += ` Outro(s) ${atencoes} está(ão) acima da faixa ideal${listar(listaAtencao)}.`;
+    texto += saudaveis > 0
+      ? ` A prioridade é atuar nesses pontos sem comprometer o que já está sob controle${listar(listaSaudaveis)}.`
+      : " A prioridade é atuar nesses pontos.";
+    texto += notaPendencias;
+  } else if (atencoes > 0) {
+    estado = "ATENCAO";
+    manchete = "Operação requer atenção";
+    texto = `Nenhum indicador crítico no período. ${atencoes} indicador(es) saiu(íram) da faixa ideal${listar(listaAtencao)}, mas segue(m) dentro do limite.`;
+    texto += saudaveis > 0
+      ? ` O foco é evitar que avancem para o limite e preservar o que está saudável${listar(listaSaudaveis)}.`
+      : " O foco é evitar que avancem para o limite.";
+    texto += notaPendencias;
+  } else if (saudaveis > 0 && !confFraca) {
+    estado = "SAUDAVEL";
+    manchete = "Operação saudável";
+    texto = `Nenhum indicador crítico ou de atenção foi identificado com os dados disponíveis. O foco neste momento é preservar os resultados atuais${listar(listaSaudaveis)}.`;
+    texto += notaPendencias;
+  } else {
+    estado = "DADOS_INSUFICIENTES";
+    manchete = "Leitura ainda não conclusiva";
+    texto = saudaveis > 0
+      ? `Os indicadores disponíveis estão dentro dos parâmetros, mas há limitações nos dados do período (${confiabilidade.motivo}) que podem alterar a leitura quando forem regularizados.`
+      : `Ainda não há dados suficientes neste mês para uma leitura conclusiva do Plano de Ação.`;
+  }
+
+  return { estado, manchete, contadores, texto };
 }
 
 // ---------------------------------------------------------------------------
@@ -305,9 +597,15 @@ export function gerarDiagnostico(input) {
 
   if (!diasComDados) {
     return {
-      pontosFortes: [], pontosAtencao: [], alertas: [], acoes: [],
+      pontosFortes: [], pontosAtencao: [], alertas: [], acoes: [], manutencao: [],
       semDadosSuficientes: true,
       confiabilidade: confiabilidadeDados({ diasComDados: 0, diasPendentes, diasEstimados }),
+      resumo: {
+        estado: "DADOS_INSUFICIENTES",
+        manchete: "Ainda sem dados neste mês",
+        contadores: { criticos: 0, atencoes: 0, saudaveis: 0, dadosPendentes: 0 },
+        texto: "Ainda não há lançamentos suficientes neste mês para gerar um plano de ação.",
+      },
     };
   }
 
@@ -322,9 +620,6 @@ export function gerarDiagnostico(input) {
   const ANALISADORES = [
     () => analisarIndicadorPercentual("taxas_comissoes", indicadores.taxas_comissoes, faturamentoBase),
     () => analisarIndicadorPercentual("servicos_promocoes", indicadores.servicos_promocoes, faturamentoBase),
-    // Etapa H — dado já existia (meta/saldo calculados desde a introdução do
-    // indicador), só faltava virar achado próprio; até aqui só entrava como
-    // "componente que mais pesa" dentro de analisarTotalDeducoes.
     () => analisarIndicadorPercentual("taxas_entregadores", indicadores.taxas_entregadores, faturamentoBase),
     () => analisarTotalDeducoes(indicadores.total_deducoes, componentesDeducao, faturamentoBase),
     () => analisarFaturamento(comparativo, recuperacao),
@@ -332,21 +627,28 @@ export function gerarDiagnostico(input) {
     () => analisarDetalhamentoAusente(indicadores),
   ];
 
-  const pontosFortes = [], pontosAtencao = [], alertas = [], acoes = [];
+  const pontosFortes = [], pontosAtencao = [], alertas = [], acoes = [], manutencao = [];
   for (const analisar of ANALISADORES) {
     const resultado = analisar();
     if (!resultado) continue;
-    const { achado, acao } = resultado;
+    const { achado, acao, manutencao: item } = resultado;
     if (achado.severidade === "forte") pontosFortes.push(achado);
     else if (achado.severidade === "atencao") pontosAtencao.push(achado);
     else alertas.push(achado);
     if (acao) acoes.push({ ...acao, prioridade: prioridadeDe(achado) });
+    if (item) manutencao.push(item);
   }
-  acoes.sort((a, b) => a.prioridade - b.prioridade);
+
+  ordenarAcoes(acoes);
+  // Manutenção: mais perto do teto primeiro (menor folga = acompanhar de perto).
+  manutencao.sort((a, b) => (a.diferenca?.pp ?? Infinity) - (b.diferenca?.pp ?? Infinity));
+
+  const confiabilidade = confiabilidadeDados({ diasComDados, diasPendentes, diasEstimados });
 
   return {
-    pontosFortes, pontosAtencao, alertas, acoes,
+    pontosFortes, pontosAtencao, alertas, acoes, manutencao,
     semDadosSuficientes: false,
-    confiabilidade: confiabilidadeDados({ diasComDados, diasPendentes, diasEstimados }),
+    confiabilidade,
+    resumo: montarResumo({ alertas, pontosAtencao, manutencao, confiabilidade }),
   };
 }

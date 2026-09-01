@@ -21,6 +21,7 @@ import { abrirLancamentoMensalModal } from "./dashboardExecutivoMensal.js";
 import { montarSimuladorPreco } from "./dashboardExecutivoSimulador.js";
 import { icon } from "./icons.js";
 import { botaoContextualHtml, botaoDiagnosticoHtml, ligarBotoesContextuais, sincronizarContextoPainel } from "./agentePainel.js";
+import { planoAcaoHtml, fmtPp } from "./dashboardExecutivoPlano.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const ABAS = [
@@ -323,7 +324,7 @@ function renderVisaoGeral(box) {
       </section>
       <section class="dex-recom">
         <h3>${icon("list-checks", { size: 15 })} Plano de Ação</h3>
-        ${planoAcaoHtml(d.diagnostico)}
+        ${planoAcaoHtml(d.diagnostico, { botaoDiagnosticoHtml })}
       </section>
     </div>`;
 
@@ -400,75 +401,8 @@ function confiabilidadeDadosHtml(conf) {
   return `<p class="dex-confiabilidade-dados"><b>Confiabilidade dos dados: ${CONFIABILIDADE_ROTULO[conf.nivel] ?? conf.nivel}</b> — ${escapeHtml(conf.motivo)}</p>`;
 }
 
-// ---------------------------------------------------------------------------
-// PLANO DE AÇÃO — um bloco por ação, já priorizado pelo backend (alertas
-// críticos primeiro, depois atenção financeira, depois qualidade dos dados).
-// ---------------------------------------------------------------------------
-function planoAcaoHtml(diag) {
-  if (diag.semDadosSuficientes) {
-    return `<p class="dex-diag-vazio">Ainda não há lançamentos suficientes neste mês para gerar um plano de ação.</p>`;
-  }
-  const acoes = diag.acoes ?? [];
-  if (!acoes.length) {
-    return `<div class="dex-acao dex-acao-vazia">
-      <b>${icon("check-circle", { size: 14 })} Nenhuma ação prioritária neste momento</b>
-      <p>Os principais indicadores analisados estão dentro dos parâmetros definidos para o período.</p>
-    </div>`;
-  }
-  // Encontra o achado correspondente (mesma fonte, mesmo id) só para pegar a severidade -> cor do card.
-  const todos = [...diag.pontosFortes, ...diag.pontosAtencao, ...diag.alertas];
-  const classePorSeveridade = { alerta: "alerta", atencao: "atencao", forte: "forte" };
-  return acoes.map((a, i) => {
-    const achado = todos.find((x) => x.id === a.diagnosticoId);
-    const classe = classePorSeveridade[achado?.severidade] ?? "";
-    const pontoClasse = achado?.severidade === "alerta" ? "bad" : achado?.severidade === "atencao" ? "warn" : "info";
-    const cta = a.cta?.aba
-      ? `<button class="btn btn-ghost btn-sm" data-cta-aba="${a.cta.aba}" type="button">${escapeHtml(a.cta.label)}</button>`
-      : a.cta?.expandir
-        ? `<button class="btn btn-ghost btn-sm" data-cta-expandir type="button">${escapeHtml(a.cta.label)}</button>`
-        : "";
-    // Etapa H — o ponto de atenção do backend (ATTENTION_POINTS, ver
-    // agente.pageContext.js) É `achado.categoria` na maioria dos analisadores,
-    // MAS "dias_pendentes" e "detalhamento_financeiro_ausente" compartilham a
-    // categoria "dados" entre si — nesses dois, o `id` (estável, sem sufixo)
-    // é que bate com o valor esperado. Um achado sem correspondência aqui
-    // simplesmente não ganha o botão, nunca inventa uma categoria pra ele.
-    const attentionPoint = achado ? (achado.categoria === "dados" ? achado.id : achado.categoria) : null;
-    const diagnosticar = attentionPoint ? botaoDiagnosticoHtml(attentionPoint) : "";
-    return `<div class="dex-acao ${classe}">
-      <div class="dex-acao-num">${i + 1}</div>
-      <div class="dex-acao-corpo">
-        <b class="dex-acao-titulo">${pontoSeveridade(pontoClasse)} ${escapeHtml(a.titulo)}</b>
-        <p class="dex-acao-desc">${escapeHtml(a.descricao)}</p>
-        ${cta}
-        ${diagnosticar}
-        ${a.detalhe ? `<div class="dex-acao-detalhe" hidden>${recuperacaoDetalheHtml(a.detalhe)}</div>` : ""}
-      </div>
-    </div>`;
-  }).join("");
-}
-
-/** Detalhe expandido do plano de recuperação de faturamento (item 19 do pedido). */
-function recuperacaoDetalheHtml(r) {
-  const linha = (l, v) => `<div class="dex-conf-item"><span>${l}</span><b>${v}</b></div>`;
-  const cenarios = r.cenarios ? `
-    <div class="dex-sim-grid">
-      <div class="dex-sim-item"><span>Cenário conservador</span><b>${fmtMoeda(r.cenarios.conservador)}/dia</b></div>
-      <div class="dex-sim-item"><span>Recuperação parcial</span><b>${fmtMoeda(r.cenarios.parcial)}/dia</b></div>
-      <div class="dex-sim-item"><span>Recuperação forte</span><b>${fmtMoeda(r.cenarios.forte)}/dia</b></div>
-    </div>` : "";
-  return `
-    <div class="dex-conf-grid">
-      ${linha("Faturamento de referência (mês anterior)", fmtMoeda(r.referencia))}
-      ${linha("Faturamento registrado até agora", fmtMoeda(r.atual))}
-      ${linha("Faltante para a referência", fmtMoeda(r.faltante))}
-      ${linha("Dias operacionais restantes", r.diasRestantes)}
-      ${linha("Média diária atual", r.mediaAtual == null ? "—" : fmtMoeda(r.mediaAtual))}
-      ${linha("Média diária necessária", r.mediaNecessaria == null ? "—" : fmtMoeda(r.mediaNecessaria))}
-    </div>
-    ${cenarios}
-    <p class="dex-sim-fonte">Cenários matemáticos a partir do ritmo atual — não são uma previsão estatística.</p>`;
-}
+// PLANO DE AÇÃO — renderização em dashboardExecutivoPlano.js (módulo puro,
+// testável). Aqui só a fiação de eventos (wirePlanoAcao, acima).
 
 function rotuloConfiabilidade(nivel) {
   return { alta: "Alta", media: "Média", baixa: "Baixa", indisponivel: "Indisponível" }[nivel] ?? nivel;
@@ -511,7 +445,7 @@ const cardDef = (label, valor, sub, tip, cls = "", extra = "") => `
 // PRONTO do backend (statusIndicador em dashboardExecutivo.calc.js) — aqui só
 // traduz a chave pra classe de CSS do pill. Fonte única, sem regra duplicada.
 const CLASSE_STATUS = { dentro_da_meta: "ok", atencao: "warn", fora_da_meta: "bad", sem_dados: "muted" };
-const fmtPp = (v) => (v == null ? "—" : `${Number(v).toFixed(1)} p.p.`);
+// fmtPp vem de dashboardExecutivoPlano.js (fonte única de "p.p.").
 
 /**
  * Barra de "quanto do limite já foi usado" + linha de saldo disponível.

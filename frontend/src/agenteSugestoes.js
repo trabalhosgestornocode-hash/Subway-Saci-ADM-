@@ -20,6 +20,16 @@ const POR_MODULO = {
       "Por que esse indicador está ruim?", "O que mais está causando isso?",
       "O que devo fazer primeiro?", "Quais dados sustentam esse diagnóstico?",
     ],
+    // Reformulação do Plano de Ação — quando o card clicado é HEALTHY, o
+    // indicador está DENTRO da meta: nada de "por que está ruim?". Sugestões
+    // de preservação (o backend nunca deixa o Agente afirmar uma causa que os
+    // dados não provam — ver agente.prompt.js#44).
+    diagnostico_saudavel: [
+      "O que pode estar contribuindo para esse resultado?",
+      "O que devo acompanhar para preservar isso?",
+      "Quais dados sustentam esse diagnóstico?",
+      "Esse resultado pode ser replicado em outras áreas?",
+    ],
   },
   products_cmv: {
     lista: ["Quais produtos têm maior CMV?", "Quais produtos merecem atenção?", "Qual produto tem maior custo?"],
@@ -44,7 +54,11 @@ export function obterSugestoes(pageContext) {
   if (!pageContext?.module) return GENERICAS.slice(0, MAX_SUGESTOES);
   const entrada = POR_MODULO[pageContext.module];
   if (!entrada) return GENERICAS.slice(0, MAX_SUGESTOES);
-  const lista = Array.isArray(entrada) ? entrada : (entrada[pageContext.view] ?? entrada._padrao ?? GENERICAS);
+  // Card HEALTHY do Plano de Ação -> sugestões de preservação, nunca de problema.
+  const view = pageContext.view === "diagnostico" && pageContext.attentionTipo === "HEALTHY"
+    ? "diagnostico_saudavel"
+    : pageContext.view;
+  const lista = Array.isArray(entrada) ? entrada : (entrada[view] ?? entrada._padrao ?? GENERICAS);
   return lista.slice(0, MAX_SUGESTOES);
 }
 

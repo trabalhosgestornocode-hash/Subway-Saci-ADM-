@@ -76,7 +76,7 @@ export const state = {
   // direto): evita import circular com agentePainel.js, que essas telas
   // também importam (pros botões contextuais). Cada view escreve só o que é
   // dela; agentePageContext.js só lê.
-  detalheAberto: { produto: null, insumo: null, pedido: null, attentionPoint: null },
+  detalheAberto: { produto: null, insumo: null, pedido: null, attentionPoint: null, attentionTipo: null },
   periodoDashboardExecutivo: { ano: null, mes: null },
   contextoParser: { aba: null, ano: null, mes: null },
 };
@@ -99,7 +99,7 @@ registrarResetDeContexto(() => {
   state.atualizadoEm = null;
   state.busca = "";
   state.filtroStatus = "todos";
-  state.detalheAberto = { produto: null, insumo: null, pedido: null, attentionPoint: null };
+  state.detalheAberto = { produto: null, insumo: null, pedido: null, attentionPoint: null, attentionTipo: null };
   state.periodoDashboardExecutivo = { ano: null, mes: null };
   state.contextoParser = { aba: null, ano: null, mes: null };
   // Tabela oficial/comparação são dados da UNIDADE — nunca atravessam uma

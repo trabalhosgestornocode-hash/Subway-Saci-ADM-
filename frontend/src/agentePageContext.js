@@ -73,6 +73,10 @@ export function derivarPageContext({ rota, detalheAberto, periodoDashboard, cont
     if (detalheAberto?.attentionPoint) {
       ctx.view = "diagnostico";
       ctx.attentionPoint = detalheAberto.attentionPoint;
+      // Reformulação do Plano de Ação — a classificação do card (CRITICAL /
+      // WARNING / HEALTHY / DATA_PENDING) só orienta as SUGESTÕES do painel
+      // (nunca é prova de dado; o backend nem inclui isto na sanitização).
+      if (detalheAberto.attentionTipo) ctx.attentionTipo = detalheAberto.attentionTipo;
     }
     return ctx;
   }
@@ -132,7 +136,11 @@ export function descreverContextoPainel(pageContext) {
   const rotulo = ROTULO_MODULO[pageContext.module] ?? pageContext.module;
   const periodo = pageContext.year && pageContext.month ? ` · ${capitalizar(MESES[pageContext.month - 1])}/${pageContext.year}` : "";
 
-  if (pageContext.attentionPoint) return `Diagnosticando: ${ROTULO_ATTENTION_POINT[pageContext.attentionPoint] ?? pageContext.attentionPoint}${periodo}`;
+  if (pageContext.attentionPoint) {
+    const rot = ROTULO_ATTENTION_POINT[pageContext.attentionPoint] ?? pageContext.attentionPoint;
+    const verbo = pageContext.attentionTipo === "HEALTHY" ? "Preservando" : "Diagnosticando";
+    return `${verbo}: ${rot}${periodo}`;
+  }
   if (pageContext.productName) return `Contexto: ${pageContext.productName}`;
   if (pageContext.ingredientName) return `Contexto: ${pageContext.ingredientName}`;
   if (pageContext.orderNumber) return `Contexto: Pedido #${pageContext.orderNumber}`;

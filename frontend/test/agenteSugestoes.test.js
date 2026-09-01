@@ -26,6 +26,23 @@ describe("obterSugestoes", () => {
     assert.ok(diagnostico.includes("O que devo fazer primeiro?"));
   });
 
+  test("Plano de Ação — card HEALTHY (attentionTipo) -> sugestões de PRESERVAÇÃO, nunca 'por que está ruim'", () => {
+    const critico = obterSugestoes({ module: "dashboard_executivo", view: "diagnostico", attentionTipo: "CRITICAL" });
+    const saudavel = obterSugestoes({ module: "dashboard_executivo", view: "diagnostico", attentionTipo: "HEALTHY" });
+    assert.notDeepEqual(critico, saudavel);
+    assert.ok(critico.includes("Por que esse indicador está ruim?"));
+    for (const s of saudavel) assert.ok(!/ruim|está alto|está fora|por que.*(ruim|problema)/i.test(s), s);
+    assert.ok(saudavel.some((s) => /preservar|acompanhar|contribuindo/i.test(s)));
+    assert.ok(saudavel.length <= MAX_SUGESTOES);
+  });
+
+  test("Plano de Ação — attentionTipo ausente ou CRITICAL/WARNING -> sugestões de investigação padrão", () => {
+    const semTipo = obterSugestoes({ module: "dashboard_executivo", view: "diagnostico" });
+    const warning = obterSugestoes({ module: "dashboard_executivo", view: "diagnostico", attentionTipo: "WARNING" });
+    assert.deepEqual(semTipo, warning);
+    assert.ok(semTipo.includes("O que devo fazer primeiro?"));
+  });
+
   test("Produtos/CMV lista vs produto aberto -> conjuntos DIFERENTES", () => {
     const lista = obterSugestoes({ module: "products_cmv", view: "lista" });
     const produto = obterSugestoes({ module: "products_cmv", view: "produto" });
