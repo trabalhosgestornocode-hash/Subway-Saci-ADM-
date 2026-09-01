@@ -72,14 +72,22 @@ function agruparPorEmpresa(opcoes) {
   return [...mapa.values()].sort((a, b) => a.empresaNome.localeCompare(b.empresaNome, "pt-BR"));
 }
 
-/** A opção casa com o termo de busca? Procura por empresa, unidade, cidade e CNPJ. */
+/** A opção casa com o termo de busca? Procura por empresa, unidade, cidade, cargo e CNPJ. */
 function corresponde(opcao, termoNormalizado) {
   if (!termoNormalizado) return true;
-  const alvo = [opcao.empresaNome, opcao.unidadeNome, opcao.cidade, opcao.cnpj]
+  const alvo = [opcao.empresaNome, opcao.unidadeNome, opcao.cidade, opcao.papelRotulo, opcao.cnpj]
     .filter(Boolean)
     .map(normalizarBusca)
     .join(" | ");
   return alvo.includes(termoNormalizado);
+}
+
+/** Texto do contador no topo — "Você está associado a N empresas · M unidades disponíveis". */
+function contagemTexto(nEmpresas, nUnidades) {
+  const plural = (n, singular, plural) => `${n} ${n === 1 ? singular : plural}`;
+  let txt = `Você está associado a ${plural(nEmpresas, "empresa", "empresas")}`;
+  if (nUnidades) txt += ` · ${plural(nUnidades, "unidade disponível", "unidades disponíveis")}`;
+  return txt;
 }
 
 function logoHtml(nome, logoUrl) {
@@ -88,16 +96,36 @@ function logoHtml(nome, logoUrl) {
     : `<span class="sel-logo sel-logo--txt">${escapeHtml((nome[0] || "?").toUpperCase())}</span>`;
 }
 
-function itemUnidadeHtml(o) {
+/** Card de acesso direto — grupo com uma única opção (empresa consolidada ou unidade única). */
+function cardSimplesHtml(o) {
   const sub = o.unidadeNome ? `${o.unidadeNome} · ${o.papelRotulo}` : o.papelRotulo;
   return `
-    <div class="sel-item ${o.acessivel ? "" : "sel-item--off"}" role="listitem"
-         data-org="${escapeHtml(o.organizacaoId)}" data-uni="${escapeHtml(o.unidadeId ?? "")}">
-      ${logoHtml(o.empresaNome, o.logoUrl)}
-      <div class="sel-item-info">
-        <b>${escapeHtml(o.empresaNome)}</b>
-        <small>${escapeHtml(sub)}${o.cidade ? ` · ${escapeHtml(o.cidade)}` : ""}</small>
-        ${o.acessivel ? "" : `<span class="pill bad">${escapeHtml(o.motivo ?? "Indisponível")}</span>`}
+    <article class="sel-card ${o.acessivel ? "" : "sel-card--off"}" role="listitem">
+      <div class="sel-card-head">
+        ${logoHtml(o.empresaNome, o.logoUrl)}
+        <div class="sel-card-id">
+          <b>${escapeHtml(o.empresaNome)}</b>
+          <small>${escapeHtml(sub)}</small>
+        </div>
+      </div>
+      ${o.cidade ? `<p class="sel-card-linha">📍 ${escapeHtml(o.cidade)}</p>` : ""}
+      ${o.acessivel ? "" : `<span class="pill bad">${escapeHtml(o.motivo ?? "Indisponível")}</span>`}
+      <button type="button" class="btn ${o.acessivel ? "btn-primary" : "btn-ghost"} sel-btn"
+              data-org="${escapeHtml(o.organizacaoId)}" data-uni="${escapeHtml(o.unidadeId ?? "")}"
+              ${o.acessivel ? "" : "disabled"}>
+        ${o.acessivel ? "Acessar" : "Bloqueada"}
+      </button>
+    </article>`;
+}
+
+/** Uma linha de unidade dentro do card de empresa multi-unidade (revelada ao expandir). */
+function linhaUnidadeHtml(o) {
+  const sub = [o.papelRotulo, o.cidade].filter(Boolean).join(" · ");
+  return `
+    <div class="sel-uni ${o.acessivel ? "" : "sel-uni--off"}">
+      <div class="sel-uni-info">
+        <b>${escapeHtml(o.unidadeNome || o.empresaNome)}</b>
+        <small>${escapeHtml(sub)}</small>
       </div>
       <button type="button" class="btn ${o.acessivel ? "btn-primary" : "btn-ghost"} btn-sm sel-btn"
               data-org="${escapeHtml(o.organizacaoId)}" data-uni="${escapeHtml(o.unidadeId ?? "")}"
@@ -107,26 +135,37 @@ function itemUnidadeHtml(o) {
     </div>`;
 }
 
-/** Grupo com 2+ unidades: cabeçalho expansível + as unidades dentro. Grupo com 1 opção: item simples, sem chrome. */
-function grupoHtml(grupo, aberto) {
-  if (grupo.unidades.length === 1) return itemUnidadeHtml(grupo.unidades[0]);
-
+/** Card de empresa com 2+ unidades — expansível: revela as unidades dentro do próprio card. */
+function cardGrupoHtml(grupo, aberto) {
   const qtd = grupo.unidades.length;
+  const papeis = [...new Set(grupo.unidades.map((u) => u.papelRotulo).filter(Boolean))];
+  const papelComum = papeis.length === 1 ? papeis[0] : null;
   return `
-    <div class="sel-grupo ${aberto ? "sel-grupo--aberto" : ""}">
-      <button type="button" class="sel-grupo-cab" data-toggle-org="${escapeHtml(grupo.organizacaoId)}"
-              aria-expanded="${aberto}">
+    <article class="sel-card sel-card--grupo ${aberto ? "sel-card--aberto" : ""} ${grupo.acessivel ? "" : "sel-card--off"}" role="listitem">
+      <div class="sel-card-head">
         ${logoHtml(grupo.empresaNome, grupo.logoUrl)}
-        <div class="sel-item-info">
+        <div class="sel-card-id">
           <b>${escapeHtml(grupo.empresaNome)}</b>
-          <small>${qtd} unidades${grupo.acessivel ? "" : ` · ${escapeHtml(grupo.motivo ?? "Indisponível")}`}</small>
+          <small>${qtd} unidades${papelComum ? ` · ${escapeHtml(papelComum)}` : ""}</small>
         </div>
-        <span class="sel-grupo-seta" aria-hidden="true">▾</span>
-      </button>
-      <div class="sel-grupo-corpo" ${aberto ? "" : "hidden"}>
-        ${grupo.unidades.map(itemUnidadeHtml).join("")}
       </div>
-    </div>`;
+      ${grupo.acessivel ? "" : `<span class="pill bad">${escapeHtml(grupo.motivo ?? "Indisponível")}</span>`}
+      <button type="button" class="sel-card-exp" data-toggle-org="${escapeHtml(grupo.organizacaoId)}"
+              aria-expanded="${aberto}">
+        <span>${aberto ? "Ocultar unidades" : `Ver unidades (${qtd})`}</span>
+        <span class="sel-card-seta" aria-hidden="true">▾</span>
+      </button>
+      <div class="sel-card-unis" ${aberto ? "" : "hidden"}>
+        ${grupo.unidades.map(linhaUnidadeHtml).join("")}
+      </div>
+    </article>`;
+}
+
+/** Grupo com 2+ unidades: card expansível. Grupo com 1 opção: card simples. */
+function grupoHtml(grupo, aberto) {
+  return grupo.unidades.length === 1
+    ? cardSimplesHtml(grupo.unidades[0])
+    : cardGrupoHtml(grupo, aberto);
 }
 
 function encontrarOpcao(opcoes, organizacaoId, unidadeId) {
@@ -144,11 +183,13 @@ export function montarSelecao(dados, { usuarioId, onEntrar }) {
   const buscaWrap = el("#sel-busca-wrap");
   const buscaInput = el("#sel-busca");
   const recentesBox = el("#sel-recentes");
+  const contagem = el("#sel-contagem");
   const lista = el("#sel-lista");
 
   if (!dados.opcoes.length) {
     buscaWrap.hidden = true;
     recentesBox.hidden = true;
+    if (contagem) contagem.hidden = true;
     lista.innerHTML = "";
     return;
   }
@@ -158,6 +199,14 @@ export function montarSelecao(dados, { usuarioId, onEntrar }) {
   // caso em que colapsar não ajuda ninguém.
   const grupos = agruparPorEmpresa(dados.opcoes);
   const expandido = new Set(grupos.length === 1 ? grupos.map((g) => g.organizacaoId) : []);
+
+  // Contador de empresas/unidades — nº de empresas = grupos; nº de unidades =
+  // opções com unidadeId (a opção consolidada de empresa sem unidade não conta).
+  if (contagem) {
+    const nUnidades = dados.opcoes.filter((o) => o.unidadeId).length;
+    contagem.textContent = contagemTexto(grupos.length, nUnidades);
+    contagem.hidden = false;
+  }
 
   const buscaVale = dados.opcoes.length > 4; // com pouquíssimos acessos, busca só atrapalha
   buscaWrap.hidden = !buscaVale;

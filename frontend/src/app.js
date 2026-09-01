@@ -349,6 +349,7 @@ function mostrarSelecao(dados) {
     // isso é melhor que mostrar uma lista vazia sem explicação.
     el("#sel-busca-wrap").hidden = true;
     el("#sel-recentes").hidden = true;
+    el("#sel-contagem").hidden = true;
     el("#sel-lista").innerHTML = `
       <div class="sel-vazio">
         <span class="sel-vazio-ic">🔒</span>

@@ -1485,13 +1485,15 @@ body {
    1. TELA DE SELEÇÃO DE UNIDADE
    ========================================================================= */
 .sel-screen {
-  min-height: 100dvh; display: grid; place-items: center; padding: 28px 18px;
+  min-height: 100dvh; display: grid; place-items: safe center; padding: 28px 18px;
   background: var(--grad-login); animation: fadeIn .3s;
 }
 .sel-wrap {
   width: 100%; max-width: 620px; background: var(--card); border-radius: var(--raio-lg);
   box-shadow: var(--sombra-lg); padding: clamp(22px, 4vw, 38px); animation: fadeInUp .35s;
 }
+/* Tela de seleção de ambiente: card largo o suficiente para a grade de 2–3 colunas. */
+.sel-wrap--largo { max-width: 1040px; }
 .sel-head { text-align: center; margin-bottom: 22px; }
 /* Logo oficial (arte com fundo preto) em badge escuro arredondado: fica limpa
    tanto no card claro quanto no escuro. Preserva a proporção (contain, sem corte). */
@@ -1504,6 +1506,12 @@ body {
 .cd-marca--sm { --cd-tam: 22px; display: inline-flex; margin-bottom: 16px; }
 .sel-titulo { font-size: clamp(20px, 3vw, 26px); letter-spacing: -.5px; margin-bottom: 6px; }
 .sel-sub { color: var(--cinza); font-size: 14px; }
+.sel-contagem {
+  display: inline-block; margin-top: 10px; padding: 5px 14px; border-radius: 999px;
+  background: var(--superficie-2); border: 1px solid var(--linha);
+  color: var(--texto); font-size: 13px; font-weight: 700;
+}
+.sel-contagem::before { content: "🏢 "; }
 
 .sel-busca-wrap {
   position: relative; margin-bottom: 16px;
@@ -1536,34 +1544,55 @@ body {
 .sel-recente-chip:hover { border-color: var(--verde); box-shadow: var(--sombra-md); }
 .sel-recente-chip .sel-logo { width: 24px; height: 24px; border-radius: 7px; font-size: 11px; }
 
-.sel-lista { display: grid; gap: 11px; }
-
-/* Empresa com 2+ unidades — cabeçalho expansível + as unidades dentro. */
-.sel-grupo { border: 1.5px solid var(--linha); border-radius: var(--raio); overflow: hidden; background: var(--card); }
-.sel-grupo-cab {
-  width: 100%; display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 14px;
-  padding: 13px 15px; border: none; background: none; font: inherit; text-align: left; cursor: pointer; transition: var(--t);
+/* Grade de cards ("lacunas") — 3 colunas no desktop, 2 no tablet, 1 no mobile.
+   A rolagem continua sendo a da página: .sel-screen usa min-height (não height)
+   e place-items: safe center, então cresce com o conteúdo sem cortar o topo. */
+.sel-lista {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-.sel-grupo-cab:hover { background: var(--fundo, rgba(0,0,0,.02)); }
-.sel-grupo-seta { color: var(--cinza); transition: transform .2s; font-size: 13px; }
-.sel-grupo--aberto .sel-grupo-seta { transform: rotate(180deg); }
-.sel-grupo-corpo { display: grid; gap: 9px; padding: 0 12px 12px; }
-.sel-grupo-corpo .sel-item { border-color: var(--linha); grid-template-columns: 38px 1fr auto; }
-.sel-grupo-corpo .sel-item .sel-logo { width: 38px; height: 38px; font-size: 15px; }
+.sel-lista .sel-vazio { grid-column: 1 / -1; }
 
-.sel-item {
-  display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 14px;
-  padding: 13px 15px; border: 1.5px solid var(--linha); border-radius: var(--raio);
-  background: var(--card); transition: var(--t);
+.sel-card {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border: 1.5px solid var(--linha); border-radius: var(--raio);
+  background: var(--card); box-shadow: var(--sombra-sm); transition: var(--t);
 }
-.sel-item:hover:not(.sel-item--off) { border-color: var(--verde); box-shadow: var(--sombra-md); transform: translateY(-2px); }
-.sel-item--off { opacity: .62; }
+.sel-card:hover:not(.sel-card--off) {
+  border-color: var(--verde); box-shadow: var(--sombra-md); transform: translateY(-2px);
+}
+.sel-card--off { opacity: .62; }
+.sel-card-head { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 13px; }
+.sel-card-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sel-card-id b { font-size: 15.5px; letter-spacing: -.2px; }
+.sel-card-id small { color: var(--cinza); font-size: 12.5px; }
+.sel-card-linha { color: var(--cinza); font-size: 12.5px; }
+.sel-card .pill { align-self: flex-start; }
+/* "Acessar" encostado na base — alinha o botão entre cards simples da mesma linha. */
+.sel-card:not(.sel-card--grupo) > .btn { margin-top: auto; }
+
 .sel-logo { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; display: grid; place-items: center; }
 .sel-logo--txt { background: var(--grad-verde); color: #fff; font-weight: 800; font-size: 19px; }
-.sel-item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.sel-item-info b { font-size: 15.5px; letter-spacing: -.2px; }
-.sel-item-info small { color: var(--cinza); font-size: 12.5px; }
-.sel-item-info .pill { align-self: flex-start; margin-top: 3px; }
+
+/* Card de empresa multi-unidade — botão "Ver unidades" + lista revelada dentro do card. */
+.sel-card-exp {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 9px 12px; border: 1px solid var(--linha); border-radius: 10px;
+  background: var(--superficie-2); color: var(--texto); font: inherit; font-size: 13px;
+  font-weight: 600; cursor: pointer; transition: var(--t);
+}
+.sel-card-exp:hover { border-color: var(--verde); }
+.sel-card-seta { color: var(--cinza); font-size: 12px; transition: transform .2s; }
+.sel-card--aberto .sel-card-seta { transform: rotate(180deg); }
+.sel-card-unis { display: flex; flex-direction: column; gap: 8px; }
+.sel-uni {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--linha); border-radius: 10px; background: var(--card);
+}
+.sel-uni--off { opacity: .62; }
+.sel-uni-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sel-uni-info b { font-size: 13.5px; }
+.sel-uni-info small { color: var(--cinza); font-size: 11.5px; }
 
 .sel-vazio { text-align: center; padding: 30px 14px; color: var(--cinza); }
 .sel-vazio-ic { font-size: 38px; display: block; margin-bottom: 10px; }
@@ -1572,10 +1601,13 @@ body {
 
 .sel-foot { display: flex; justify-content: center; gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--linha); }
 
-@media (max-width: 520px) {
-  .sel-item { grid-template-columns: 40px 1fr; }
-  .sel-logo { width: 40px; height: 40px; }
-  .sel-item .sel-btn { grid-column: 1 / -1; width: 100%; }
+@media (max-width: 1024px) {
+  .sel-lista { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .sel-lista { grid-template-columns: 1fr; }
+  .sel-uni { grid-template-columns: 1fr; }
+  .sel-uni .sel-btn { width: 100%; }
 }
 
 /* =========================================================================
