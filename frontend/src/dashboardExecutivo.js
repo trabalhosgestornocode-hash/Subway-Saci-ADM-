@@ -56,6 +56,11 @@ const STATUS_ROTULO = Object.fromEntries(STATUS_LEGENDA.map((s) => [s.chave, s])
  * banco) vira RASCUNHO aqui, nunca PREENCHIDO. */
 const statusVisual = (status) => (status === "FINANCEIRO_PENDENTE" ? "RASCUNHO" : status);
 
+/** Situações em que a unidade operou e o Financeiro é um extrato REAL do
+ * iFood — "normal" e "parcial" ("Funcionou, parcialmente"). Espelha
+ * situacaoOperou() em dashboardExecutivo.calc.js. */
+const situacaoOperou = (situacao) => situacao === "normal" || situacao === "parcial";
+
 const hoje = new Date();
 const dex = {
   aba: "visao",
@@ -580,7 +585,7 @@ function resumoFinanceiroBanner(d) {
   const fin = d.cards.faturamento;
   const desemp = d.desempenhoOperacional;
   const diaElegivel = d.calendario.find((x) => x.elegivelFinanceiro);
-  const temSnapshotElegivel = diaElegivel?.lancamento?.situacao === "normal"
+  const temSnapshotElegivel = situacaoOperou(diaElegivel?.lancamento?.situacao)
     && diaElegivel?.lancamento?.origem_lancamento !== "distribuicao_mensal"
     && diaElegivel?.lancamento?.valor_vendas_ifood != null;
 
@@ -703,7 +708,7 @@ function lancamentoMensalBanner(lote) {
  * o snapshot.
  */
 function badgeFinanceiro(dia) {
-  const temSnapshot = dia.lancamento?.situacao === "normal"
+  const temSnapshot = situacaoOperou(dia.lancamento?.situacao)
     && dia.lancamento?.origem_lancamento !== "distribuicao_mensal"
     && dia.lancamento?.valor_vendas_ifood != null;
   if (temSnapshot) return { texto: "Financeiro ✓", classe: "fin-ok", titulo: "Este dia tem um snapshot financeiro do iFood" };

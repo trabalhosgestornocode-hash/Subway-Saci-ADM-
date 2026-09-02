@@ -62,6 +62,17 @@ export const STATUS_DIA = {
 /** Status que "resolvem" o dia (contam para a sequência e para o % de conclusão). */
 const RESOLVIDOS = new Set([STATUS_DIA.PREENCHIDO, STATUS_DIA.SEM_OPERACAO, STATUS_DIA.ZERO_VENDAS, STATUS_DIA.FINANCEIRO_PENDENTE]);
 
+/**
+ * Situações em que a unidade OPEROU e teve vendas — `normal` e `parcial`
+ * ("Funcionou, parcialmente": horário reduzido, cardápio limitado, etc.).
+ * Nesses dias o Desempenho e o Financeiro são dados REAIS (extrato acumulado
+ * do iFood) e entram nos totais/snapshots normalmente. As demais situações
+ * (`sem_operacao`/`zero_vendas`) gravam os 5 campos financeiros como 0
+ * sintético e NUNCA entram na busca de snapshot.
+ */
+const SITUACOES_OPERACIONAIS = new Set(["normal", "parcial"]);
+export const situacaoOperou = (situacao) => SITUACOES_OPERACIONAIS.has(situacao);
+
 // ---------------------------------------------------------------------------
 // FÓRMULAS FINANCEIRAS
 // ---------------------------------------------------------------------------
@@ -323,7 +334,7 @@ export function statusDiaBase({ lancamento, ehDataElegivel }) {
     // outro motivo de verdade, não "esperando o financeiro do iFood".
     // `lancamento` aqui é a linha CRUA do banco (snake_case), nunca o
     // objeto já convertido pela API — ver carregarCalendarioMes.
-    if (ehDataElegivel && lancamento.situacao === "normal" && lancamento.valor_vendas_ifood == null) return STATUS_DIA.FINANCEIRO_PENDENTE;
+    if (ehDataElegivel && situacaoOperou(lancamento.situacao) && lancamento.valor_vendas_ifood == null) return STATUS_DIA.FINANCEIRO_PENDENTE;
     return STATUS_DIA.RASCUNHO;
   }
   if (lancamento.situacao === "sem_operacao") return STATUS_DIA.SEM_OPERACAO;
@@ -371,11 +382,11 @@ export function statusMes({ dias, hojeIso }) {
  * de um período NUNCA é a soma de `valor_vendas_ifood` entre vários dias
  * (somaria acumulados sobre acumulados) — é sempre o snapshot mais recente
  * dentro do recorte pedido.
- * Só considera dias com `situacao === 'normal'` — "sem operação"/"zero
- * vendas" gravam os 5 campos financeiros como 0 REAL (ver
- * normalizarDadosLancamento), não como extrato do iFood; deixar esses dias
- * entrarem na busca faria um dia sem operação "apagar" o último snapshot de
- * verdade só por ser mais recente na data.
+ * Só considera dias que operaram (`normal`/`parcial` — ver
+ * `situacaoOperou`); "sem operação"/"zero vendas" gravam os 5 campos
+ * financeiros como 0 REAL (ver normalizarDadosLancamento), não como extrato
+ * do iFood; deixar esses dias entrarem na busca faria um dia sem operação
+ * "apagar" o último snapshot de verdade só por ser mais recente na data.
  *
  * Exceção deliberada: dias de "Lançamento Mensal" (`origem_lancamento ===
  * 'distribuicao_mensal'`) NÃO são snapshot — são fatias que a própria
@@ -390,7 +401,7 @@ export function statusMes({ dias, hojeIso }) {
  */
 export function snapshotFinanceiroMaisRecente(linhas, ateDataIso = null) {
   const candidatas = (linhas ?? []).filter((r) =>
-    r.situacao === "normal" && (ateDataIso == null || r.data_lancamento <= ateDataIso));
+    situacaoOperou(r.situacao) && (ateDataIso == null || r.data_lancamento <= ateDataIso));
 
   let maisRecente = null;
   for (const r of candidatas) {
@@ -458,7 +469,7 @@ export function desempenhoParaTicketMedio(linhas) {
  * Série do mês inteiro (um ponto por dia, mesmo formato de
  * `desempenhoOperacional.evolucaoDiaria`) só com os dias que têm snapshot
  * financeiro REAL — mesmo filtro de `snapshotFinanceiroMaisRecente`
- * (situacao normal, nunca fatia de "Lançamento Mensal"); os demais dias vêm
+ * (situação operacional, nunca fatia de "Lançamento Mensal"); os demais dias vêm
  * `null`. Pronta pra plotar SEM interpolar: Chart.js com `spanGaps:false` já
  * não conecta a linha através de um `null`, então dois snapshots distantes
  * no mês aparecem como pontos isolados, nunca uma reta inventada entre eles.
@@ -473,7 +484,7 @@ export function desempenhoParaTicketMedio(linhas) {
 export function listaSnapshotsFinanceiros(dias, linhas) {
   const porData = new Map();
   for (const r of linhas ?? []) {
-    if (r.situacao !== "normal" || r.origem_lancamento === "distribuicao_mensal" || r.valor_vendas_ifood == null) continue;
+    if (!situacaoOperou(r.situacao) || r.origem_lancamento === "distribuicao_mensal" || r.valor_vendas_ifood == null) continue;
     porData.set(r.data_lancamento, r);
   }
   let anterior = null;

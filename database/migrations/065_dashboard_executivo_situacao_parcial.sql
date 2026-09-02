@@ -1,0 +1,38 @@
+-- =====================================================================
+-- MIGRATION 065 — Situação "Funcionou, parcialmente" no lançamento diário
+-- =====================================================================
+-- OBJETIVO
+--   A etapa 1 ("Situação da operação") do lançamento financeiro diário
+--   ganha uma 4ª opção: "Funcionou, parcialmente" (valor `parcial` no enum
+--   situacao_operacao_enum). É um dia que OPEROU e teve vendas — a unidade
+--   só funcionou de forma parcial (horário reduzido, cardápio limitado,
+--   etc.). Para todo o resto do sistema comporta-se EXATAMENTE como um dia
+--   `normal`: coleta Desempenho + Financeiro (extrato acumulado do iFood),
+--   entra nos totais/snapshots e no % de conclusão do mês. Só as situações
+--   SEM operação real (`sem_operacao`/`zero_vendas`) continuam zerando os
+--   campos financeiros.
+--
+--   As regras "normal x parcial" vivem no backend
+--   (dashboardExecutivo.service.js#normalizarDadosLancamento e
+--   dashboardExecutivo.calc.js) e no frontend do formulário
+--   (dashboardExecutivoForm.js) — aqui só se amplia o enum para o banco
+--   aceitar o novo valor.
+--
+-- IDEMPOTENTE: `add value if not exists` pode ser reexecutado com segurança.
+-- NÃO DESTRUTIVO: nenhuma linha existente muda de valor.
+-- Obs.: ADD VALUE não pode rodar dentro de transação; execute a linha solta
+--       (o SQL Editor do Supabase já faz isso). Sem BEGIN/COMMIT aqui.
+-- COMO USAR: Supabase -> SQL Editor -> cole e execute este arquivo inteiro.
+-- =====================================================================
+
+alter type situacao_operacao_enum add value if not exists 'parcial';
+
+-- =====================================================================
+-- PÓS-CHECK (rode depois; nada aqui escreve):
+--   select enumlabel from pg_enum
+--   where enumtypid = 'situacao_operacao_enum'::regtype
+--   order by enumsortorder;
+--   -- Esperado: normal, sem_operacao, zero_vendas, parcial
+-- =====================================================================
+-- FIM
+-- =====================================================================

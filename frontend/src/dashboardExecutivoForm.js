@@ -12,6 +12,15 @@ import { icon } from "./icons.js";
 
 const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema operacional", "Falta de insumos", "Fechamento temporário", "Outro"];
 
+// Situações em que a unidade OPEROU e teve vendas: "normal" e "parcial"
+// ("Funcionou, parcialmente" — horário reduzido, cardápio limitado, etc.).
+// Ambas percorrem exatamente o mesmo fluxo do formulário (etapas Desempenho +
+// Financeiro, mesmas validações, mesmos totais). Só "sem_operacao"/"zero_vendas"
+// zeram os campos e encurtam as etapas. Espelha situacaoOperou() em
+// dashboardExecutivo.calc.js.
+const SITUACOES_OPERACIONAIS = ["normal", "parcial"];
+const situacaoOperou = (situacao) => SITUACOES_OPERACIONAIS.includes(situacao);
+
 let ov = null;
 let fm = null;
 
@@ -105,7 +114,7 @@ function primeiroPassoIncompletoIndex() {
   const passos = passosAtivos();
   const c = fm.campos;
   if (c.situacao === "sem_operacao" && !c.motivoSemOperacao) return passos.indexOf("situacao") + 1;
-  if (passos.includes("financeiro") && c.situacao === "normal" && c.valorVendasIfood === "") return passos.indexOf("financeiro") + 1;
+  if (passos.includes("financeiro") && situacaoOperou(c.situacao) && c.valorVendasIfood === "") return passos.indexOf("financeiro") + 1;
   return passos.length;
 }
 
@@ -185,13 +194,13 @@ const CORPO_PASSO = {
 
 // Lista de etapas ATIVAS pra este lançamento — muda com a situação (radio da
 // etapa 1) e com `fm.mostrarFinanceiro` (decidido pelo servidor, ver
-// abrirLancamentoModal). Financeiro só entra pra situação "normal" quando a
-// data lançada é ontem (ou já tem snapshot salvo); pras demais situações
-// (sem_operacao/zero_vendas) continua sempre presente — comportamento
-// inalterado, fora do escopo deste ajuste.
+// abrirLancamentoModal). Financeiro só entra pras situações operacionais
+// ("normal"/"parcial") quando a data lançada é ontem (ou já tem snapshot
+// salvo); pras demais situações (sem_operacao/zero_vendas) continua sempre
+// presente — comportamento inalterado, fora do escopo deste ajuste.
 function passosAtivos() {
   const passos = ["situacao", "desempenho"];
-  if (fm.campos.situacao !== "normal" || fm.mostrarFinanceiro) passos.push("financeiro");
+  if (!situacaoOperou(fm.campos.situacao) || fm.mostrarFinanceiro) passos.push("financeiro");
   passos.push("conferencia");
   return passos;
 }
@@ -251,7 +260,7 @@ const podeExcluir = () => pode("dashboard_executivo.excluir");
 // ---------------------------------------------------------------------------
 function renderExclusaoConfirmacao(m) {
   const c = fm.campos;
-  const resumo = c.situacao === "normal"
+  const resumo = situacaoOperou(c.situacao)
     ? `Valor das vendas (iFood): ${fmtMoeda(c.valorVendasIfood)}`
     : c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas";
   m.innerHTML = `
@@ -310,7 +319,7 @@ function botaoUltimoPasso() {
   // principal preenchido antes de habilitar — evita um round-trip óbvio; os
   // demais campos ficam a cargo da validação do servidor (autoridade final).
   const financeiroExigidoEPreenchido = !fm.mostrarFinanceiro || fm.campos.valorVendasIfood !== "";
-  const podeFinalizar = fm.campos.situacao !== "normal" || financeiroExigidoEPreenchido;
+  const podeFinalizar = !situacaoOperou(fm.campos.situacao) || financeiroExigidoEPreenchido;
   return podeFinalizar
     ? `<button class="btn btn-primary" id="dex-f-finalizar">${fm.modoCorrecao ? "Salvar correção" : "Finalizar lançamento"}</button>`
     : "";
@@ -327,6 +336,7 @@ function passoSituacao() {
       <label class="dex-radio"><input type="radio" name="situacao" value="normal" ${c.situacao === "normal" ? "checked" : ""}> Sim, funcionou normalmente</label>
       <label class="dex-radio"><input type="radio" name="situacao" value="sem_operacao" ${c.situacao === "sem_operacao" ? "checked" : ""}> Não funcionou</label>
       <label class="dex-radio"><input type="radio" name="situacao" value="zero_vendas" ${c.situacao === "zero_vendas" ? "checked" : ""}> Funcionou, mas não teve vendas</label>
+      <label class="dex-radio"><input type="radio" name="situacao" value="parcial" ${c.situacao === "parcial" ? "checked" : ""}> Funcionou, parcialmente</label>
     </div>
     <div id="dex-sem-op" ${c.situacao === "sem_operacao" ? "" : "hidden"}>
       <label class="cfg-campo"><span>Motivo *</span>
@@ -341,7 +351,7 @@ function passoSituacao() {
 // ---------------------------------------------------------------------------
 function passoDesempenho() {
   const c = fm.campos;
-  if (c.situacao !== "normal") {
+  if (!situacaoOperou(c.situacao)) {
     return `<p class="dex-form-info">Situação "${c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas"}" — os campos de desempenho e financeiro ficam zerados automaticamente.</p>`;
   }
   const ticket = ticketMedioPreview(c);
@@ -370,7 +380,7 @@ function ticketMedioPreview(c) {
 // ---------------------------------------------------------------------------
 function passoFinanceiro() {
   const c = fm.campos;
-  if (c.situacao !== "normal") return `<p class="dex-form-info">Sem valores financeiros para esta situação.</p>`;
+  if (!situacaoOperou(c.situacao)) return `<p class="dex-form-info">Sem valores financeiros para esta situação.</p>`;
   const podeNegativo = pode("dashboard_executivo.corrigir");
   const calc = calculoPreview(c);
   const mostrarEntreg = mostraEntregadores();
@@ -417,7 +427,7 @@ function calculoPreview(c) {
 function passoConferencia() {
   const c = fm.campos;
   const linha = (l, v) => `<div class="dex-conf-item"><span>${l}</span><b>${v}</b></div>`;
-  if (c.situacao !== "normal") {
+  if (!situacaoOperou(c.situacao)) {
     fm.avisos = [];
     return `
       <div class="dex-conf-grid">
@@ -480,7 +490,7 @@ function campoMotivoCorrecao() {
 }
 
 function calcularAvisos(c) {
-  if (c.situacao !== "normal") return [];
+  if (!situacaoOperou(c.situacao)) return [];
   const avisos = [];
   const q = Number(c.qtdVendas) || 0;
   const v = Number(c.valorVendasBruto) || 0;
@@ -503,11 +513,11 @@ function wirePasso(m, chave) {
     m.querySelector("#dex-motivo")?.addEventListener("change", (e) => { fm.campos.motivoSemOperacao = e.target.value; });
     m.querySelector("#dex-obs")?.addEventListener("input", (e) => { fm.campos.observacao = e.target.value; });
   }
-  if (chave === "desempenho" && fm.campos.situacao === "normal") {
+  if (chave === "desempenho" && situacaoOperou(fm.campos.situacao)) {
     const bind = (id, campo) => m.querySelector(id)?.addEventListener("input", (e) => { fm.campos[campo] = e.target.value; atualizarPreviewTicket(m); });
     bind("#dex-qtd", "qtdVendas"); bind("#dex-valorbruto", "valorVendasBruto"); bind("#dex-novos", "novosClientes");
   }
-  if (chave === "financeiro" && fm.campos.situacao === "normal") {
+  if (chave === "financeiro" && situacaoOperou(fm.campos.situacao)) {
     const campos = ["dex-vifood:valorVendasIfood", "dex-taxas:taxasComissoes", "dex-servicos:servicosPromocoes", "dex-entregadores:taxasEntregadores", "dex-outras:outrasDeducoes"];
     campos.forEach((par) => {
       const [id, campo] = par.split(":");
@@ -553,7 +563,7 @@ function validarPassoAtual(m) {
     if (c.situacao === "sem_operacao" && !c.motivoSemOperacao) { toast("Informe o motivo de não operação."); return false; }
     return true;
   }
-  if (chave === "desempenho" && c.situacao === "normal") {
+  if (chave === "desempenho" && situacaoOperou(c.situacao)) {
     // Desempenho é opcional — nada aqui bloqueia o avanço. Só valida o que
     // foi de fato preenchido (não pode ser negativo).
     if (c.qtdVendas !== "" && Number(c.qtdVendas) < 0) { toast("A quantidade de vendas não pode ser negativa."); return false; }
@@ -563,7 +573,7 @@ function validarPassoAtual(m) {
   // Financeiro só aparece nas etapas ativas quando fm.mostrarFinanceiro é
   // true (ver passosAtivos) — chegar aqui já implica que os campos existem
   // no DOM e são esperados preenchidos, exatamente como antes.
-  if (chave === "financeiro" && c.situacao === "normal") {
+  if (chave === "financeiro" && situacaoOperou(c.situacao)) {
     const obrigatorios = [c.valorVendasIfood, c.taxasComissoes, c.servicosPromocoes];
     if (mostraEntregadores()) obrigatorios.push(c.taxasEntregadores);
     else c.taxasEntregadores = c.taxasEntregadores || 0; // Full Service: campo nem aparece, garante 0 no cálculo/envio

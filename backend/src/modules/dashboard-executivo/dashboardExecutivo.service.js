@@ -727,7 +727,7 @@ function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistent
 // do módulo continua chamando-a internamente do mesmo jeito.
 export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior }) {
   const b = v.corpo(body);
-  const situacao = v.umDe(b.situacao, "Situação", ["normal", "sem_operacao", "zero_vendas"]);
+  const situacao = v.umDe(b.situacao, "Situação", ["normal", "parcial", "sem_operacao", "zero_vendas"]);
   const statusAlvo = v.umDeOpcional(b.status, "Status", ["rascunho", "finalizado"], "rascunho");
 
   // Desempenho é ACUMULADO do mês (mesma lógica do Financeiro, ver
@@ -764,7 +764,9 @@ export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFin
     };
   }
 
-  // situacao === "normal" — ETAPA DESEMPENHO (qtdVendas/valorVendasBruto/
+  // situacao === "normal" ou "parcial" ("Funcionou, parcialmente" percorre o
+  // MESMO fluxo de um dia normal — só a unidade operou de forma parcial) —
+  // ETAPA DESEMPENHO (qtdVendas/valorVendasBruto/
   // novosClientes) é OPCIONAL: nada aqui bloqueia o lançamento, e o que não
   // for informado vira null (nunca 0) — "não sei" ≠ "foi zero". Os 3 campos
   // são ACUMULADOS do mês (mesma lógica do Financeiro) — o valor isolado do
@@ -811,7 +813,7 @@ export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFin
     throw ApiError.badRequest(`Existem inconsistências que precisam de confirmação antes de finalizar: ${avisos.join(" ")}`, { avisos, confirmacaoNecessaria: true });
   }
 
-  // Invariante: um dia "normal" só é FINALIZADO sem financeiro quando o
+  // Invariante: um dia "normal"/"parcial" só é FINALIZADO sem financeiro quando o
   // financeiro nem é elegível ainda (`exigirFinanceiro=false` — a maioria
   // dos dias do mês, ver financeiroDisponivelNaData). Quando é elegível,
   // `numFinanceiro` acima já exige o valor via `v.numero` — chegar aqui com

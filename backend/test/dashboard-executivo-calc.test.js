@@ -117,6 +117,13 @@ describe("status de um dia (base, a partir do lançamento)", () => {
   test("finalizado + normal => PREENCHIDO", () => {
     assert.equal(statusDiaBase({ lancamento: { status: "finalizado", situacao: "normal" } }), STATUS_DIA.PREENCHIDO);
   });
+  test("situação 'parcial' se comporta como 'normal' (mesmo fluxo de Desempenho + Financeiro)", () => {
+    assert.equal(statusDiaBase({ lancamento: { status: "finalizado", situacao: "parcial" } }), STATUS_DIA.PREENCHIDO);
+    assert.equal(
+      statusDiaBase({ lancamento: { status: "rascunho", situacao: "parcial", valor_vendas_ifood: null }, ehDataElegivel: true }),
+      STATUS_DIA.FINANCEIRO_PENDENTE,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -345,6 +352,16 @@ describe("snapshotFinanceiroMaisRecente", () => {
     assert.equal(snap.valor_vendas_ifood, 15000);
   });
 
+  test("dia 'parcial' conta como snapshot financeiro real, igual 'normal'", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-05", situacao: "normal", valor_vendas_ifood: 8000 },
+      { data_lancamento: "2026-08-11", situacao: "parcial", valor_vendas_ifood: 15000 },
+    ];
+    const snap = snapshotFinanceiroMaisRecente(linhas);
+    assert.equal(snap.data_lancamento, "2026-08-11");
+    assert.equal(snap.valor_vendas_ifood, 15000);
+  });
+
   test("corte de data (ateDataIso) ignora snapshots depois do corte", () => {
     const linhas = [
       { data_lancamento: "2026-08-05", situacao: "normal", valor_vendas_ifood: 8000 },
@@ -489,6 +506,17 @@ describe("listaSnapshotsFinanceiros", () => {
     const r = listaSnapshotsFinanceiros(dias3, []);
     assert.equal(r.length, 3);
     assert.ok(r.every((p) => p.valor === null && p.delta === null && p.percentualTotalDeducoes === null));
+  });
+
+  test("dia 'parcial' ENTRA na série mensal, igual 'normal' (financeiro é extrato real do iFood)", () => {
+    const linhas = [
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 4000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
+      { data_lancamento: "2026-08-03", situacao: "parcial", valor_vendas_ifood: 7000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
+    ];
+    const r = listaSnapshotsFinanceiros(dias3, linhas);
+    assert.equal(r[0].valor, 4000);
+    assert.equal(r[2].valor, 7000);
+    assert.equal(r[2].delta, 3000); // 7000 - 4000 — o dia parcial soma na série
   });
 });
 
