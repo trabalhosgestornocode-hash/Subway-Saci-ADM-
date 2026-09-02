@@ -1,0 +1,92 @@
+// Controllers da integração iFood.
+//
+// Fino, sem regra de negócio. Tenant SEMPRE de req.tenant (Context Token,
+// validado por requireContexto). Nenhum controller lê organizacaoId/unidadeId
+// do corpo ou da query — trocar de loja é selecionar outro contexto via
+// /sessao. Resposta sempre em { data }.
+//
+// NADA de token, verifier, clientSecret ou merchantId completo sai daqui para
+// o frontend.
+
+import { asyncHandler } from "../../shared/asyncHandler.js";
+import { ApiError } from "../../shared/ApiError.js";
+import * as authService from "./ifoodAuth.service.js";
+import * as merchantService from "./ifoodMerchant.service.js";
+import * as connectionService from "./ifoodConnection.service.js";
+import * as val from "./ifood.validators.js";
+
+function tenant(req) {
+  const { organizacaoId, unidadeId } = req.tenant ?? {};
+  if (!unidadeId) {
+    throw ApiError.badRequest("Selecione a loja antes de conectar a integração iFood.");
+  }
+  return { organizacaoId, unidadeId };
+}
+
+// --- ETAPA 1 — gerar código de vínculo -----------------------------------
+export const iniciar = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  const appType = val.validarAppType(req.body?.appType);
+
+  const data = await authService.iniciarConexao({
+    organizacaoId, unidadeId, appType, usuarioId: req.user.id,
+  });
+  res.status(201).json({ data });
+});
+
+// --- ETAPA 2 — concluir autorização -------------------------------------
+export const concluir = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  const appType = val.validarAppType(req.body?.appType);
+  const sessaoId = val.validarSessionId(req.body?.sessionId);
+  const authorizationCode = val.validarAuthorizationCode(req.body?.authorizationCode);
+
+  const data = await authService.concluirAutorizacao({
+    organizacaoId, unidadeId, appType, sessaoId, authorizationCode, usuarioId: req.user.id,
+  });
+  res.json({ data });
+});
+
+// --- Merchard API (READ-ONLY) ------------------------------------------
+
+// Descoberta: lojas autorizadas pelo token financial da unidade (paginado).
+export const descobrirMerchants = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  const data = await merchantService.listarMerchantsAutorizados({ organizacaoId, unidadeId });
+  res.json({ data });
+});
+
+// Validação individual: confirma acesso a UM merchant (GET /merchants/{id}).
+export const detalharMerchant = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  const merchantId = val.validarMerchantId(req.params.merchantId);
+  const data = await merchantService.validarMerchant({ organizacaoId, unidadeId, merchantId });
+  res.json({ data });
+});
+
+// --- Vínculo merchant -> unidade + status -------------------------------
+
+// Vincula um merchant à unidade. Recebe SÓ merchantId — revalidado na API.
+export const vincularMerchant = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  const merchantId = val.validarMerchantId(req.body?.merchantId);
+  const data = await connectionService.vincularMerchant({
+    organizacaoId, unidadeId, merchantId, usuarioId: req.user.id,
+  });
+  res.status(201).json({ data });
+});
+
+// Status da integração da unidade — analytics e financial separados.
+export const status = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  res.json({ data: await connectionService.obterStatus({ organizacaoId, unidadeId }) });
+});
+
+// Desconexão LOCAL — descarta tokens, marca a conexão como 'revogada'.
+// Não revoga no iFood (não há endpoint documentado) — o frontend orienta o
+// usuário a remover o acesso também no Portal do Parceiro.
+export const desconectar = asyncHandler(async (req, res) => {
+  const { organizacaoId, unidadeId } = tenant(req);
+  const data = await connectionService.desconectar({ organizacaoId, unidadeId, usuarioId: req.user.id });
+  res.json({ data });
+});
