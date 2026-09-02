@@ -96,10 +96,11 @@ const RESUMO = {
 describe("A) Visão Geral — resumo", () => {
   test("mostra os cartões com os valores recebidos", () => {
     const h = V.htmlVisaoGeral(RESUMO);
-    assert.match(h, /Unidades monitoradas/);
+    assert.match(h, /Empresas com pendência/);
+    assert.match(h, /Unidades com pendência/);
     assert.match(h, /Conformidade D-1/);
     assert.match(h, /Conformidade do mês/);
-    assert.match(h, />6<|>\s*6\s*</); // unidades
+    assert.match(h, /6 unidades monitoradas/); // total aparece como contexto do cartão
     assert.match(h, /67%/);           // 0.6667 -> 67%
     assert.match(h, /94%/);
     assert.match(h, /79 de 84 dias/);
@@ -144,9 +145,9 @@ describe("C) Ação necessária hoje — categorias e ordem", () => {
 
   test("grupos na ordem fixa: bloqueada -> não realizado -> em preenchimento (concluído fora)", () => {
     const h = V.htmlVisaoGeral({ ...RESUMO, acaoNecessariaHoje: acao });
-    const iBloq = h.indexOf("Sequência bloqueada");
-    const iNao = h.indexOf("Não realizado");
-    const iPre = h.indexOf("Em preenchimento");
+    const iBloq = h.indexOf("Sequência travada");
+    const iNao = h.indexOf("Não iniciado");
+    const iPre = h.indexOf("Em aberto");
     assert.ok(iBloq > -1 && iNao > -1 && iPre > -1);
     assert.ok(iBloq < iNao && iNao < iPre, "ordem dos grupos");
   });
@@ -166,7 +167,7 @@ describe("C) Ação necessária hoje — categorias e ordem", () => {
 
   test("tudo concluído -> estado vazio 'Nada pendente para hoje'", () => {
     const h = V.htmlVisaoGeral({ ...RESUMO, acaoNecessariaHoje: [acao[0]] });
-    assert.match(h, /Nada pendente para hoje/i);
+    assert.match(h, /Nada pendente neste fechamento/i);
   });
 });
 
@@ -311,7 +312,7 @@ describe("H) Pendências — grupos e ordem", () => {
   });
 
   test("lista vazia -> estado 'Nenhuma pendência'", () => {
-    assert.match(V.htmlPendencias({ d1: "2026-09-14", unidades: [] }), /Nenhuma pend[êe]ncia/i);
+    assert.match(V.htmlPendencias({ d1: "2026-09-14", unidades: [] }), /Nenhuma pendência/i);
   });
 });
 
@@ -327,7 +328,7 @@ describe("I) loading  /  J) erro de rede", () => {
     assert.match(padmView.innerHTML, /Carregando/);
     liberar();
     await p;
-    assert.match(padmView.innerHTML, /Unidades monitoradas/);
+    assert.match(padmView.innerHTML, /Unidades com pendência/);
   });
 
   test("J) erro de rede -> mensagem de conexão, distinta de acesso revogado", async () => {
@@ -370,7 +371,7 @@ describe("M) frontend não reintroduz trial/teste (backend já exclui)", () => {
 
   test("Visão Geral vazia (nenhuma empresa) -> não quebra", () => {
     const h = V.htmlVisaoGeral({ ...RESUMO, empresas: [], acaoNecessariaHoje: [] });
-    assert.match(h, /Ação necessária hoje/i);
+    assert.match(h, /Ação necessária/i);
   });
 });
 
@@ -381,7 +382,7 @@ describe("formatação e utilidades", () => {
   test("fmtData / fmtDataCurta / fmtMesLongo", () => {
     assert.equal(UI.fmtData("2026-09-14"), "14/09/2026");
     assert.equal(UI.fmtDataCurta("2026-09-14"), "14/09");
-    assert.equal(UI.fmtMesLongo("2026-09"), "setembro/2026");
+    assert.equal(UI.fmtMesLongo("2026-09"), "Setembro 2026");
     assert.equal(UI.fmtData(null), "—");
   });
 
@@ -401,5 +402,282 @@ describe("formatação e utilidades", () => {
     assert.equal(UI.estadoDiaCalendario({ painel: "INCOMPLETO" }).classe, "em-preenchimento");
     assert.equal(UI.estadoDiaCalendario({ painel: "NAO_LANCADO", bloqueada: true }).classe, "bloqueado");
     assert.equal(UI.estadoDiaCalendario({ painel: "NAO_LANCADO", bloqueada: false }).classe, "nao-realizado");
+  });
+});
+
+// ===========================================================================
+// REDESENHO — estrutura nova, período e estados (itens 20.7 / 20.9 / 20.14)
+// ===========================================================================
+describe("estrutura nova da Visão Geral", () => {
+  const COM_PERIODO = { ...RESUMO, periodo: "2026-09", mesCorrente: true };
+
+  test("faixa de período mostra o mês por extenso e o fechamento monitorado", () => {
+    const h = V.htmlVisaoGeral(COM_PERIODO);
+    assert.match(h, /padm-faixa/);
+    assert.match(h, /Setembro 2026/);
+    assert.match(h, /Fechamento monitorado/i);
+    assert.match(h, /14\/09\/2026/);
+  });
+
+  test("mês fechado ganha a tag 'mês fechado'; mês corrente não", () => {
+    const fechado = V.htmlVisaoGeral({ ...COM_PERIODO, periodo: "2026-08", mesCorrente: false });
+    assert.match(fechado, /mês fechado/i);
+    assert.ok(!/mês fechado/i.test(V.htmlVisaoGeral(COM_PERIODO)));
+  });
+
+  test("hierarquia: faixa -> cartões -> ação necessária -> empresas, nesta ordem", () => {
+    const h = V.htmlVisaoGeral({
+      ...COM_PERIODO,
+      acaoNecessariaHoje: [{ unidadeId: "u", unidadeNome: "U", organizacaoId: "o", empresaNome: "E", categoria: "nao_realizado", pendencia: null }],
+      empresas: [{ organizacaoId: "o", empresaNome: "E", unidadesMonitoradas: 1, criticas: 0, atencao: 1, emDia: 0, conformidadeD1: 0, conformidadeMes: 0.5 }],
+    });
+    const ordem = ["padm-faixa", "padm-cards", "padm-acao", "padm-emps"].map((t) => h.indexOf(t));
+    assert.ok(ordem.every((i) => i > -1), "todas as seções presentes");
+    assert.deepEqual(ordem, [...ordem].sort((a, b) => a - b), "seções na ordem da hierarquia");
+  });
+
+  test("cartão de críticas ganha tom crítico só quando há crítica", () => {
+    const com = V.htmlVisaoGeral({ ...COM_PERIODO, resumo: { ...RESUMO.resumo, criticas: 3 } });
+    assert.match(com, /padm-card--critico/);
+    // sem nenhuma pendência (nem crítica, nem empresa afetada) nada é destacado
+    const limpo = V.htmlVisaoGeral({
+      ...COM_PERIODO,
+      resumo: { ...RESUMO.resumo, criticas: 0, atencao: 0, empresasComPendencia: 0, unidadesComPendencia: 0 },
+      empresas: [],
+    });
+    assert.ok(!/padm-card--destaque/.test(limpo), "sem pendência, sem destaque");
+  });
+
+  test("conformidade desenha a barra de progresso; conformidade null não desenha", () => {
+    assert.match(V.htmlVisaoGeral(COM_PERIODO), /padm-card-barra/);
+    const semBase = V.htmlVisaoGeral({ ...COM_PERIODO, resumo: { ...RESUMO.resumo, conformidadeD1: null, conformidadeMes: null } });
+    assert.ok(!/padm-card-barra/.test(semBase), "sem taxa, sem barra");
+  });
+
+  test("empresas mostram barra de saúde proporcional (crítica/atenção/em dia)", () => {
+    const h = V.htmlVisaoGeral({
+      ...COM_PERIODO,
+      empresas: [{ organizacaoId: "o1", empresaNome: "Alfa", unidadesMonitoradas: 4, criticas: 1, atencao: 1, emDia: 2, conformidadeD1: 0.5, conformidadeMes: 0.8 }],
+    });
+    assert.match(h, /padm-saude/);
+    assert.match(h, /padm-saude--critico/);
+    assert.match(h, /padm-saude--ok/);
+  });
+
+  test("grupos de ação trazem o texto de ajuda que explica o status", () => {
+    const h = V.htmlVisaoGeral({
+      ...COM_PERIODO,
+      acaoNecessariaHoje: [{ unidadeId: "u", unidadeNome: "U", organizacaoId: "o", empresaNome: "E", categoria: "sequencia_bloqueada", pendencia: { total: 2, desde: "2026-09-11" } }],
+    });
+    assert.match(h, /padm-grupo-ajuda/);
+    assert.match(h, /travando os seguintes/i);
+    assert.match(h, /padm-item-ordem/, "itens numerados por prioridade");
+  });
+});
+
+describe("estados de carregamento e vazio", () => {
+  test("skeleton do painel: cartões + lista (não é spinner genérico)", () => {
+    const sk = UI.carregando("painel");
+    assert.match(sk, /padm-sk--card/);
+    assert.match(sk, /padm-sk--linha/);
+    assert.match(sk, /aria-busy="true"/);
+  });
+
+  test("skeleton do calendário desenha a grade de dias", () => {
+    const sk = UI.carregando("calendario");
+    assert.match(sk, /padm-sk-cal/);
+    assert.equal((sk.match(/padm-sk--dia/g) ?? []).length, 35);
+  });
+
+  test("renderViewPadm usa o skeleton certo por tela", async () => {
+    V.ligarNavegacao({ abrirEmpresa: () => {}, abrirUnidade: () => {}, voltar: () => {} });
+    let liberar;
+    const p = V.renderViewPadm({ tipo: "calendario", unidadeId: "u1" }, {
+      api: { calendarioUnidade: () => new Promise((res) => { liberar = () => res({ mes: "2026-09", dataReferencia: "2026-09-15", dias: [], unidade: {} }); }) },
+    });
+    assert.match(padmView.innerHTML, /padm-sk-cal/);
+    liberar();
+    await p;
+  });
+
+  test("erro de rede e erro do servidor dizem coisas diferentes", () => {
+    const rede = UI.erro(new Error("Failed to fetch"));
+    const servidor = UI.erro(new Error("Falha ao consultar organizações."));
+    assert.match(rede, /Sem conexão com o servidor/i);
+    assert.match(servidor, /Não foi possível carregar/i);
+    assert.match(servidor, /Falha ao consultar organiza/i);
+    assert.ok(!/revogad/i.test(rede) && !/revogad/i.test(servidor));
+  });
+
+  test("vazio positivo (nada pendente) usa tom 'ok'; vazio neutro usa tom 'neutro'", () => {
+    assert.match(UI.vazio("Fila vazia", "x"), /padm-estado--ok/);
+    assert.match(UI.vazio("Sem dados", "x", { tom: "neutro", icone: "inbox" }), /padm-estado--neutro/);
+  });
+});
+
+describe("calendário — leitura premium", () => {
+  const mkDias = () => {
+    const dias = [];
+    for (let d = 1; d <= 30; d++) {
+      const data = `2026-09-${String(d).padStart(2, "0")}`;
+      if (d <= 12) dias.push({ data, painel: "COMPLETO", bloqueada: false });
+      else if (d === 13) dias.push({ data, painel: "INCOMPLETO", bloqueada: false });
+      else if (d === 14) dias.push({ data, painel: "NAO_LANCADO", bloqueada: true });
+      else if (d === 15) dias.push({ data, painel: "NAO_APLICAVEL", motivoNaoAplicavel: "hoje", bloqueada: false });
+      else dias.push({ data, painel: "NAO_APLICAVEL", motivoNaoAplicavel: "futuro", bloqueada: false });
+    }
+    return dias;
+  };
+
+  test("legenda lateral conta os dias de cada estado", () => {
+    const h = V.htmlCalendario({ mes: "2026-09", dataReferencia: "2026-09-15", dias: mkDias(), unidade: {} }, "Alfa");
+    assert.match(h, /padm-cal-legenda/);
+    assert.match(h, /Como ler/);
+    assert.match(h, /Ainda não venceu/);
+    assert.match(h, /<b>12<\/b>/, "12 dias concluídos contados na legenda");
+  });
+
+  test("hoje e futuro têm classes próprias — nunca a de erro", () => {
+    const h = V.htmlCalendario({ mes: "2026-09", dataReferencia: "2026-09-15", dias: mkDias(), unidade: {} }, "Alfa");
+    assert.match(h, /padm-cal-dia--hoje/);
+    assert.match(h, /padm-cal-dia--futuro/);
+    assert.match(h, /padm-cal-dia--bloqueado/);
+    assert.ok(!/20\/09\/2026 — Não realizado/.test(h), "dia futuro nunca é rotulado como não realizado");
+  });
+
+  test("aviso de sequência bloqueada só aparece quando o backend marca", () => {
+    const base = { mes: "2026-09", dataReferencia: "2026-09-15", dias: mkDias(), unidade: {} };
+    assert.match(V.htmlCalendario({ ...base, sequenciaBloqueada: true }, "Alfa"), /padm-aviso--critico/);
+    assert.ok(!/padm-aviso--critico/.test(V.htmlCalendario(base, "Alfa")));
+  });
+});
+
+describe("responsividade — marcação que as media queries dependem", () => {
+  test("itens de lista e filtros carregam as classes usadas no mobile", () => {
+    const h = V.htmlDiario({
+      referencia: "2026-09-14", periodo: "2026-09", mesCorrente: true,
+      unidades: [{ unidadeId: "u", unidadeNome: "U", organizacaoId: "o", empresaNome: "E", categoria: "nao_realizado", criticidade: "atencao", diasPendentes: 0, conformidadeMes: 0.9, ultimoConcluido: "2026-09-13" }],
+    });
+    for (const cls of ["padm-item", "padm-item-txt", "padm-item-tags", "padm-item-dados", "padm-f-campo", "padm-busca"]) {
+      assert.match(h, new RegExp(cls), `falta a classe ${cls}`);
+    }
+  });
+});
+
+// ===========================================================================
+// RECORTE VISUAL DO PERÍODO — a interface usa a pendência DO PERÍODO
+// ===========================================================================
+describe("pendência do período vs herdada (interface)", () => {
+  const BASE = { ...RESUMO, periodo: "2026-09", mesCorrente: true, d1: "2026-09-04", dataReferencia: "2026-09-05" };
+
+  test("Ação necessária exibe os dias DO PERÍODO, nunca a data do mês anterior", () => {
+    const h = V.htmlVisaoGeral({
+      ...BASE,
+      acaoNecessariaHoje: [{
+        unidadeId: "u1", unidadeNome: "Praia Grande", organizacaoId: "o1", empresaNome: "Rede Litoral",
+        categoria: "sequencia_bloqueada",
+        pendencia: { total: 3, desde: "2026-09-01" },
+        herdada: { desde: "2026-08-26", total: 6 },
+      }],
+    });
+    assert.match(h, /3 dias/, "contagem do período");
+    assert.match(h, /desde 01\/09/, "início do período");
+    assert.ok(!/6 dias/.test(h), "a contagem histórica NÃO aparece como métrica");
+    // a métrica (bloco .padm-item-pend) não pode conter nenhuma data de agosto
+    const metrica = /<span class="padm-item-pend">([\s\S]*?)<\/span>\s*<span class="padm-item-ir"/.exec(h)?.[1] ?? "";
+    assert.match(metrica, /3 dias/);
+    assert.ok(!/\/08/.test(metrica), "a métrica de setembro não cita agosto");
+    assert.ok(!/desde 26\/08/.test(h), "'desde DD/MM' é vocabulário da métrica — a nota usa 'vem de'");
+  });
+
+  test("a herança aparece como nota secundária, com a data original", () => {
+    const h = V.htmlVisaoGeral({
+      ...BASE,
+      acaoNecessariaHoje: [{
+        unidadeId: "u1", unidadeNome: "Praia Grande", organizacaoId: "o1", empresaNome: "Rede Litoral",
+        categoria: "sequencia_bloqueada",
+        pendencia: { total: 3, desde: "2026-09-01" },
+        herdada: { desde: "2026-08-26", total: 6 },
+      }],
+    });
+    assert.match(h, /padm-herdada/);
+    assert.match(h, /pendência anterior ao período/i);
+    assert.match(h, /vem de 26\/08/, "a data original vive só na nota, com outro conector");
+  });
+
+  test("sem herança, nenhuma nota é renderizada", () => {
+    const h = V.htmlVisaoGeral({
+      ...BASE,
+      acaoNecessariaHoje: [{
+        unidadeId: "u1", unidadeNome: "U", organizacaoId: "o1", empresaNome: "E",
+        categoria: "nao_realizado", pendencia: { total: 2, desde: "2026-09-02" }, herdada: null,
+      }],
+    });
+    assert.ok(!/padm-herdada/.test(h));
+    assert.match(h, /2 dias/);
+  });
+
+  test("período limpo + herança: 0 dias no mês, mas a nota explica o topo da fila", () => {
+    const h = V.htmlVisaoGeral({
+      ...BASE,
+      acaoNecessariaHoje: [{
+        unidadeId: "u1", unidadeNome: "Praia Grande", organizacaoId: "o1", empresaNome: "Rede Litoral",
+        categoria: "nao_realizado", pendencia: null, herdada: { desde: "2026-08-26", total: 6 },
+      }],
+    });
+    assert.match(h, /padm-herdada/);
+    assert.ok(!/\d+ dias<\/b>/.test(h), "não inventa contagem no período");
+  });
+
+  test("Pendências: 'no período' na métrica, herança na nota", () => {
+    const h = V.htmlPendencias({
+      d1: "2026-09-04", periodo: "2026-09", mesCorrente: true,
+      unidades: [{
+        unidadeId: "c1", unidadeNome: "Praia Grande", empresaNome: "Rede Litoral",
+        criticidade: "critico", d1Status: "sequencia_bloqueada", sequenciaBloqueada: true,
+        pendenciaMaisAntiga: "2026-09-01", diasPendentes: 3,
+        pendenciaHerdada: true, pendenciaHerdadaDesde: "2026-08-26", diasPendentesHistorico: 9,
+      }],
+    });
+    assert.match(h, /3 dias/, "métrica do período");
+    assert.match(h, /desde 01\/09/);
+    assert.match(h, /padm-herdada/);
+    assert.ok(!/9 dias/.test(h), "o total histórico não vira métrica");
+  });
+
+  test("Monitoramento Diário e Detalhe também usam a leitura do período", () => {
+    const diario = V.htmlDiario({
+      referencia: "2026-09-04", periodo: "2026-09", mesCorrente: true,
+      unidades: [{
+        unidadeId: "u", unidadeNome: "U", organizacaoId: "o", empresaNome: "E",
+        categoria: "sequencia_bloqueada", criticidade: "critico",
+        diasPendentes: 3, pendenciaMaisAntiga: "2026-09-01",
+        pendenciaHerdada: true, pendenciaHerdadaDesde: "2026-08-26",
+        conformidadeMes: 0.25, ultimoConcluido: "2026-08-25",
+      }],
+    });
+    assert.match(diario, /no período/);
+    assert.match(diario, /padm-herdada/);
+
+    const det = V.htmlDetalheEmpresa({
+      periodo: "2026-09", mesCorrente: true, d1: "2026-09-04",
+      organizacao: { nome: "Rede Litoral", status: "ativa" }, consolidado: {},
+      unidades: [{
+        unidadeId: "u", unidadeNome: "Praia Grande", criticidade: "critico", d1Status: "sequencia_bloqueada",
+        diasPendentes: 3, conformidadeMes: 0.25,
+        pendenciaHerdada: true, pendenciaHerdadaDesde: "2026-08-26",
+      }],
+      pendencias: [],
+    });
+    assert.match(det, /no período/);
+    assert.match(det, /padm-herdada/);
+  });
+
+  test("notaHerdada aceita objeto ou booleano+data e é vazia quando não há herança", () => {
+    assert.equal(UI.notaHerdada(null), "");
+    assert.equal(UI.notaHerdada(false, "2026-08-26"), "");
+    assert.match(UI.notaHerdada({ desde: "2026-08-26", total: 6 }), /26\/08/);
+    assert.match(UI.notaHerdada(true, "2026-08-26"), /26\/08/);
+    assert.match(UI.notaHerdada(true, null), /pendência anterior ao período/i);
   });
 });

@@ -16,6 +16,19 @@ import { ApiError } from "../../shared/ApiError.js";
 
 const TABELA_LANC = "lancamentos_financeiros_diarios";
 
+// Colunas que o painel lê de cada lançamento. As 5 primeiras são a projeção de
+// STATUS (motor de pendência); as demais são o FINANCEIRO — `valor_vendas_ifood`
+// é o faturamento (snapshot acumulado), `origem_lancamento` separa o diário da
+// distribuição mensal e as deduções fecham a receita líquida.
+//
+// Vêm na MESMA query em lote que já existia: o ranking financeiro não custa
+// nenhuma consulta a mais, só colunas a mais.
+const COLUNAS_LANC = [
+  "unidade_id", "data_lancamento", "status", "situacao", "valor_vendas_ifood",
+  "origem_lancamento", "taxas_comissoes", "servicos_promocoes",
+  "taxas_entregadores", "outras_deducoes",
+].join(", ");
+
 // O Painel Administrativo mede OPERAÇÃO REAL: só organização `status='ativa'`
 // entra no monitoramento padrão. `teste` (trial), `bloqueada`, `suspensa`,
 // `cancelada` e `eh_modelo` ficam de fora.
@@ -135,7 +148,7 @@ export async function carregarLancamentosDaFrota({ unidadeIds, desdeIso, ateIso 
 
   for (const lote of emLotes(unidadeIds)) {
     const { data, error } = await db.from(TABELA_LANC)
-      .select("unidade_id, data_lancamento, status, situacao, valor_vendas_ifood")
+      .select(COLUNAS_LANC)
       .in("unidade_id", lote)
       .gte("data_lancamento", desdeIso)
       .lte("data_lancamento", ateIso);
@@ -156,7 +169,7 @@ export async function carregarLancamentosDaFrota({ unidadeIds, desdeIso, ateIso 
 export async function carregarLancamentosDaUnidade({ unidadeId, desdeIso, ateIso }, deps = {}) {
   const db = deps.supabase ?? supabase;
   const { data, error } = await db.from(TABELA_LANC)
-    .select("unidade_id, data_lancamento, status, situacao, valor_vendas_ifood")
+    .select(COLUNAS_LANC)
     .eq("unidade_id", unidadeId)
     .gte("data_lancamento", desdeIso)
     .lte("data_lancamento", ateIso);

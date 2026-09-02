@@ -190,6 +190,43 @@ export function pendenciasAcumuladas(diasProjetados, hojeIso) {
 }
 
 /**
+ * A MESMA contagem de `pendenciasAntesDe`, mas com PISO — só os dias a partir
+ * de `desdeIso`. É a "pendência DO PERÍODO": o que a interface mostra quando o
+ * gestor está olhando um mês específico.
+ *
+ * Existe porque as duas perguntas são diferentes:
+ *   * "essa unidade está travada?"        -> olha o histórico (sem piso);
+ *   * "quantos dias ela deve EM SETEMBRO?" -> olha só setembro (com piso).
+ * Misturar as duas fazia a Visão Geral de setembro exibir "6 dias desde 26/08".
+ *
+ * @param {Array<ReturnType<typeof projetarDia>>} diasProjetados
+ * @param {string} desdeIso   primeiro dia do período (inclusive)
+ * @param {string} limiteIso  dia-alvo (exclusivo)
+ */
+export function pendenciasNoIntervalo(diasProjetados, desdeIso, limiteIso) {
+  const dentro = (diasProjetados ?? []).filter((d) => !desdeIso || d.data >= desdeIso);
+  return pendenciasAntesDe(dentro, limiteIso);
+}
+
+/**
+ * Compara a pendência histórica com a do período e diz o que foi HERDADO —
+ * a parte que começou antes do período e não pode entrar na contagem mensal.
+ * @param {{total: number, desde: string|null}} historica
+ * @param {{total: number, desde: string|null}} noPeriodo
+ * @param {string|null} inicioPeriodo
+ * @returns {{herdada: boolean, desde: string|null, total: number}}
+ */
+export function pendenciaHerdada(historica, noPeriodo, inicioPeriodo) {
+  const desdeHist = historica?.desde ?? null;
+  const herdada = !!desdeHist && !!inicioPeriodo && desdeHist < inicioPeriodo;
+  return {
+    herdada,
+    desde: herdada ? desdeHist : null,
+    total: herdada ? Math.max(0, (historica?.total ?? 0) - (noPeriodo?.total ?? 0)) : 0,
+  };
+}
+
+/**
  * Data do último dia CONCLUÍDO (painel COMPLETO) e do último dia COM QUALQUER
  * registro (COMPLETO ou INCOMPLETO) na lista projetada. Puro — para os cards
  * de "última atualização" do painel. NÃO é regra de sequência.
@@ -220,13 +257,19 @@ export function ultimosLancamentos(diasProjetados) {
  * @param {{d1: ReturnType<typeof avaliarD1>, pendenciasAcum: ReturnType<typeof pendenciasAcumuladas>}} p
  * @returns {{status: string, motivo: string}}
  */
-export function rollupUnidade({ d1, pendenciasAcum }) {
-  if (pendenciasAcum.total > 0 || d1.categoria === D1_CATEGORIA.SEQUENCIA_BLOQUEADA) {
-    const desde = pendenciasAcum.desde;
+export function rollupUnidade({ d1, pendencias, pendenciasAcum }) {
+  // `pendencias` = leitura DO PERÍODO. `pendenciasAcum` fica aceito como alias
+  // para não quebrar chamadas antigas, mas a semântica é sempre a do período:
+  // uma pendência de agosto só classifica setembro se ela produzir efeito
+  // DENTRO de setembro (dia pendente/bloqueado no próprio mês).
+  const pend = pendencias ?? pendenciasAcum ?? { total: 0, desde: null };
+
+  if (pend.total > 0 || d1.categoria === D1_CATEGORIA.SEQUENCIA_BLOQUEADA) {
+    const desde = pend.desde;
     return {
       status: ROLLUP.CRITICO,
-      motivo: pendenciasAcum.total > 0
-        ? `${pendenciasAcum.total} dia(s) sem lançamento acumulado(s)${desde ? ` desde ${desde}` : ""} — sequência bloqueada.`
+      motivo: pend.total > 0
+        ? `${pend.total} dia(s) sem lançamento no período${desde ? ` desde ${desde}` : ""} — sequência bloqueada.`
         : "O lançamento de ontem está bloqueado por um dia anterior pendente.",
     };
   }
@@ -237,7 +280,7 @@ export function rollupUnidade({ d1, pendenciasAcum }) {
     return { status: ROLLUP.ATENCAO, motivo: "O lançamento de ontem foi iniciado, mas não finalizado — concluir hoje." };
   }
   if (d1.categoria === D1_CATEGORIA.CONCLUIDO) {
-    return { status: ROLLUP.EM_DIA, motivo: "Fechamento de ontem concluído e sem pendências anteriores." };
+    return { status: ROLLUP.EM_DIA, motivo: "Fechamento de ontem concluído e período sem pendências." };
   }
   // D-1 não aplicável (unidade nova) e sem pendência -> em dia.
   return { status: ROLLUP.EM_DIA, motivo: "Sem obrigação de fechamento no período." };
@@ -266,9 +309,38 @@ export function avaliarUnidade({ diasCorrente, diasAnteriores = [], hojeIso, uni
 
   const d1 = avaliarDia(todos, alvo);
   const conformidade = conformidadeMes(projCorrente);       // conformidade do MÊS de diasCorrente
-  const pendenciasAcum = pendenciasAntesDe(todos, alvo);    // dias NÃO LANÇADO antes de `alvo`
-  const rollup = rollupUnidade({ d1, pendenciasAcum });
+
+  // DUAS leituras da mesma pendência, deliberadamente separadas:
+  //
+  //   pendenciasAcum     — HISTÓRICA. Varre `todos` (mês anterior + corrente).
+  //                        É o que sustenta sequência, bloqueio e criticidade;
+  //                        atravessa a virada de mês, como sempre atravessou.
+  //   pendenciasPeriodo  — DO PERÍODO. Só o mês de `diasCorrente` (= mês do
+  //                        alvo). É o que a interface exibe: "X dias",
+  //                        "desde DD/MM". Nunca importa dias do mês anterior.
+  //
+  // Sem essa separação, olhar setembro em 02/09 mostrava "6 dias desde 26/08".
+  const pendenciasAcum = pendenciasAntesDe(todos, alvo);
+  const inicioPeriodo = projCorrente[0]?.data ?? null;
+  const pendenciasPeriodo = pendenciasNoIntervalo(projCorrente, inicioPeriodo, alvo);
+  const herdada = pendenciaHerdada(pendenciasAcum, pendenciasPeriodo, inicioPeriodo);
+
+  // A CLASSIFICAÇÃO (crítico / atenção / em dia) é sempre DO PERÍODO.
+  // Uma pendência de agosto só torna setembro crítico se produzir efeito
+  // dentro de setembro — um dia pendente ou bloqueado no próprio mês. Se
+  // setembro está inteiro correto e o D-1 fechou, a unidade está EM DIA,
+  // por mais antigo que seja o histórico.
+  const rollup = rollupUnidade({ d1, pendencias: pendenciasPeriodo });
   const ultimos = ultimosLancamentos(todos);
 
-  return { d1, conformidade, pendenciasAcum, rollup, ultimos, diasProjetados: projCorrente };
+  return {
+    d1, conformidade, rollup, ultimos,
+    pendenciasAcum, pendenciasPeriodo, pendenciaHerdada: herdada,
+    // Contexto secundário, NUNCA classificação: existe pendência antes do
+    // período? A interface mostra como nota discreta; nenhum contador,
+    // ranking ou cor depende disso.
+    historicoAnterior: { existe: herdada.herdada, desde: herdada.desde, total: herdada.total },
+    inicioPeriodo,
+    diasProjetados: projCorrente,
+  };
 }

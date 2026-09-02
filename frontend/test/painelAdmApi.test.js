@@ -143,3 +143,54 @@ describe("painelAdmApi — endpoints de monitoramento (Fase F/G)", () => {
     await assert.rejects(() => painelAdmApi.visaoGeral(), (e) => e.status === 403);
   });
 });
+
+describe("painelAdmApi — período ativo (mes=AAAA-MM)", () => {
+  const rotaDe = (u) => new URL(u, "http://x").pathname + new URL(u, "http://x").search;
+
+  test("todo endpoint aceita `mes` e o põe na query string", async () => {
+    const casos = [
+      [() => painelAdmApi.visaoGeral({ mes: "2026-08" }), "/api/v1/administrativo/visao-geral?mes=2026-08"],
+      [() => painelAdmApi.pendencias({ mes: "2026-08" }), "/api/v1/administrativo/pendencias?mes=2026-08"],
+      [() => painelAdmApi.empresas({ mes: "2026-08" }), "/api/v1/administrativo/empresas?mes=2026-08"],
+      [() => painelAdmApi.detalheEmpresa("o1", { mes: "2026-08" }), "/api/v1/administrativo/empresas/o1?mes=2026-08"],
+      [() => painelAdmApi.calendarioUnidade("u1", "2026-08"), "/api/v1/administrativo/unidades/u1/calendario?mes=2026-08"],
+    ];
+    for (const [chamar, esperada] of casos) {
+      stubFetch();
+      await chamar();
+      assert.equal(rotaDe(capturado.url), esperada);
+    }
+  });
+
+  test("sem `mes`, a rota fica sem query string (mês corrente no backend)", async () => {
+    for (const [chamar, esperada] of [
+      [() => painelAdmApi.visaoGeral(), "/api/v1/administrativo/visao-geral"],
+      [() => painelAdmApi.pendencias(), "/api/v1/administrativo/pendencias"],
+      [() => painelAdmApi.empresas(), "/api/v1/administrativo/empresas"],
+      [() => painelAdmApi.detalheEmpresa("o1"), "/api/v1/administrativo/empresas/o1"],
+    ]) {
+      stubFetch();
+      await chamar();
+      assert.equal(rotaDe(capturado.url), esperada);
+    }
+  });
+
+  test("monitoramentoDiario combina `mes` com os demais filtros", async () => {
+    stubFetch();
+    await painelAdmApi.monitoramentoDiario({ mes: "2026-08", criticidade: "critico", status: "" });
+    const r = rotaDe(capturado.url);
+    assert.match(r, /mes=2026-08/);
+    assert.match(r, /criticidade=critico/);
+    assert.ok(!/status=/.test(r), "filtro vazio não entra na query");
+  });
+
+  test("período não muda a autenticação: Bearer sim, x-context-token nunca", async () => {
+    globalThis.sessionStorage.getItem = (k) => (k === "cd.contextToken" ? "token-tenant-fake" : null);
+    stubFetch();
+    await painelAdmApi.visaoGeral({ mes: "2026-08" });
+    const h = capturado.opcoes.headers ?? {};
+    assert.equal(h.Authorization, "Bearer jwt-identidade-fake");
+    assert.ok(!Object.keys(h).some((k) => k.toLowerCase() === "x-context-token"));
+    globalThis.sessionStorage.getItem = () => null;
+  });
+});

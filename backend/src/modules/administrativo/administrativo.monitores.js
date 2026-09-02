@@ -67,16 +67,28 @@ export function acaoNecessariaHoje(unidades) {
       organizacaoId: u.organizacaoId ?? null,
       empresaNome: u.empresaNome ?? null,
       categoria: cat,
-      pendencia: u.pendenciasAcum?.total ? { total: u.pendenciasAcum.total, desde: u.pendenciasAcum.desde ?? null } : null,
+      // `pendencia` é a leitura DO PERÍODO — nunca importa dias do mês
+      // anterior. A parte herdada vai separada, em `herdada`.
+      pendencia: u.pendenciasPeriodo?.total
+        ? { total: u.pendenciasPeriodo.total, desde: u.pendenciasPeriodo.desde ?? null }
+        : null,
+      herdada: u.pendenciaHerdada?.herdada
+        ? { desde: u.pendenciaHerdada.desde, total: u.pendenciaHerdada.total }
+        : null,
     });
   }
 
-  // Ordem DENTRO de cada grupo (item 8 do pedido): pendência mais antiga
-  // primeiro, depois empresa, depois unidade. A ordem ENTRE grupos é
-  // `ORDEM_ACAO_HOJE` (sequência bloqueada -> não realizado -> em preenchimento
-  // -> concluído). NUNCA por percentual.
+  // Ordem DENTRO de cada grupo: pendência mais antiga primeiro, depois
+  // empresa, depois unidade. A ordem ENTRE grupos é `ORDEM_ACAO_HOJE`
+  // (sequência bloqueada -> não realizado -> em preenchimento -> concluído).
+  // NUNCA por percentual.
+  //
+  // A PRIORIDADE usa a data HISTÓRICA (quem está travado há mais tempo vem
+  // primeiro), embora a interface exiba a contagem do período — as duas
+  // perguntas são diferentes e o selo "pendência anterior ao período" explica
+  // ao operador por que aquele item está no topo com poucos dias no mês.
   const chaveOrdem = (it) => [
-    it.pendencia?.desde ?? referencia ?? "9999-99-99",
+    it.pendencia?.desde ?? it.herdada?.desde ?? referencia ?? "9999-99-99",
     (it.empresaNome ?? "").toLowerCase(),
     (it.unidadeNome ?? "").toLowerCase(),
   ];
@@ -102,10 +114,17 @@ export function acaoNecessariaHoje(unidades) {
 // PENDÊNCIAS (aba própria) e EMPRESAS (rollup por organização)
 // ---------------------------------------------------------------------------
 
-/** Uma unidade tem pendência se NÃO está totalmente em dia no D-1. */
+/**
+ * Uma unidade tem pendência NO PERÍODO selecionado.
+ *
+ * Só conta o que produz efeito DENTRO do período: dia pendente/bloqueado no
+ * próprio mês, ou D-1 em aberto. Pendência anterior ao período é histórico —
+ * viaja em `historicoAnterior` como nota, nunca entra nesta contagem (era o
+ * bug: uma unidade com setembro 100% aparecia como crítica por causa de 29/08).
+ */
 export function temPendencia(u) {
   return u.rollup?.status !== ROLLUP.EM_DIA
-    || (u.pendenciasAcum?.total ?? 0) > 0
+    || (u.pendenciasPeriodo?.total ?? 0) > 0
     || u.d1?.categoria === D1_CATEGORIA.EM_PREENCHIMENTO
     || u.d1?.categoria === D1_CATEGORIA.NAO_REALIZADO
     || u.d1?.categoria === D1_CATEGORIA.SEQUENCIA_BLOQUEADA;
@@ -129,15 +148,23 @@ export function listarPendencias(unidades) {
       criticidade: u.rollup?.status ?? null,
       d1Status: u.d1?.categoria ?? null,
       d1StatusDia: u.d1?.statusDia ?? null,
-      sequenciaBloqueada: u.pendenciasAcum?.sequenciaBloqueada ?? false,
-      pendenciaMaisAntiga: u.pendenciasAcum?.desde ?? (u.d1?.elegivel && u.d1?.categoria !== D1_CATEGORIA.CONCLUIDO ? u.d1?.data ?? null : null),
-      diasPendentes: u.pendenciasAcum?.total ?? 0,
+      // sequência travada DENTRO do período — um bloqueio de agosto não
+      // rotula setembro como travado.
+      sequenciaBloqueada: u.pendenciasPeriodo?.sequenciaBloqueada ?? false,
+      // números exibidos: leitura DO PERÍODO
+      pendenciaMaisAntiga: u.pendenciasPeriodo?.desde ?? (u.d1?.elegivel && u.d1?.categoria !== D1_CATEGORIA.CONCLUIDO ? u.d1?.data ?? null : null),
+      diasPendentes: u.pendenciasPeriodo?.total ?? 0,
+      // o que veio de antes do período — mostrado como nota, nunca somado
+      pendenciaHerdada: u.pendenciaHerdada?.herdada ?? false,
+      pendenciaHerdadaDesde: u.pendenciaHerdada?.desde ?? null,
+      diasPendentesHistorico: u.pendenciasAcum?.total ?? 0,
     }))
     .sort((a, b) => {
       const pc = (PESO_CRITICIDADE[a.criticidade] ?? 9) - (PESO_CRITICIDADE[b.criticidade] ?? 9);
       if (pc !== 0) return pc;
-      const da = a.pendenciaMaisAntiga ?? "9999-99-99";
-      const db = b.pendenciaMaisAntiga ?? "9999-99-99";
+      // prioridade pela pendência DO PERÍODO (o histórico só desempata)
+      const da = a.pendenciaMaisAntiga ?? a.pendenciaHerdadaDesde ?? "9999-99-99";
+      const db = b.pendenciaMaisAntiga ?? b.pendenciaHerdadaDesde ?? "9999-99-99";
       if (da !== db) return da < db ? -1 : 1;
       const ea = (a.empresaNome ?? "").toLowerCase(), eb = (b.empresaNome ?? "").toLowerCase();
       if (ea !== eb) return ea < eb ? -1 : 1;
@@ -151,6 +178,63 @@ export function listarPendencias(unidades) {
  * (mês) e Σ concluídas D-1 / Σ elegíveis D-1 — NUNCA média de percentuais.
  * @param {Array<object>} unidades  saída do avaliador de frota
  */
+/** Peso da categoria do D-1 — ordena as unidades DENTRO de uma empresa. */
+const PESO_CATEGORIA = {
+  [D1_CATEGORIA.SEQUENCIA_BLOQUEADA]: 0,
+  [D1_CATEGORIA.NAO_REALIZADO]: 1,
+  [D1_CATEGORIA.EM_PREENCHIMENTO]: 2,
+  [D1_CATEGORIA.CONCLUIDO]: 3,
+  [D1_CATEGORIA.NAO_APLICAVEL]: 4,
+};
+
+/**
+ * Forma enxuta de uma unidade dentro do resumo da empresa — o suficiente para
+ * o gestor identificar QUAL unidade está pendente sem abrir outra tela.
+ */
+function resumoUnidade(u) {
+  return {
+    unidadeId: u.unidadeId,
+    unidadeNome: u.unidadeNome ?? null,
+    criticidade: u.rollup?.status ?? null,
+    d1Status: u.d1?.categoria ?? null,
+    sequenciaBloqueada: u.pendenciasPeriodo?.sequenciaBloqueada ?? false,
+    diasPendentes: u.pendenciasPeriodo?.total ?? 0,
+    pendenciaMaisAntiga: u.pendenciasPeriodo?.desde ?? null,
+    pendenciaHerdada: u.pendenciaHerdada?.herdada ?? false,
+    pendenciaHerdadaDesde: u.pendenciaHerdada?.desde ?? null,
+    conformidadeMes: u.conformidade?.taxa ?? null,
+  };
+}
+
+/** Ordem das unidades pendentes: mais grave -> mais antiga -> mais dias -> nome. */
+function ordenarUnidadesPendentes(lista) {
+  return lista.sort((a, b) => {
+    const pc = (PESO_CRITICIDADE[a.criticidade] ?? 9) - (PESO_CRITICIDADE[b.criticidade] ?? 9);
+    if (pc !== 0) return pc;
+    const pk = (PESO_CATEGORIA[a.d1Status] ?? 9) - (PESO_CATEGORIA[b.d1Status] ?? 9);
+    if (pk !== 0) return pk;
+    const da = a.pendenciaHerdadaDesde ?? a.pendenciaMaisAntiga ?? "9999-99-99";
+    const db = b.pendenciaHerdadaDesde ?? b.pendenciaMaisAntiga ?? "9999-99-99";
+    if (da !== db) return da < db ? -1 : 1;
+    if (b.diasPendentes !== a.diasPendentes) return b.diasPendentes - a.diasPendentes;
+    return (a.unidadeNome ?? "").toLowerCase() < (b.unidadeNome ?? "").toLowerCase() ? -1 : 1;
+  });
+}
+
+/**
+ * Rollup por EMPRESA. Conformidade da empresa = Sigma completos / Sigma esperados
+ * (mes) e Sigma concluidas D-1 / Sigma elegiveis D-1 -- NUNCA media de percentuais.
+ *
+ * Alem dos contadores, devolve o que o gestor precisa para IDENTIFICAR o
+ * problema sem abrir outra tela:
+ *   * `unidadesPendentes` -- quantas unidades da empresa nao estao em dia;
+ *   * `pendentes[]`       -- QUAIS sao elas, ja ordenadas por gravidade;
+ *   * `piorUnidade`       -- a que deve ser tratada primeiro;
+ *   * `d1Ok`              -- o fechamento de ontem fechou em todas?
+ *   * `severidade`        -- 0 critica / 1 atencao / 2 saudavel (para filtro e ordem).
+ *
+ * @param {Array<object>} unidades  saida do avaliador de frota
+ */
 export function consolidarEmpresas(unidades) {
   const mapa = new Map();
   for (const u of unidades ?? []) {
@@ -162,6 +246,7 @@ export function consolidarEmpresas(unidades) {
         unidadesMonitoradas: 0, emDia: 0, atencao: 0, criticas: 0,
         d1Elegiveis: 0, d1Concluidas: 0, d1EmPreenchimento: 0, d1NaoRealizadas: 0, d1Bloqueadas: 0,
         mesCompleto: 0, mesEsperado: 0,
+        pendentes: [], comHistorico: [],
       });
     }
     const g = mapa.get(chave);
@@ -178,16 +263,46 @@ export function consolidarEmpresas(unidades) {
     }
     g.mesCompleto += u.conformidade?.completos ?? 0;
     g.mesEsperado += u.conformidade?.esperados ?? 0;
+    // MESMO criterio de `temPendencia` -- uma so definicao de "pendente".
+    if (temPendencia(u)) g.pendentes.push(resumoUnidade(u));
+    if (u.pendenciaHerdada?.herdada) g.comHistorico.push(u.pendenciaHerdada.desde ?? null);
   }
+
   return [...mapa.values()]
-    .map((g) => ({
-      ...g,
-      conformidadeD1: g.d1Elegiveis ? g.d1Concluidas / g.d1Elegiveis : null,
-      conformidadeMes: g.mesEsperado ? g.mesCompleto / g.mesEsperado : null,
-    }))
+    .map((g) => {
+      const pendentes = ordenarUnidadesPendentes(g.pendentes);
+      // Contexto: alguma unidade arrasta pendência de antes do período? Vira
+      // nota discreta na interface — não muda severidade, cor nem contador.
+      const heranca = g.comHistorico.filter(Boolean).sort();
+      const severidade = g.criticas > 0 ? 0 : g.atencao > 0 ? 1 : 2;
+      const { comHistorico, ...semAuxiliar } = g;
+      return {
+        ...semAuxiliar,
+        pendentes,
+        unidadesPendentes: pendentes.length,
+        historicoAnterior: { existe: heranca.length > 0, desde: heranca[0] ?? null, unidades: heranca.length },
+        piorUnidade: pendentes[0] ?? null,
+        // pendencia mais antiga da empresa (ja considerando a heranca)
+        pendenciaMaisAntiga: pendentes
+          .map((p) => p.pendenciaHerdadaDesde ?? p.pendenciaMaisAntiga)
+          .filter(Boolean)
+          .sort()[0] ?? null,
+        // "o fechamento de ontem fechou em todas as unidades elegiveis?"
+        d1Ok: g.d1Elegiveis > 0 ? g.d1Concluidas === g.d1Elegiveis : null,
+        severidade,
+        conformidadeD1: g.d1Elegiveis ? g.d1Concluidas / g.d1Elegiveis : null,
+        conformidadeMes: g.mesEsperado ? g.mesCompleto / g.mesEsperado : null,
+      };
+    })
+    // ORDEM INTELIGENTE (item 12): criticas -> mais unidades pendentes ->
+    // pendencia mais antiga -> atencao -> saudaveis -> nome.
     .sort((a, b) => {
-      // empresas com problema no topo: mais críticas -> mais em atenção -> nome
+      if (a.severidade !== b.severidade) return a.severidade - b.severidade;
       if (b.criticas !== a.criticas) return b.criticas - a.criticas;
+      if (b.unidadesPendentes !== a.unidadesPendentes) return b.unidadesPendentes - a.unidadesPendentes;
+      const da = a.pendenciaMaisAntiga ?? "9999-99-99";
+      const db = b.pendenciaMaisAntiga ?? "9999-99-99";
+      if (da !== db) return da < db ? -1 : 1;
       if (b.atencao !== a.atencao) return b.atencao - a.atencao;
       return (a.empresaNome ?? "").toLowerCase() < (b.empresaNome ?? "").toLowerCase() ? -1 : 1;
     });

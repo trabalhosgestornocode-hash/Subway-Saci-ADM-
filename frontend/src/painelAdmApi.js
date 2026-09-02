@@ -47,33 +47,62 @@ export const painelAdmApi = {
    */
   ping: () => chamar("/ping"),
 
-  // -- Monitoramento (Fase F). Só leitura, Bearer, sem x-context-token. --
+  // -- Monitoramento. Só leitura, Bearer, sem x-context-token. --
+  //
+  // PERÍODO ATIVO: todos aceitam `mes=AAAA-MM` (opcional). Ausente = mês
+  // corrente. O backend deriva o dia de referência do período: D-1 no mês
+  // corrente, último dia num mês já fechado.
 
   /** Resumo consolidado + "Ação Necessária Hoje" + rollup por empresa. */
-  visaoGeral: () => chamar("/visao-geral"),
+  visaoGeral: ({ mes } = {}) => chamar("/visao-geral" + qs({ mes })),
 
   /**
-   * Lista de unidades num dia (padrão: D-1 do backend). Filtros server-side:
-   * `data` (AAAA-MM-DD, nunca hoje/futuro), `organizacaoId`, `status`
-   * (categoria do D-1), `criticidade`. A busca textual é client-side.
-   * @param {{data?: string, organizacaoId?: string, status?: string, criticidade?: string}} [filtros]
+   * Lista de unidades num dia. Sem `data`, usa o dia de referência do `mes`.
+   * Filtros server-side: `mes`, `data` (AAAA-MM-DD, nunca hoje/futuro),
+   * `organizacaoId`, `status` (categoria do D-1), `criticidade`.
+   * A busca textual é client-side.
+   * @param {{mes?: string, data?: string, organizacaoId?: string, status?: string, criticidade?: string}} [filtros]
    */
   monitoramentoDiario: (filtros = {}) => chamar("/monitoramento-diario" + qs(filtros)),
 
   /** Só unidades não-em-dia. Ordem (CRÍTICO → mais antigo → ATENÇÃO) vem pronta. */
-  pendencias: () => chamar("/pendencias"),
+  pendencias: ({ mes } = {}) => chamar("/pendencias" + qs({ mes })),
 
   /** Rollup por organização (conformidade = Σ/Σ). */
-  empresas: () => chamar("/empresas"),
+  empresas: ({ mes } = {}) => chamar("/empresas" + qs({ mes })),
 
   /** Detalhe de uma empresa: resumo + unidades + pendências. */
-  detalheEmpresa: (organizacaoId) => chamar(`/empresas/${encodeURIComponent(organizacaoId)}`),
+  detalheEmpresa: (organizacaoId, { mes } = {}) =>
+    chamar(`/empresas/${encodeURIComponent(organizacaoId)}` + qs({ mes })),
 
   /**
-   * Calendário mensal de uma unidade.
+   * Calendário mensal de uma unidade — abre no `mes` do período ativo.
    * @param {string} unidadeId
    * @param {string} [mes] AAAA-MM (padrão: mês corrente do backend)
    */
   calendarioUnidade: (unidadeId, mes) =>
     chamar(`/unidades/${encodeURIComponent(unidadeId)}/calendario` + qs({ mes })),
+
+  // -- Financeiro / Relatórios --
+  //
+  // Rotas próprias de propósito: o ranking completo não pertence ao payload da
+  // Visão Geral (que carrega só o consolidado e os líderes).
+
+  /** Ranking por faturamento absoluto. `escopo`: empresas | unidades. */
+  rankingFaturamento: ({ mes, escopo, limite } = {}) =>
+    chamar("/rankings/faturamento" + qs({ mes, escopo, limite })),
+
+  /** Ranking por conformidade. `ordem=asc` = quem precisa de mais atenção. */
+  rankingConformidade: ({ mes, escopo, ordem, limite } = {}) =>
+    chamar("/rankings/conformidade" + qs({ mes, escopo, ordem, limite })),
+
+  /** Relatório executivo do período (operação + conformidade + financeiro). */
+  relatorioResumo: ({ mes, topN } = {}) => chamar("/relatorios/resumo" + qs({ mes, topN })),
+
+  /** Pacote COMPLETO do relatório executivo — a fonte única do PDF. */
+  relatorioExecutivo: ({ mes, topN } = {}) => chamar("/relatorios/executivo" + qs({ mes, topN })),
+
+  /** Série diária de faturamento — rede inteira ou uma empresa. */
+  relatorioEvolucao: ({ mes, organizacaoId } = {}) =>
+    chamar("/relatorios/evolucao" + qs({ mes, organizacaoId })),
 };

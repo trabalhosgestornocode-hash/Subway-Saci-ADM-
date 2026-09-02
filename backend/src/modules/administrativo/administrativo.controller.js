@@ -47,36 +47,67 @@ export function ping(req, res) {
 }
 
 // --------------------------------------------------------- Monitoramento (Fase F)
+//
+// PERÍODO ATIVO: toda rota aceita `?mes=AAAA-MM` (opcional). Ausente = mês
+// corrente — exatamente o comportamento anterior. O service deriva o dia-alvo
+// do período (D-1 no mês corrente; último dia num mês já fechado).
 
-// GET /administrativo/visao-geral
+// GET /administrativo/visao-geral?mes=AAAA-MM
 export const visaoGeral = asyncHandler(async (req, res) =>
-  ok(res, await service.visaoGeral({ hojeIso: hoje(req) }, deps(req))));
+  ok(res, await service.visaoGeral({ hojeIso: hoje(req), mes: req.query.mes }, deps(req))));
 
-// GET /administrativo/monitoramento-diario?data=&organizacaoId=&status=&criticidade=
+// GET /administrativo/monitoramento-diario?mes=&data=&organizacaoId=&status=&criticidade=
 export const monitoramentoDiario = asyncHandler(async (req, res) =>
   ok(res, await service.monitoramentoDiario({
     data: req.query.data,
+    mes: req.query.mes,
     organizacaoId: req.query.organizacaoId,
     status: req.query.status,
     criticidade: req.query.criticidade,
     hojeIso: hoje(req),
   }, deps(req))));
 
-// GET /administrativo/pendencias
+// GET /administrativo/pendencias?mes=AAAA-MM
 export const pendencias = asyncHandler(async (req, res) =>
-  ok(res, await service.pendencias({ hojeIso: hoje(req) }, deps(req))));
+  ok(res, await service.pendencias({ hojeIso: hoje(req), mes: req.query.mes }, deps(req))));
 
-// GET /administrativo/empresas
+// GET /administrativo/empresas?mes=AAAA-MM
 export const empresas = asyncHandler(async (req, res) =>
-  ok(res, await service.empresas({ hojeIso: hoje(req) }, deps(req))));
+  ok(res, await service.empresas({ hojeIso: hoje(req), mes: req.query.mes }, deps(req))));
 
-// GET /administrativo/empresas/:organizacaoId
+// GET /administrativo/empresas/:organizacaoId?mes=AAAA-MM
 export const detalheEmpresa = asyncHandler(async (req, res) =>
-  ok(res, await service.detalheEmpresa({ organizacaoId: req.params.organizacaoId, hojeIso: hoje(req) }, deps(req))));
+  ok(res, await service.detalheEmpresa({ organizacaoId: req.params.organizacaoId, hojeIso: hoje(req), mes: req.query.mes }, deps(req))));
 
 // GET /administrativo/unidades/:unidadeId/calendario?mes=YYYY-MM
 export const calendarioUnidade = asyncHandler(async (req, res) =>
   ok(res, await service.calendarioUnidade({ unidadeId: req.params.unidadeId, mes: req.query.mes, hojeIso: hoje(req) }, deps(req))));
+
+// ------------------------------------------------- Financeiro / Relatorios
+
+// GET /administrativo/rankings/faturamento?mes=&escopo=&limite=
+export const rankingFaturamento = asyncHandler(async (req, res) =>
+  ok(res, await service.rankingDeFaturamento({
+    mes: req.query.mes, escopo: req.query.escopo, limite: req.query.limite, hojeIso: hoje(req),
+  }, deps(req))));
+
+// GET /administrativo/rankings/conformidade?mes=&escopo=&ordem=&limite=
+export const rankingConformidade = asyncHandler(async (req, res) =>
+  ok(res, await service.rankingDeConformidade({
+    mes: req.query.mes, escopo: req.query.escopo, ordem: req.query.ordem, limite: req.query.limite, hojeIso: hoje(req),
+  }, deps(req))));
+
+// GET /administrativo/relatorios/resumo?mes=&topN=
+export const relatorioResumo = asyncHandler(async (req, res) =>
+  ok(res, await service.relatorioExecutivo({ mes: req.query.mes, topN: req.query.topN, hojeIso: hoje(req) }, deps(req))));
+
+// GET /administrativo/relatorios/evolucao?mes=&organizacaoId=
+export const relatorioEvolucao = asyncHandler(async (req, res) =>
+  ok(res, await service.evolucaoFaturamento({ mes: req.query.mes, organizacaoId: req.query.organizacaoId, hojeIso: hoje(req) }, deps(req))));
+
+// GET /administrativo/relatorios/executivo?mes=&topN=  (pacote do PDF)
+export const relatorioExecutivo = asyncHandler(async (req, res) =>
+  ok(res, await service.relatorioExecutivoCompleto({ mes: req.query.mes, topN: req.query.topN, hojeIso: hoje(req) }, deps(req))));
 
 /** Qualquer rota não mapeada sob /administrativo é 404 em JSON (nunca cai no app). */
 export function naoEncontrado(req, res) {

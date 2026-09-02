@@ -477,7 +477,7 @@
 
     <aside class="padm-sidebar">
       <div class="padm-brand">
-        <span class="padm-brand-mark" aria-hidden="true">📊</span>
+        <img class="padm-brand-mark" src="/assets/logo-crescercomdeliverylogin.png" alt="Crescer com Delivery" />
         <span class="padm-brand-txt">
           <b>Painel Administrativo</b>
           <small>Crescer com Delivery</small>
@@ -507,7 +507,17 @@
         </div>
       </header>
 
+      <!-- Cabeçalho gerencial: título, período ativo (mês/ano) e contexto do
+           fechamento. Renderizado por painelAdm.js#renderCabecalho; persiste
+           entre as telas do painel. -->
+      <div id="padm-cabecalho" class="padm-cab"></div>
+
       <main id="padm-view" class="padm-content" aria-live="polite"></main>
+    </div>
+
+    <!-- Modal do Painel Administrativo (geração do relatório em PDF). Fica no
+         shell do painel, não no modal genérico do SuperAdmin. -->
+    <div id="padm-modal" class="padm-modal-wrap" hidden>
     </div>
   </div>
 

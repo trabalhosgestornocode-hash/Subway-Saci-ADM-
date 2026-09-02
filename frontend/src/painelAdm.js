@@ -1,5 +1,5 @@
-// Shell do PAINEL ADMINISTRATIVO da Crescer — menu, pilha de navegação interna
-// e a ação "Trocar ambiente".
+// Shell do PAINEL ADMINISTRATIVO da Crescer — cabeçalho gerencial, período
+// ativo (mês/ano), menu e pilha de navegação interna.
 //
 // Vive no mesmo SPA que o app do tenant e que o Painel SuperAdmin, mas num
 // shell IRMÃO (#painel-adm-screen), nunca visível ao mesmo tempo. Nenhuma view
@@ -7,21 +7,28 @@
 // garante, no código, que o Painel Administrativo não opera sob o contexto de
 // um cliente (mesma disciplina de admin.js).
 //
-// FASE G: telas reais (Visão Geral, Monitoramento Diário, Pendências,
-// Empresas, Histórico) consumindo /api/v1/administrativo/*. O detalhe de
-// empresa e o calendário de unidade são navegação INTERNA (pilha), não troca
-// de contexto tenant.
+// PERÍODO ATIVO: o painel inteiro olha UM mês por vez. O período mora aqui
+// (`state.painelAdm.periodo`), vai em `mes=AAAA-MM` para todos os endpoints e
+// ATRAVESSA a navegação interna — abrir uma empresa ou o calendário de uma
+// unidade não perde o mês que o gestor estava analisando.
 
 import { state } from "./state.js";
 import { el, els, toast } from "./utils.js";
 import { icon } from "./icons.js";
 import { painelAdmApi } from "./painelAdmApi.js";
-import { TELAS_PADM, renderViewPadm, ligarNavegacao, resetFiltrosDiario } from "./painelAdmViews.js";
+import {
+  TELAS_PADM, renderViewPadm, ligarNavegacao,
+  resetFiltrosDiario, resetFiltrosIdentificacao, deslocarMes,
+} from "./painelAdmViews.js";
+import { MESES } from "./painelAdmUi.js";
 
 /** @type {{mostrarTela: Function, aoTrocarAmbiente: Function, aoAcessoRevogado: Function, usuario: object}|null} */
 let ganchos = null;
 let eventosLigados = false;
 let apiAtual = painelAdmApi;
+
+/** Quantos anos para trás o seletor oferece. */
+const ANOS_PARA_TRAS = 3;
 
 /**
  * Pilha de navegação interna do painel. O topo é o que está na tela.
@@ -32,6 +39,49 @@ let apiAtual = painelAdmApi;
  */
 let pilha = [];
 const topo = () => pilha[pilha.length - 1] ?? { tipo: "tela", id: TELAS_PADM[0].id };
+
+// ---------------------------------------------------------------------------
+// Período ativo
+// ---------------------------------------------------------------------------
+
+/** Mês corrente no fuso do negócio (aproximação local — o backend é a autoridade). */
+function mesDeHoje() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Normaliza "AAAA-MM" -> `{ano, mes, ym}`. */
+export function periodoDe(ym) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym ?? "")) ?? /^(\d{4})-(\d{2})$/.exec(mesDeHoje());
+  return { ano: Number(m[1]), mes: Number(m[2]), ym: `${m[1]}-${m[2]}` };
+}
+
+/** Período ativo do painel. Exposto em `state.painelAdm.periodo`. */
+function periodo() {
+  state.painelAdm ??= {};
+  state.painelAdm.periodo ??= periodoDe(mesDeHoje());
+  return state.painelAdm.periodo;
+}
+
+/** Define o período e re-renderiza cabeçalho + tela atual. Recusa mês futuro. */
+export function definirPeriodo(ym) {
+  const novo = periodoDe(ym);
+  if (novo.ym > mesDeHoje()) return Promise.resolve();      // nunca navega para o futuro
+  if (novo.ym === periodo().ym) return Promise.resolve();
+  state.painelAdm.periodo = novo;
+  renderCabecalho();
+  return renderPadmAtual();
+}
+
+/** Avança/retrocede `delta` meses no período ativo. */
+export const mudarPeriodo = (delta) => definirPeriodo(deslocarMes(periodo().ym, delta));
+
+/** Volta para o mês corrente. */
+export const irParaMesAtual = () => definirPeriodo(mesDeHoje());
+
+// ---------------------------------------------------------------------------
+// Abertura do ambiente
+// ---------------------------------------------------------------------------
 
 /**
  * Abre o Painel Administrativo. Injeta as dependências do app.js.
@@ -65,6 +115,7 @@ export async function abrirPainelAdministrativo(opcoes) {
     abrirUnidade: abrirCalendarioUnidade,
     voltar: voltarPadm,
     irParaTela: irParaPadm,
+    mudarPeriodo,
     aoAcessoRevogado: (msg) => {
       state.telaPainelAdm = null;
       opcoes.aoAcessoRevogado?.(msg);
@@ -75,6 +126,7 @@ export async function abrirPainelAdministrativo(opcoes) {
   preencherUsuario(opcoes.usuario ?? state.sessao.usuario);
   opcoes.mostrarTela("painelAdm");
   ligarEventos();
+  renderCabecalho();
   await irParaPadm(state.telaPainelAdm || TELAS_PADM[0].id);
   return true;
 }
@@ -85,6 +137,73 @@ export function sairDoPainelAdministrativo() {
   state.telaPainelAdm = null;
   pilha = [];
   ganchos?.aoTrocarAmbiente?.();
+}
+
+// ---------------------------------------------------------------------------
+// Cabeçalho gerencial + seletor de período
+// ---------------------------------------------------------------------------
+
+function renderCabecalho() {
+  const cab = el("#padm-cabecalho");
+  if (!cab) return;
+  const p = periodo();
+  const hojeYm = mesDeHoje();
+  const anoAtual = Number(hojeYm.slice(0, 4));
+  const noMesAtual = p.ym === hojeYm;
+
+  const opcoesMes = MESES.map((nome, i) => {
+    const num = i + 1;
+    const futuro = p.ano === anoAtual && num > Number(hojeYm.slice(5, 7));
+    return `<option value="${num}" ${num === p.mes ? "selected" : ""} ${futuro ? "disabled" : ""}>${nome}</option>`;
+  }).join("");
+
+  const anos = Array.from({ length: ANOS_PARA_TRAS + 1 }, (_, i) => anoAtual - i);
+  const opcoesAno = anos.map((a) => `<option value="${a}" ${a === p.ano ? "selected" : ""}>${a}</option>`).join("");
+
+  cab.innerHTML = `
+    <div class="padm-cab-inner">
+      <div class="padm-cab-marca">
+        <h1 class="padm-cab-tit">Painel Administrativo</h1>
+        <p class="padm-cab-sub">Monitoramento das operações da <b>Crescer com Delivery</b></p>
+      </div>
+
+      <div class="padm-periodo" role="group" aria-label="Período analisado">
+        <span class="padm-periodo-rot">Período analisado</span>
+        <div class="padm-periodo-ctrl">
+          <button class="padm-per-seta" data-padm-per="anterior" aria-label="Mês anterior">‹</button>
+          <div class="padm-periodo-campos">
+            <span class="padm-periodo-ic">${icon("calendar", { size: 15 })}</span>
+            <select id="padm-per-mes" aria-label="Mês">${opcoesMes}</select>
+            <select id="padm-per-ano" aria-label="Ano">${opcoesAno}</select>
+          </div>
+          <button class="padm-per-seta" data-padm-per="proximo" aria-label="Próximo mês" ${noMesAtual ? "disabled" : ""}>›</button>
+        </div>
+        <button class="padm-per-atual" data-padm-per="atual" ${noMesAtual ? "hidden" : ""}>Voltar ao mês atual</button>
+      </div>
+    </div>`;
+
+  ligarPeriodo();
+}
+
+function ligarPeriodo() {
+  const cab = el("#padm-cabecalho");
+  if (!cab) return;
+  const mesSel = el("#padm-per-mes");
+  const anoSel = el("#padm-per-ano");
+  const aplicarSelects = () => {
+    const ano = Number(anoSel?.value ?? periodo().ano);
+    const mes = Number(mesSel?.value ?? periodo().mes);
+    definirPeriodo(`${ano}-${String(mes).padStart(2, "0")}`);
+  };
+  mesSel?.addEventListener("change", aplicarSelects);
+  anoSel?.addEventListener("change", aplicarSelects);
+
+  els("[data-padm-per]").forEach((b) => b.addEventListener("click", () => {
+    const acao = b.dataset.padmPer;
+    if (acao === "anterior") mudarPeriodo(-1);
+    else if (acao === "proximo") mudarPeriodo(+1);
+    else if (acao === "atual") irParaMesAtual();
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -102,11 +221,12 @@ function montarMenu() {
     li.addEventListener("click", () => irParaPadm(li.dataset.tela)));
 }
 
-/** Aba de topo — zera a pilha e os filtros do Monitoramento Diário. */
+/** Aba de topo — zera a pilha e os filtros do Diário. O período NÃO é zerado. */
 export function irParaPadm(telaId) {
   const tela = TELAS_PADM.find((t) => t.id === telaId) ?? TELAS_PADM[0];
   state.telaPainelAdm = tela.id;
   resetFiltrosDiario();
+  resetFiltrosIdentificacao();
   pilha = [{ tipo: "tela", id: tela.id }];
   els("#padm-menu li[data-tela]").forEach((li) =>
     li.classList.toggle("ativo", li.dataset.tela === tela.id));
@@ -114,21 +234,18 @@ export function irParaPadm(telaId) {
   return renderPadmAtual();
 }
 
-/** Empurra o detalhe de uma empresa. */
+/** Empurra o detalhe de uma empresa — mantendo o período ativo. */
 export function abrirDetalheEmpresa(empresaId, empresaNome) {
   if (!empresaId) return;
   pilha.push({ tipo: "empresa", empresaId, empresaNome });
   return renderPadmAtual();
 }
 
-/**
- * Empurra (ou, na troca de mês, substitui) o calendário de uma unidade.
- * @param {string} unidadeId @param {string} [unidadeNome] @param {string} [mes] AAAA-MM
- */
-export function abrirCalendarioUnidade(unidadeId, unidadeNome, mes) {
+/** Empurra o calendário de uma unidade — abre no mês do período ativo. */
+export function abrirCalendarioUnidade(unidadeId, unidadeNome) {
   if (!unidadeId) return;
   const t = topo();
-  const entrada = { tipo: "calendario", unidadeId, unidadeNome, mes: mes || null };
+  const entrada = { tipo: "calendario", unidadeId, unidadeNome };
   if (t.tipo === "calendario" && t.unidadeId === unidadeId) pilha[pilha.length - 1] = entrada;
   else pilha.push(entrada);
   return renderPadmAtual();
@@ -150,7 +267,7 @@ function tituloDoTopo() {
 function renderPadmAtual() {
   const titulo = el("#padm-titulo");
   if (titulo) titulo.textContent = tituloDoTopo();
-  return renderViewPadm(topo(), { api: apiAtual });
+  return renderViewPadm(topo(), { api: apiAtual, mes: periodo().ym });
 }
 
 function preencherUsuario(usuario) {

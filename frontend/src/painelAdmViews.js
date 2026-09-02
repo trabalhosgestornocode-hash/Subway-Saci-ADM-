@@ -1,23 +1,32 @@
 // As telas do PAINEL ADMINISTRATIVO — central de acompanhamento cross-tenant.
 //
-// FASE G: telas reais consumindo os endpoints da Fase F
-// (/api/v1/administrativo/*). Nenhuma view opera sob contexto de empresa —
-// não há req.tenant, não há Context Token. A "navegação" para o detalhe de
-// uma empresa ou o calendário de uma unidade é interna ao painel (pilha de
-// telas em painelAdm.js), NÃO uma troca de contexto.
+// Telas reais consumindo /api/v1/administrativo/*. Nenhuma view opera sob
+// contexto de empresa — não há req.tenant, não há Context Token. A navegação
+// para o detalhe de uma empresa ou o calendário de uma unidade é interna ao
+// painel (pilha em painelAdm.js), NÃO uma troca de contexto.
+//
+// PERÍODO ATIVO: todas as chamadas levam `mes=AAAA-MM` (o período escolhido no
+// cabeçalho). O período atravessa a navegação interna — abrir uma empresa ou
+// uma unidade não perde o mês que o gestor estava olhando.
 //
 // Padrão de cada tela: um CONSTRUTOR PURO `htmlX(dados)` -> string (testável
 // sem DOM) + o orquestrador `renderViewPadm` que busca, injeta e liga eventos,
-// tratando loading / erro / vazio. `null` do backend nunca vira número.
+// tratando loading (skeleton) / erro / vazio. `null` do backend nunca vira
+// número.
 
 import { el, els, escapeHtml, normalizarBusca } from "./utils.js";
 import { icon } from "./icons.js";
 import { painelAdmApi } from "./painelAdmApi.js";
+import { SECOES_PDF, secoesPadrao, gerarPdf, previewPdf, nomeArquivoPdf } from "./painelAdmPdf.js";
 import {
-  card, cards, secao, carregando, erro, vazio, busca,
-  chipCriticidade, chipCategoria, chip,
+  card, cards, secao, carregando, erro, vazio, busca, metrica, barraSaude,
+  chipCriticidade, chipCategoria, chip, notaHerdada,
   fmtPct, fmtConformidade, fmtNum, fmtData, fmtDataCurta, fmtMesLongo, fmtDiasPendentes,
-  CATEGORIA_D1, CRITICIDADE, ORDEM_ACAO, estadoDiaCalendario,
+  CATEGORIA_D1, CRITICIDADE, ORDEM_ACAO, EXPLICACAO_D1, estadoDiaCalendario,
+  realce, seloPendencia, blocoEmpresa, filtroSeveridade, filtrarEmpresas,
+  contagensEmpresas, severidadeDe, qtdPendentes, linhaUnidadePendente,
+  fmtDinheiro, fmtDinheiroCurto, fmtDinheiroExato, fmtVariacao, fmtVariacaoPP,
+  tomVariacao, seloProvisorio, textoCobertura, linhaRanking, barrasEvolucao,
 } from "./painelAdmUi.js";
 
 /** Menu do painel — 5 áreas fixas. */
@@ -26,17 +35,36 @@ export const TELAS_PADM = [
   { id: "diario",      label: "Monitoramento Diário", icone: "calendar" },
   { id: "pendencias",  label: "Pendências",           icone: "alert-triangle" },
   { id: "empresas",    label: "Empresas",             icone: "building" },
-  { id: "historico",   label: "Histórico",            icone: "archive" },
+  { id: "relatorios",  label: "Relatórios",           icone: "archive" },
 ];
 
 const view = () => el("#padm-view");
 
 // Filtros server-side do Monitoramento Diário — persistem entre re-renders da
-// própria tela; zeram ao sair dela (painelAdm.js).
+// própria tela; zeram ao trocar de aba (painelAdm.js). O período NÃO mora aqui:
+// é global do painel e chega por `opts.mes`.
 export const filtrosDiario = { data: "", organizacaoId: "", status: "", criticidade: "" };
 export function resetFiltrosDiario() {
   filtrosDiario.data = ""; filtrosDiario.organizacaoId = "";
   filtrosDiario.status = ""; filtrosDiario.criticidade = "";
+}
+
+/**
+ * Estado das telas de IDENTIFICAÇÃO (Empresas e Pendências). Vive aqui porque
+ * é preferência de leitura do gestor, não dado do servidor: nenhuma dessas
+ * escolhas refaz chamada de rede — tudo filtra/reagrupa o que já veio.
+ */
+export const viewEmpresas = { filtro: "todas", termo: "" };
+export const viewPendencias = { agrupar: "empresa", filtro: "todas", termo: "" };
+/** Aba interna da área Relatórios + escopo dos rankings. */
+export const viewRelatorios = { aba: "resumo", escopo: "empresas" };
+/** Seções marcadas no modal do PDF — preferência de leitura, não dado. */
+export const secoesPdf = secoesPadrao();
+export function resetSecoesPdf() { Object.assign(secoesPdf, secoesPadrao()); }
+export function resetFiltrosIdentificacao() {
+  viewEmpresas.filtro = "todas"; viewEmpresas.termo = "";
+  viewPendencias.agrupar = "empresa"; viewPendencias.filtro = "todas"; viewPendencias.termo = "";
+  viewRelatorios.aba = "resumo"; viewRelatorios.escopo = "empresas";
 }
 
 // ---------------------------------------------------------------------------
@@ -44,47 +72,54 @@ export function resetFiltrosDiario() {
 // ---------------------------------------------------------------------------
 
 /** Ganchos injetados por painelAdm.js: navegação interna + acesso revogado. */
-let nav = { abrirEmpresa() {}, abrirUnidade() {}, irParaTela() {}, aoAcessoRevogado: null };
+let nav = { abrirEmpresa() {}, abrirUnidade() {}, irParaTela() {}, voltar() {}, mudarPeriodo() {}, aoAcessoRevogado: null };
 export function ligarNavegacao(ganchos) { nav = { ...nav, ...ganchos }; }
+
+/** Silhueta de carregamento por tipo de tela. */
+const FORMA_SK = { calendario: "calendario", pendencias: "lista", empresas: "lista", diario: "lista" };
+const formaDe = (entrada) =>
+  entrada.tipo === "calendario" ? "calendario" : (FORMA_SK[entrada.id] ?? "painel");
 
 /**
  * Renderiza uma entrada da pilha de navegação do painel.
- * @param {{tipo: "tela"|"empresa"|"calendario", id?: string, empresaId?: string, empresaNome?: string, unidadeId?: string, unidadeNome?: string, mes?: string}} entrada
- * @param {{api?: typeof painelAdmApi}} [opts]
+ * @param {{tipo: "tela"|"empresa"|"calendario", id?: string, empresaId?: string, empresaNome?: string, unidadeId?: string, unidadeNome?: string}} entrada
+ * @param {{api?: typeof painelAdmApi, mes?: string}} [opts] `mes` = período ativo (AAAA-MM)
  */
 export async function renderViewPadm(entrada = { tipo: "tela", id: "visao-geral" }, opts = {}) {
   const api = opts.api ?? painelAdmApi;
+  const mes = opts.mes || undefined;
   const v = view();
   if (!v) return;
 
-  // Histórico não tem endpoint — tela informativa, sem chamada de rede.
-  if (entrada.tipo === "tela" && entrada.id === "historico") {
-    v.innerHTML = htmlHistorico();
-    return;
-  }
 
-  v.innerHTML = carregando();
+  v.innerHTML = carregando(formaDe(entrada));
   try {
     if (entrada.tipo === "empresa") {
-      const dados = await api.detalheEmpresa(entrada.empresaId);
+      const dados = await api.detalheEmpresa(entrada.empresaId, { mes });
       v.innerHTML = htmlDetalheEmpresa(dados);
-      ligarDetalheEmpresa();
+      ligarDetalhe();
     } else if (entrada.tipo === "calendario") {
-      const dados = await api.calendarioUnidade(entrada.unidadeId, entrada.mes || undefined);
+      const dados = await api.calendarioUnidade(entrada.unidadeId, mes);
       v.innerHTML = htmlCalendario(dados, entrada.unidadeNome);
-      ligarCalendario(dados, entrada);
+      ligarCalendario();
     } else if (entrada.id === "diario") {
-      const dados = await api.monitoramentoDiario(filtrosSemVazio());
+      const dados = await api.monitoramentoDiario(filtrosSemVazio(mes));
       v.innerHTML = htmlDiario(dados, filtrosDiario);
-      ligarDiario(api);
+      ligarDiario(api, mes);
+    } else if (entrada.id === "relatorios") {
+      ultimoDados.apiAtual = api;
+      ultimoDados.relatorio = await api.relatorioResumo({ mes });
+      ultimoDados.evolucao = await api.relatorioEvolucao({ mes });
+      ultimoDados.mesAtivo = mes ?? null;
+      pintarRelatorios();
     } else if (entrada.id === "pendencias") {
-      v.innerHTML = htmlPendencias(await api.pendencias());
-      ligarLista();
+      ultimoDados.pendencias = await api.pendencias({ mes });
+      pintarPendencias();
     } else if (entrada.id === "empresas") {
-      v.innerHTML = htmlEmpresas(await api.empresas());
-      ligarLista();
+      ultimoDados.empresas = await api.empresas({ mes });
+      pintarEmpresas();
     } else {
-      v.innerHTML = htmlVisaoGeral(await api.visaoGeral());
+      v.innerHTML = htmlVisaoGeral(await api.visaoGeral({ mes }));
       ligarLista();
     }
   } catch (e) {
@@ -96,11 +131,67 @@ export async function renderViewPadm(entrada = { tipo: "tela", id: "visao-geral"
   }
 }
 
-const filtrosSemVazio = () => {
+/**
+ * Última resposta de cada tela de identificação. Trocar filtro, agrupamento ou
+ * busca REPINTA a partir daqui — nenhuma dessas ações é uma pergunta nova ao
+ * servidor, e o gestor não deve pagar latência para reordenar o que já viu.
+ */
+const ultimoDados = { empresas: null, pendencias: null, relatorio: null, evolucao: null, mesAtivo: null, apiAtual: null };
+
+function pintarRelatorios() {
+  const v = view();
+  if (!v || !ultimoDados.relatorio) return;
+  v.innerHTML = htmlRelatorios(ultimoDados.relatorio, ultimoDados.evolucao, viewRelatorios);
+  ligarNav();
+  els("[data-padm-aba]").forEach((b) =>
+    b.addEventListener("click", () => { viewRelatorios.aba = b.dataset.padmAba; pintarRelatorios(); }));
+  els("[data-padm-escopo]").forEach((b) =>
+    b.addEventListener("click", () => { viewRelatorios.escopo = b.dataset.padmEscopo; pintarRelatorios(); }));
+  el('[data-padm-acao="csv"]')?.addEventListener("click", () =>
+    baixarCsv(ultimoDados.relatorio, viewRelatorios));
+  el('[data-padm-acao="pdf"]')?.addEventListener("click", () => abrirModalPdf());
+}
+
+function pintarEmpresas() {
+  const v = view();
+  if (!v || !ultimoDados.empresas) return;
+  v.innerHTML = htmlEmpresas(ultimoDados.empresas, viewEmpresas);
+  ligarNav();
+  ligarBarraIdentificacao({
+    estado: viewEmpresas, buscaId: "#padm-busca-empresas", repintar: pintarEmpresas,
+  });
+}
+
+function pintarPendencias() {
+  const v = view();
+  if (!v || !ultimoDados.pendencias) return;
+  v.innerHTML = htmlPendencias(ultimoDados.pendencias, viewPendencias);
+  ligarNav();
+  ligarBarraIdentificacao({
+    estado: viewPendencias, buscaId: "#padm-busca-pendencias", repintar: pintarPendencias, comAgrupar: true,
+  });
+}
+
+/** Filtros preenchidos + o período ativo. Chave ausente ≠ chave `undefined`. */
+const filtrosSemVazio = (mes) => {
   const o = {};
+  if (mes) o.mes = mes;
   for (const [k, val] of Object.entries(filtrosDiario)) if (val) o[k] = val;
   return o;
 };
+
+/** Faixa de contexto do período — repetida no topo de cada tela de dados. */
+function faixaPeriodo(d, rotulo = "Fechamento monitorado") {
+  const ref = d?.d1 ?? d?.referencia;
+  const fechado = d?.mesCorrente === false;
+  return `
+    <div class="padm-faixa">
+      <span class="padm-faixa-item"><b>${escapeHtml(fmtMesLongo(d?.periodo))}</b></span>
+      <span class="padm-faixa-sep"></span>
+      <span class="padm-faixa-item">${escapeHtml(rotulo)}: <b>${fmtData(ref)}</b></span>
+      ${fechado ? `<span class="padm-faixa-tag">mês fechado</span>` : ""}
+    </div>`;
+}
 
 // ===========================================================================
 // 1. VISÃO GERAL
@@ -109,97 +200,195 @@ const filtrosSemVazio = () => {
 /** @param {object} d saída de GET /administrativo/visao-geral */
 export function htmlVisaoGeral(d) {
   const r = d?.resumo ?? {};
+  const empresas = d?.empresas ?? [];
   const confD1 = fmtConformidade(r.conformidadeD1);
   const confMes = fmtConformidade(r.conformidadeMes, { semBase: "Sem dias esperados" });
+  const elegiveisD1 = (r.concluidasD1 ?? 0) + (r.emPreenchimentoD1 ?? 0) + (r.naoRealizadasD1 ?? 0) + (r.sequenciaBloqueadaD1 ?? 0);
+
+  // Contadores de pendência: o backend manda prontos; se vier de uma versão
+  // antiga do contrato, derivam das empresas (nunca quebra a tela).
+  const comPendencia = empresas.filter((e) => qtdPendentes(e) > 0);
+  const nEmpresasPend = r.empresasComPendencia ?? comPendencia.length;
+  const nUnidadesPend = r.unidadesComPendencia ?? comPendencia.reduce((n, e) => n + qtdPendentes(e), 0);
+  const nSaudaveis = r.empresasSaudaveis ?? (empresas.length - comPendencia.length);
 
   const topo = cards([
-    card({ label: "Unidades monitoradas", valor: fmtNum(r.unidadesMonitoradas), nota: `${fmtNum(r.empresasMonitoradas)} empresa(s)` }),
-    card({ label: "Conformidade D-1", valor: confD1.texto, nota: confD1.vazio ? confD1.nota : `${fmtNum(r.concluidasD1)} de ${fmtNum((r.concluidasD1 ?? 0) + (r.emPreenchimentoD1 ?? 0) + (r.naoRealizadasD1 ?? 0) + (r.sequenciaBloqueadaD1 ?? 0))}` }),
-    card({ label: "Conformidade do mês", valor: confMes.texto, nota: confMes.vazio ? confMes.nota : `${fmtNum(r.mesCompleto)} de ${fmtNum(r.mesEsperado)} dias` }),
-    card({ label: "Críticas", valor: fmtNum(r.criticas), tom: (r.criticas ?? 0) > 0 ? "critico" : "" }),
-    card({ label: "Atenção", valor: fmtNum(r.atencao), tom: (r.atencao ?? 0) > 0 ? "atencao" : "" }),
-    card({ label: "Em dia", valor: fmtNum(r.emDia), tom: "ok" }),
+    card({
+      label: "Empresas com pendência", valor: fmtNum(nEmpresasPend), icone: "building",
+      tom: nEmpresasPend > 0 ? "critico" : "ok", destaque: nEmpresasPend > 0,
+      nota: nEmpresasPend > 0
+        ? `de ${fmtNum(r.empresasMonitoradas)} monitoradas · ${fmtNum(nSaudaveis)} sem pendência`
+        : `todas as ${fmtNum(r.empresasMonitoradas)} empresas em dia`,
+    }),
+    card({
+      label: "Unidades com pendência", valor: fmtNum(nUnidadesPend), icone: "store",
+      tom: nUnidadesPend > 0 ? "critico" : "ok", destaque: nUnidadesPend > 0,
+      nota: `de ${fmtNum(r.unidadesMonitoradas)} unidades monitoradas`,
+    }),
+    card({
+      label: "Críticas", valor: fmtNum(r.criticas), icone: "alert-triangle",
+      tom: (r.criticas ?? 0) > 0 ? "critico" : "neutro",
+      nota: (r.criticas ?? 0) > 0 ? "sequência travada ou pendência acumulada" : "nenhuma unidade travada",
+    }),
+    card({
+      label: "Atenção", valor: fmtNum(r.atencao), icone: "clock",
+      tom: (r.atencao ?? 0) > 0 ? "atencao" : "neutro",
+      nota: (r.atencao ?? 0) > 0 ? "fechamento de ontem em aberto" : "nada em aberto",
+    }),
+    card({
+      label: "Em dia", valor: fmtNum(r.emDia), icone: "check-circle", tom: "ok",
+      nota: "unidades sem pendência no período",
+    }),
+    card({
+      label: "Conformidade D-1", valor: confD1.texto, icone: "target",
+      progresso: confD1.fracao,
+      nota: confD1.vazio ? confD1.nota : `${fmtNum(r.concluidasD1)} de ${fmtNum(elegiveisD1)} fecharam`,
+    }),
+    card({
+      label: "Conformidade do mês", valor: confMes.texto, icone: "trending-up",
+      progresso: confMes.fracao,
+      nota: confMes.vazio ? confMes.nota : `${fmtNum(r.mesCompleto)} de ${fmtNum(r.mesEsperado)} dias`,
+    }),
   ].join(""));
 
   return `
-    <div class="padm-refdata">Fechamento cobrado: <b>${fmtData(d?.d1)}</b> <span class="padm-refdata-sep">·</span> hoje ${fmtData(d?.dataReferencia)}</div>
+    ${faixaPeriodo(d)}
     ${topo}
-    ${secaoAcaoNecessaria(d?.acaoNecessariaHoje ?? [])}
-    ${secaoResumoEmpresas(d?.empresas ?? [])}`;
+    ${faixaFinanceira(d?.faturamento)}
+    ${secaoAcaoNecessaria(d?.acaoNecessariaHoje ?? [], d)}
+    ${secaoEmpresasComPendencia(empresas)}`;
 }
 
-function secaoAcaoNecessaria(itens) {
-  const pendentes = itens.filter((it) => it.categoria !== "concluido");
-  const porGrupo = ORDEM_ACAO.map((cat) => ({
-    cat,
-    meta: CATEGORIA_D1[cat],
-    itens: itens.filter((it) => it.categoria === cat),
-  })).filter((g) => g.itens.length);
-
-  const corpo = pendentes.length
-    ? porGrupo.map((g) => g.cat === "concluido" ? "" : `
-        <div class="padm-acao-grupo padm-acao-grupo--${g.meta.classe}">
-          <div class="padm-acao-grupo-head">
-            ${chip(g.meta)}
-            <span class="padm-acao-grupo-cont">${g.itens.length}</span>
-          </div>
-          <ul class="padm-acao-lista">
-            ${g.itens.map(itemAcao).join("")}
-          </ul>
-        </div>`).join("")
-    : vazio("Nada pendente para hoje", "Todos os fechamentos de ontem elegíveis foram concluídos.");
-
-  const concluidas = itens.filter((it) => it.categoria === "concluido").length;
+/**
+ * Faixa financeira da home executiva: quanto a rede faturou no período, quanto
+ * ainda é provisório, a cobertura e os líderes. Fica ABAIXO da pendência de
+ * propósito — o painel é de monitoramento; o dinheiro é contexto, não a manchete.
+ */
+function faixaFinanceira(f) {
+  if (!f || f.total == null) return "";
   return secao({
-    titulo: "Ação necessária hoje",
-    sub: pendentes.length
-      ? `${pendentes.length} unidade(s) precisam de atenção${concluidas ? ` · ${concluidas} já concluíram` : ""}`
-      : "",
-    corpo: `<div class="padm-acao">${corpo}</div>`,
+    titulo: "Faturamento da rede",
+    icone: "banknote",
+    sub: "Período selecionado",
+    acoes: `<button class="btn btn-ghost btn-sm" data-padm-ir="relatorios">Ver relatórios ›</button>`,
+    corpo: `
+      <div class="padm-fin-faixa">
+        <div class="padm-fin-total">
+          <b class="padm-fin-valor">${escapeHtml(fmtDinheiro(f.total))}</b>
+          <span class="padm-fin-linhas">
+            ${textoCobertura(f.cobertura) ? `<span>Cobertura <b>${escapeHtml(textoCobertura(f.cobertura))}</b></span>` : ""}
+            <span>Confirmado <b>${escapeHtml(fmtDinheiroCurto(f.confirmado))}</b></span>
+          </span>
+          ${seloProvisorio(f)}
+        </div>
+        <div class="padm-fin-lideres">
+          ${f.liderEmpresa ? `<span class="padm-fin-lider" data-padm-nav="empresa" data-id="${escapeHtml(f.liderEmpresa.organizacaoId ?? "")}" data-nome="${escapeHtml(f.liderEmpresa.nome ?? "")}" tabindex="0" role="button"><small>Empresa líder</small><b>${escapeHtml(f.liderEmpresa.nome ?? "—")}</b><i>${escapeHtml(fmtDinheiroCurto(f.liderEmpresa.total))}</i></span>` : ""}
+          ${f.liderUnidade ? `<span class="padm-fin-lider" data-padm-nav="unidade" data-id="${escapeHtml(f.liderUnidade.unidadeId ?? "")}" data-nome="${escapeHtml(f.liderUnidade.nome ?? "")}" tabindex="0" role="button"><small>Unidade líder</small><b>${escapeHtml(f.liderUnidade.nome ?? "—")}</b><i>${escapeHtml(fmtDinheiroCurto(f.liderUnidade.total))}</i></span>` : ""}
+        </div>
+      </div>`,
   });
 }
 
-function itemAcao(it) {
+function secaoAcaoNecessaria(itens, d) {
+  const pendentes = itens.filter((it) => it.categoria !== "concluido");
+  const concluidas = itens.length - pendentes.length;
+
+  const grupos = ORDEM_ACAO
+    .filter((cat) => cat !== "concluido")
+    .map((cat) => ({ cat, meta: CATEGORIA_D1[cat], itens: itens.filter((it) => it.categoria === cat) }))
+    .filter((g) => g.itens.length);
+
+  const corpo = pendentes.length
+    ? `<div class="padm-acao">${grupos.map(grupoAcao).join("")}</div>`
+    : vazio(
+        "Nada pendente neste fechamento",
+        `Todas as ${fmtNum(concluidas)} unidade(s) elegíveis concluíram o fechamento de ${fmtData(d?.d1)}.`,
+      );
+
+  const selo = pendentes.length
+    ? `<span class="padm-selo padm-selo--critico">${pendentes.length} a resolver</span>`
+    : `<span class="padm-selo padm-selo--ok">tudo em dia</span>`;
+
+  return secao({
+    titulo: "Ação necessária",
+    icone: "list-checks",
+    sub: pendentes.length
+      ? `Prioridade de cima para baixo${concluidas ? ` · ${concluidas} unidade(s) já concluíram` : ""}`
+      : "",
+    acoes: selo,
+    corpo,
+  });
+}
+
+function grupoAcao(g) {
+  return `
+    <div class="padm-grupo padm-grupo--${g.meta.classe}">
+      <header class="padm-grupo-head">
+        <span class="padm-grupo-ic">${icon(g.meta.icone, { size: 15 })}</span>
+        <span class="padm-grupo-tit">${escapeHtml(g.meta.rotulo)}</span>
+        <span class="padm-grupo-cont">${g.itens.length}</span>
+      </header>
+      <p class="padm-grupo-ajuda">${escapeHtml(EXPLICACAO_D1[g.cat] ?? "")}</p>
+      <ul class="padm-grupo-lista">${g.itens.map((it, i) => itemAcao(it, i + 1)).join("")}</ul>
+    </div>`;
+}
+
+/**
+ * Item da Ação necessária — escaneável: EMPRESA em cima (é o que o gestor
+ * cobra), unidade em destaque, e a métrica do período à direita.
+ * `it.pendencia` é a contagem DO PERÍODO; `it.herdada` vira nota, nunca soma.
+ */
+function itemAcao(it, ordem) {
   const dias = fmtDiasPendentes(it.pendencia?.total);
   const desde = it.pendencia?.desde ? `desde ${fmtDataCurta(it.pendencia.desde)}` : "";
-  const pend = dias || desde
-    ? `<span class="padm-acao-pend">${escapeHtml([dias, desde].filter(Boolean).join(" · "))}</span>`
-    : "";
   return `
-    <li class="padm-acao-item" data-padm-nav="empresa" data-id="${escapeHtml(it.organizacaoId ?? "")}" data-nome="${escapeHtml(it.empresaNome ?? "")}" tabindex="0" role="button">
-      <span class="padm-acao-item-txt">
+    <li class="padm-item" data-padm-nav="unidade" data-id="${escapeHtml(it.unidadeId ?? "")}" data-nome="${escapeHtml(it.unidadeNome ?? "")}" tabindex="0" role="button">
+      <span class="padm-item-ordem">${ordem}</span>
+      <span class="padm-item-txt">
+        <span class="padm-item-emp">${icon("building", { size: 11 })}${escapeHtml(it.empresaNome ?? "—")}</span>
         <b>${escapeHtml(it.unidadeNome ?? "—")}</b>
-        <small>${escapeHtml(it.empresaNome ?? "—")}</small>
+        ${notaHerdada(it.herdada)}
       </span>
-      ${pend}
-      ${chipCategoria(it.categoria)}
+      ${dias
+        ? `<span class="padm-item-pend"><b>${escapeHtml(dias)}</b>${desde ? `<small>${escapeHtml(desde)}</small>` : ""}</span>`
+        : `<span class="padm-item-pend padm-item-pend--zero"><b>D-1</b><small>fechamento de ontem</small></span>`}
+      <span class="padm-item-ir" aria-hidden="true">›</span>
     </li>`;
 }
 
-function secaoResumoEmpresas(empresas) {
+/**
+ * A seção que responde "QUAIS empresas têm problema, e quais unidades delas".
+ * Empresas com pendência vêm primeiro e JÁ ABERTAS (o painel não esconde
+ * pendência); as saudáveis ficam recolhidas num bloco discreto no fim.
+ */
+function secaoEmpresasComPendencia(empresas) {
   if (!empresas.length) return "";
-  const linhas = empresas.map((e) => {
-    const cD1 = fmtConformidade(e.conformidadeD1);
-    const cMes = fmtConformidade(e.conformidadeMes, { semBase: "—" });
-    return `
-      <li class="padm-emp-row" data-padm-nav="empresa" data-id="${escapeHtml(e.organizacaoId ?? "")}" data-nome="${escapeHtml(e.empresaNome ?? "")}" tabindex="0" role="button" data-busca="${escapeHtml(normalizarBusca(e.empresaNome))}">
-        <span class="padm-emp-nome">${escapeHtml(e.empresaNome ?? "—")}</span>
-        <span class="padm-emp-metricas">
-          <span class="padm-emp-m"><i>${fmtNum(e.unidadesMonitoradas)}</i> unid.</span>
-          <span class="padm-emp-m padm-emp-m--critico"><i>${fmtNum(e.criticas)}</i> crít.</span>
-          <span class="padm-emp-m padm-emp-m--atencao"><i>${fmtNum(e.atencao)}</i> atenç.</span>
-          <span class="padm-emp-m padm-emp-m--ok"><i>${fmtNum(e.emDia)}</i> em dia</span>
-          <span class="padm-emp-m">D-1 <i>${cD1.texto}</i></span>
-          <span class="padm-emp-m">mês <i>${cMes.texto}</i></span>
-        </span>
-        <span class="padm-emp-ir" aria-hidden="true">›</span>
-      </li>`;
-  }).join("");
-  return secao({
-    titulo: "Empresas",
-    sub: "Toque para abrir o detalhe",
-    corpo: `<ul class="padm-emp-lista">${linhas}</ul>`,
+  const comPendencia = empresas.filter((e) => qtdPendentes(e) > 0);
+  const saudaveis = empresas.filter((e) => qtdPendentes(e) === 0);
+
+  const corpo = comPendencia.length
+    ? `<div class="padm-emps">${comPendencia.map((e) => blocoEmpresa(e, { aberto: true })).join("")}</div>`
+    : vazio("Nenhuma empresa com pendência", "Todas as empresas monitoradas estão em dia neste período.");
+
+  const bloco = secao({
+    titulo: "Empresas com pendência",
+    icone: "building",
+    sub: comPendencia.length ? "Da mais grave para a menos grave · as unidades pendentes já estão listadas" : "",
+    acoes: comPendencia.length ? `<span class="padm-selo padm-selo--critico">${comPendencia.length} empresa(s)</span>` : "",
+    corpo,
   });
+
+  if (!saudaveis.length) return bloco;
+  return bloco + `
+    <details class="padm-saudaveis">
+      <summary>
+        <span class="padm-emp-seta" aria-hidden="true">›</span>
+        ${icon("check-circle", { size: 14 })}
+        <b>${saudaveis.length} empresa(s) sem pendência</b>
+        <small>${escapeHtml(saudaveis.map((e) => e.empresaNome ?? "—").join(" · "))}</small>
+      </summary>
+      <div class="padm-emps">${saudaveis.map((e) => blocoEmpresa(e, { aberto: false })).join("")}</div>
+    </details>`;
 }
 
 // ===========================================================================
@@ -212,51 +401,49 @@ export function htmlDiario(d, filtros = filtrosDiario) {
     .filter(([id]) => id)
     .sort((a, b) => String(a[1] ?? "").localeCompare(String(b[1] ?? ""), "pt-BR"));
 
-  const selStatus = seletor("padm-f-status", "Status", filtros.status, Object.entries(CATEGORIA_D1)
-    .filter(([k]) => k !== "nao_aplicavel").map(([k, v]) => [k, v.rotulo]));
-  const selCrit = seletor("padm-f-criticidade", "Criticidade", filtros.criticidade,
-    Object.entries(CRITICIDADE).map(([k, v]) => [k, v.rotulo]));
-  const selEmp = seletor("padm-f-empresa", "Empresa", filtros.organizacaoId,
-    opcoesEmpresa.map(([id, nome]) => [id, nome ?? id]));
-
   const filtroBar = `
     <div class="padm-filtros">
       <label class="padm-f-campo">
-        <span>Data</span>
+        <span>Dia</span>
         <input type="date" id="padm-f-data" value="${escapeHtml(filtros.data || (d?.referencia ?? ""))}" max="${escapeHtml(d?.referencia ?? "")}" />
       </label>
-      ${selEmp}${selStatus}${selCrit}
-      <button class="btn btn-ghost btn-sm" data-padm-acao="limpar-filtros">Limpar</button>
-    </div>
-    ${busca("padm-busca-diario")}`;
+      ${seletor("padm-f-empresa", "Empresa", filtros.organizacaoId, opcoesEmpresa.map(([id, nome]) => [id, nome ?? id]))}
+      ${seletor("padm-f-status", "Status do dia", filtros.status, Object.entries(CATEGORIA_D1).filter(([k]) => k !== "nao_aplicavel").map(([k, v]) => [k, v.rotulo]))}
+      ${seletor("padm-f-criticidade", "Criticidade", filtros.criticidade, Object.entries(CRITICIDADE).map(([k, v]) => [k, v.rotulo]))}
+      <button class="btn btn-ghost btn-sm padm-f-limpar" data-padm-acao="limpar-filtros">Limpar</button>
+    </div>`;
 
   const corpo = unidades.length
     ? `<ul class="padm-lista">${unidades.map(linhaDiario).join("")}</ul>`
-    : vazio("Nenhuma unidade neste recorte", "Ajuste os filtros ou a data.");
+    : vazio("Nenhuma unidade neste recorte", "Ajuste o dia ou os filtros acima.", { tom: "neutro", icone: "inbox" });
 
   return `
-    <div class="padm-refdata">Referência: <b>${fmtData(d?.referencia)}</b></div>
+    ${faixaPeriodo(d, "Dia consultado")}
     ${filtroBar}
-    ${secao({ titulo: "Unidades", sub: `${unidades.length} no recorte`, corpo })}`;
+    ${busca("padm-busca-diario")}
+    ${secao({ titulo: "Unidades", icone: "store", sub: `${unidades.length} no recorte`, corpo })}`;
 }
 
 function linhaDiario(u) {
   const dias = fmtDiasPendentes(u.diasPendentes);
   const antiga = u.pendenciaMaisAntiga ? `desde ${fmtDataCurta(u.pendenciaMaisAntiga)}` : "";
-  const buscaTxt = normalizarBusca(`${u.empresaNome} ${u.unidadeNome}`);
   return `
-    <li class="padm-lista-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}" tabindex="0" role="button" data-busca="${escapeHtml(buscaTxt)}">
-      <span class="padm-lista-princ">
+    <li class="padm-item padm-item--${CRITICIDADE[u.criticidade]?.classe ?? "muted"}" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}" tabindex="0" role="button" data-busca="${escapeHtml(normalizarBusca(`${u.empresaNome} ${u.unidadeNome}`))}">
+      <span class="padm-item-txt">
         <b>${escapeHtml(u.unidadeNome ?? "—")}</b>
         <small>${escapeHtml(u.empresaNome ?? "—")}</small>
+        ${notaHerdada(u.pendenciaHerdada, u.pendenciaHerdadaDesde)}
       </span>
-      <span class="padm-lista-meta">
-        ${chipCategoria(u.categoria)}
+      <span class="padm-item-tags">
+        ${chipCategoria(u.categoria, { comIcone: true })}
         ${chipCriticidade(u.criticidade)}
-        ${dias || antiga ? `<span class="padm-lista-pend">${escapeHtml([dias, antiga].filter(Boolean).join(" · "))}</span>` : ""}
-        <span class="padm-lista-conf">mês ${fmtConformidade(u.conformidadeMes, { semBase: "—" }).texto}</span>
-        <span class="padm-lista-conf">últ. concl. ${fmtDataCurta(u.ultimoConcluido)}</span>
       </span>
+      <span class="padm-item-dados">
+        ${dias || antiga ? `<span class="padm-dado padm-dado--alerta"><small>no período</small><b>${escapeHtml([dias, antiga].filter(Boolean).join(" · "))}</b></span>` : ""}
+        <span class="padm-dado"><small>mês</small><b>${fmtConformidade(u.conformidadeMes, { semBase: "—" }).texto}</b></span>
+        <span class="padm-dado"><small>últ. fechamento</small><b>${fmtDataCurta(u.ultimoConcluido)}</b></span>
+      </span>
+      <span class="padm-item-ir" aria-hidden="true">›</span>
     </li>`;
 }
 
@@ -272,88 +459,182 @@ function seletor(id, label, valor, pares) {
 }
 
 // ===========================================================================
-// 3. PENDÊNCIAS
+// 3. PENDÊNCIAS — fila de trabalho prioritária
 // ===========================================================================
 
-export function htmlPendencias(d) {
-  const unidades = d?.unidades ?? [];
-  if (!unidades.length) {
-    return `
-      <div class="padm-refdata">Referência: <b>${fmtData(d?.d1)}</b></div>
-      ${vazio("Nenhuma pendência", "Todas as unidades monitoradas estão em dia no fechamento de ontem.")}`;
+export function htmlPendencias(d, estado = viewPendencias) {
+  const todas = d?.unidades ?? [];
+  if (!todas.length) {
+    return `${faixaPeriodo(d, "Fechamento cobrado")}${vazio(
+      "Nenhuma pendência",
+      "Todas as unidades monitoradas estão em dia no fechamento deste período.",
+    )}`;
   }
-  // A ordem vem PRONTA do backend (CRÍTICO → mais antigo → ATENÇÃO). Só
-  // separamos visualmente por criticidade, sem reordenar dentro de cada grupo.
-  const criticas = unidades.filter((u) => u.criticidade === "critico");
-  const atencao = unidades.filter((u) => u.criticidade === "atencao");
-  const outras = unidades.filter((u) => u.criticidade !== "critico" && u.criticidade !== "atencao");
 
-  const grupo = (titulo, classe, lista) => lista.length ? `
-    <div class="padm-pend-grupo">
-      <h3 class="padm-pend-grupo-tit padm-pend-grupo-tit--${classe}">${escapeHtml(titulo)} <span>${lista.length}</span></h3>
-      <ul class="padm-lista">${lista.map(linhaPendencia).join("")}</ul>
-    </div>` : "";
+  const termo = normalizarBusca(estado.termo ?? "");
+  const porFiltro = (u) => {
+    if (estado.filtro === "criticas") return u.criticidade === "critico";
+    if (estado.filtro === "atencao") return u.criticidade === "atencao";
+    if (estado.filtro === "travadas") return !!u.sequenciaBloqueada;
+    return true;
+  };
+  const visiveis = todas
+    .filter(porFiltro)
+    .filter((u) => !termo || normalizarBusca(`${u.empresaNome} ${u.unidadeNome}`).includes(termo));
+
+  const contagens = {
+    todas: todas.length,
+    criticas: todas.filter((u) => u.criticidade === "critico").length,
+    atencao: todas.filter((u) => u.criticidade === "atencao").length,
+    travadas: todas.filter((u) => u.sequenciaBloqueada).length,
+  };
+
+  const corpo = visiveis.length
+    ? (estado.agrupar === "status" ? agruparPorStatus(visiveis, termo) : agruparPorEmpresa(visiveis, termo))
+    : vazio(
+        termo ? `Nada encontrado para "${estado.termo}"` : "Nenhuma pendência neste filtro",
+        termo ? "A busca cobre empresa e unidade." : "Troque o filtro acima.",
+        { tom: "muted", icone: "inbox" },
+      );
+
+  const segFiltro = [
+    ["todas", "Todas"], ["criticas", "Críticas"], ["atencao", "Atenção"], ["travadas", "Sequência travada"],
+  ].map(([v, r]) => `<button class="padm-segm-btn ${v === estado.filtro ? "ativo" : ""}" data-padm-filtro="${v}">${r}<span class="padm-segm-n">${contagens[v]}</span></button>`).join("");
+
+  const segAgrupar = [["empresa", "Por empresa"], ["status", "Por tipo de pendência"]]
+    .map(([v, r]) => `<button class="padm-segm-btn ${v === estado.agrupar ? "ativo" : ""}" data-padm-agrupar="${v}">${r}</button>`).join("");
 
   return `
-    <div class="padm-refdata">Referência: <b>${fmtData(d?.d1)}</b> <span class="padm-refdata-sep">·</span> ${unidades.length} pendência(s)</div>
-    ${grupo("Críticas", "critico", criticas)}
-    ${grupo("Atenção", "atencao", atencao)}
-    ${grupo("Outras", "muted", outras)}`;
+    ${faixaPeriodo(d, "Fechamento cobrado")}
+    <div class="padm-barra-id">
+      <div class="padm-segm">${segFiltro}</div>
+      <div class="padm-segm padm-segm--alt">${segAgrupar}</div>
+      ${busca("padm-busca-pendencias", "Buscar empresa ou unidade… (ex.: Piracicaba)", estado.termo)}
+    </div>
+    ${secao({
+      titulo: "Fila de pendências",
+      icone: "alert-triangle",
+      sub: "Ordenada por gravidade — resolva de cima para baixo",
+      acoes: `<span class="padm-selo padm-selo--critico">${visiveis.length} de ${todas.length}</span>`,
+      corpo,
+    })}`;
 }
 
-function linhaPendencia(u) {
+/**
+ * Linha da fila de pendências — escaneável: empresa em cima, unidade em
+ * destaque, tipo da pendência, dias NO PERÍODO e a nota de herança.
+ */
+function linhaPendencia(u, ordem, termo = "") {
   const dias = fmtDiasPendentes(u.diasPendentes);
+  const desde = u.pendenciaMaisAntiga ? `desde ${fmtDataCurta(u.pendenciaMaisAntiga)}` : "";
   return `
-    <li class="padm-lista-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}" tabindex="0" role="button">
-      <span class="padm-lista-princ">
-        <b>${escapeHtml(u.unidadeNome ?? "—")}</b>
-        <small>${escapeHtml(u.empresaNome ?? "—")}</small>
+    <li class="padm-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}" tabindex="0" role="button">
+      <span class="padm-item-ordem">${ordem}</span>
+      <span class="padm-item-txt">
+        <span class="padm-item-emp">${icon("building", { size: 11 })}${realce(u.empresaNome, termo)}</span>
+        <b>${realce(u.unidadeNome, termo)}</b>
+        ${notaHerdada(u.pendenciaHerdada, u.pendenciaHerdadaDesde)}
       </span>
-      <span class="padm-lista-meta">
+      <span class="padm-item-tags">
+        ${chipCategoria(u.d1Status, { comIcone: true })}
         ${chipCriticidade(u.criticidade)}
-        ${chipCategoria(u.d1Status)}
-        ${u.sequenciaBloqueada ? `<span class="padm-tag-bloq">sequência bloqueada</span>` : ""}
-        <span class="padm-lista-pend">${escapeHtml([
-          u.pendenciaMaisAntiga ? `mais antiga ${fmtDataCurta(u.pendenciaMaisAntiga)}` : "",
-          dias,
-        ].filter(Boolean).join(" · ") || "D-1")}</span>
+        ${u.sequenciaBloqueada ? `<span class="padm-chip padm-chip--critico">${icon("ban", { size: 12 })}travada</span>` : ""}
       </span>
+      <span class="padm-item-pend">
+        <b>${escapeHtml(dias || "D-1")}</b>
+        <small>${escapeHtml(dias ? (desde || "no período") : "fechamento de ontem")}</small>
+      </span>
+      <span class="padm-item-ir" aria-hidden="true">›</span>
     </li>`;
+}
+
+/** Agrupa a fila por EMPRESA — responde "quais empresas têm mais pendência". */
+function agruparPorEmpresa(unidades, termo) {
+  const mapa = new Map();
+  for (const u of unidades) {
+    const k = u.organizacaoId ?? "sem_empresa";
+    if (!mapa.has(k)) mapa.set(k, { organizacaoId: u.organizacaoId, empresaNome: u.empresaNome, itens: [] });
+    mapa.get(k).itens.push(u);
+  }
+  // A ordem da fila já vem do backend; o grupo herda a posição do seu 1º item.
+  return `<div class="padm-grupos">${[...mapa.values()].map((g) => {
+    const criticas = g.itens.filter((u) => u.criticidade === "critico").length;
+    const tom = criticas > 0 ? "critico" : "atencao";
+    return `
+      <div class="padm-grupo padm-grupo--${tom}">
+        <header class="padm-grupo-head">
+          <span class="padm-grupo-ic">${icon("building", { size: 15 })}</span>
+          <span class="padm-grupo-tit">${realce(g.empresaNome, termo)}</span>
+          <span class="padm-grupo-cont">${g.itens.length}</span>
+          <button class="padm-grupo-abrir" data-padm-nav="empresa" data-id="${escapeHtml(g.organizacaoId ?? "")}" data-nome="${escapeHtml(g.empresaNome ?? "")}">detalhe ›</button>
+        </header>
+        <p class="padm-grupo-ajuda">${criticas ? `${criticas} unidade(s) crítica(s)` : "unidades em atenção"} · ${g.itens.length} pendente(s)</p>
+        <ul class="padm-grupo-lista">${g.itens.map((u, i) => linhaPendencia(u, i + 1, termo)).join("")}</ul>
+      </div>`;
+  }).join("")}</div>`;
+}
+
+/** Agrupa a fila por TIPO de pendência — responde "o que está acontecendo". */
+function agruparPorStatus(unidades, termo) {
+  const grupos = ORDEM_ACAO
+    .map((cat) => ({ cat, meta: CATEGORIA_D1[cat], itens: unidades.filter((u) => u.d1Status === cat) }))
+    .filter((g) => g.itens.length);
+  const outras = unidades.filter((u) => !ORDEM_ACAO.includes(u.d1Status));
+  if (outras.length) grupos.push({ cat: "outras", meta: { classe: "muted", rotulo: "Outras", icone: "inbox" }, itens: outras });
+
+  return `<div class="padm-grupos">${grupos.map((g) => `
+    <div class="padm-grupo padm-grupo--${g.meta.classe}">
+      <header class="padm-grupo-head">
+        <span class="padm-grupo-ic">${icon(g.meta.icone, { size: 15 })}</span>
+        <span class="padm-grupo-tit">${escapeHtml(g.meta.rotulo)}</span>
+        <span class="padm-grupo-cont">${g.itens.length}</span>
+      </header>
+      <p class="padm-grupo-ajuda">${escapeHtml(EXPLICACAO_D1[g.cat] ?? "")}</p>
+      <ul class="padm-grupo-lista">${g.itens.map((u, i) => linhaPendencia(u, i + 1, termo)).join("")}</ul>
+    </div>`).join("")}</div>`;
 }
 
 // ===========================================================================
 // 4. EMPRESAS
 // ===========================================================================
 
-export function htmlEmpresas(d) {
-  const empresas = d?.empresas ?? [];
-  if (!empresas.length) {
-    return `${vazio("Nenhuma empresa monitorada", "Nenhuma organização ativa tem o módulo Dashboard iFood habilitado.")}`;
+export function htmlEmpresas(d, estado = viewEmpresas) {
+  const todas = d?.empresas ?? [];
+  if (!todas.length) {
+    return `${faixaPeriodo(d)}${vazio(
+      "Nenhuma empresa monitorada",
+      "Nenhuma organização ativa tem o módulo Dashboard iFood habilitado.",
+      { tom: "muted", icone: "building" },
+    )}`;
   }
-  const linhas = empresas.map((e) => {
-    const cD1 = fmtConformidade(e.conformidadeD1);
-    const cMes = fmtConformidade(e.conformidadeMes, { semBase: "—" });
-    const tom = (e.criticas ?? 0) > 0 ? "critico" : (e.atencao ?? 0) > 0 ? "atencao" : "ok";
-    return `
-      <li class="padm-emp-card padm-emp-card--${tom}" data-padm-nav="empresa" data-id="${escapeHtml(e.organizacaoId ?? "")}" data-nome="${escapeHtml(e.empresaNome ?? "")}" tabindex="0" role="button" data-busca="${escapeHtml(normalizarBusca(e.empresaNome))}">
-        <div class="padm-emp-card-top">
-          <b>${escapeHtml(e.empresaNome ?? "—")}</b>
-          <span class="padm-emp-ir" aria-hidden="true">›</span>
-        </div>
-        <div class="padm-emp-card-grid">
-          <span><i>${fmtNum(e.unidadesMonitoradas)}</i> unidades</span>
-          <span class="padm-emp-m--critico"><i>${fmtNum(e.criticas)}</i> críticas</span>
-          <span class="padm-emp-m--atencao"><i>${fmtNum(e.atencao)}</i> atenção</span>
-          <span class="padm-emp-m--ok"><i>${fmtNum(e.emDia)}</i> em dia</span>
-          <span>D-1 <i>${cD1.texto}</i></span>
-          <span>mês <i>${cMes.texto}</i></span>
-        </div>
-      </li>`;
-  }).join("");
+
+  const termo = normalizarBusca(estado.termo ?? "");
+  const filtradas = filtrarEmpresas(todas, estado.filtro);
+  const visiveis = termo
+    ? filtradas.filter((e) => normalizarBusca([e.empresaNome, ...(e.pendentes ?? []).map((u) => u.unidadeNome)].join(" ")).includes(termo))
+    : filtradas;
+
+  const corpo = visiveis.length
+    ? `<div class="padm-emps">${visiveis.map((e) => blocoEmpresa(e, { termo })).join("")}</div>`
+    : vazio(
+        termo ? `Nada encontrado para "${estado.termo}"` : "Nenhuma empresa neste filtro",
+        termo ? "A busca cobre nome da empresa e das unidades pendentes." : "Troque o filtro acima.",
+        { tom: "muted", icone: "inbox" },
+      );
 
   return `
-    ${busca("padm-busca-empresas")}
-    ${secao({ titulo: "Empresas monitoradas", sub: `${empresas.length} no total`, corpo: `<ul class="padm-emp-cards">${linhas}</ul>` })}`;
+    ${faixaPeriodo(d)}
+    <div class="padm-barra-id">
+      ${filtroSeveridade(estado.filtro, contagensEmpresas(todas))}
+      ${busca("padm-busca-empresas", "Buscar empresa ou unidade… (ex.: Mogi, Centro)", estado.termo)}
+    </div>
+    ${secao({
+      titulo: "Empresas monitoradas",
+      icone: "building",
+      sub: "Expanda uma empresa para ver as unidades pendentes",
+      acoes: `<span class="padm-selo padm-selo--${visiveis.some((e) => (e.criticas ?? 0) > 0) ? "critico" : "ok"}">${visiveis.length} de ${todas.length}</span>`,
+      corpo,
+    })}`;
 }
 
 // ===========================================================================
@@ -364,59 +645,127 @@ export function htmlDetalheEmpresa(d) {
   const org = d?.organizacao ?? {};
   const c = d?.consolidado ?? {};
   const unidades = d?.unidades ?? [];
+  const resumo = d?.resumo ?? null;
   const confD1 = fmtConformidade(c.conformidadeD1);
   const confMes = fmtConformidade(c.conformidadeMes, { semBase: "Sem dias esperados" });
 
+  // A separação é a resposta visual a "quais unidades desta empresa estão
+  // pendentes": o gestor não deve ter que ler status linha a linha.
+  const pendentes = unidades.filter((u) => u.criticidade !== "em_dia");
+  const emDia = unidades.filter((u) => u.criticidade === "em_dia");
+
   const topo = cards([
-    card({ label: "Unidades", valor: fmtNum(unidades.length) }),
-    card({ label: "Críticas", valor: fmtNum(c.criticas), tom: (c.criticas ?? 0) > 0 ? "critico" : "" }),
-    card({ label: "Atenção", valor: fmtNum(c.atencao), tom: (c.atencao ?? 0) > 0 ? "atencao" : "" }),
-    card({ label: "Em dia", valor: fmtNum(c.emDia), tom: "ok" }),
-    card({ label: "Conformidade D-1", valor: confD1.texto, nota: confD1.vazio ? confD1.nota : "" }),
-    card({ label: "Conformidade do mês", valor: confMes.texto, nota: confMes.vazio ? confMes.nota : "" }),
+    card({ label: "Unidades", valor: fmtNum(unidades.length), icone: "store" }),
+    card({
+      label: "Com pendência", valor: fmtNum(pendentes.length), icone: "alert-triangle",
+      tom: pendentes.length > 0 ? "critico" : "ok", destaque: pendentes.length > 0,
+      nota: pendentes.length ? "listadas abaixo, da pior para a melhor" : "nenhuma unidade pendente",
+    }),
+    card({ label: "Críticas", valor: fmtNum(c.criticas), icone: "ban", tom: (c.criticas ?? 0) > 0 ? "critico" : "neutro" }),
+    card({ label: "Atenção", valor: fmtNum(c.atencao), icone: "clock", tom: (c.atencao ?? 0) > 0 ? "atencao" : "neutro" }),
+    card({ label: "Em dia", valor: fmtNum(c.emDia), icone: "check-circle", tom: "ok" }),
+    card({ label: "Conformidade D-1", valor: confD1.texto, icone: "target", progresso: confD1.fracao, nota: confD1.vazio ? confD1.nota : "" }),
+    card({ label: "Conformidade do mês", valor: confMes.texto, icone: "trending-up", progresso: confMes.fracao, nota: confMes.vazio ? confMes.nota : "" }),
   ].join(""));
 
-  const listaUnidades = unidades.length
-    ? `<ul class="padm-lista">${unidades.map(linhaUnidadeDetalhe).join("")}</ul>`
-    : vazio("Sem unidades monitoradas", "");
+  const pior = resumo?.piorUnidade
+    ? `<div class="padm-prioridade">${icon("target", { size: 14 })}<span>Prioridade: <b>${escapeHtml(resumo.piorUnidade.unidadeNome ?? "—")}</b> — ${escapeHtml((CATEGORIA_D1[resumo.piorUnidade.d1Status] ?? {}).rotulo ?? "—")}</span></div>`
+    : "";
+
+  const secPendentes = pendentes.length
+    ? secao({
+        titulo: "Unidades com pendência",
+        icone: "alert-triangle",
+        sub: "Da mais grave para a menos grave · toque para o calendário",
+        acoes: `<span class="padm-selo padm-selo--critico">${pendentes.length}</span>`,
+        corpo: `<ul class="padm-lista">${pendentes.map((u, i) => linhaUnidadeDetalhe(u, i + 1)).join("")}</ul>`,
+      })
+    : secao({
+        titulo: "Unidades com pendência",
+        icone: "check-circle",
+        corpo: vazio("Nenhuma unidade pendente", "Toda a empresa está em dia neste período."),
+      });
+
+  const secEmDia = emDia.length
+    ? `<details class="padm-saudaveis">
+         <summary>
+           <span class="padm-emp-seta" aria-hidden="true">›</span>
+           ${icon("check-circle", { size: 14 })}
+           <b>${emDia.length} unidade(s) em dia</b>
+           <small>${escapeHtml(emDia.map((u) => u.unidadeNome ?? "—").join(" · "))}</small>
+         </summary>
+         <ul class="padm-lista">${emDia.map((u, i) => linhaUnidadeDetalhe(u, i + 1)).join("")}</ul>
+       </details>`
+    : "";
 
   return `
-    <div class="padm-detalhe-head">
-      <button class="btn btn-ghost btn-sm" data-padm-acao="voltar">‹ Voltar</button>
-      <div class="padm-detalhe-titulo">
-        <h2>${escapeHtml(org.nome ?? "—")}</h2>
-        ${chip({ classe: org.status === "ativa" ? "ok" : "muted", rotulo: rotuloStatusOrg(org.status) })}
-      </div>
-      <span class="padm-detalhe-sub">Fechamento cobrado: ${fmtData(d?.d1)}</span>
-    </div>
+    ${cabecalhoDetalhe({
+      voltar: "Voltar",
+      titulo: org.nome ?? "—",
+      selo: chip({ classe: org.status === "ativa" ? "ok" : "muted", rotulo: rotuloStatusOrg(org.status) }),
+      sub: `${fmtNum(unidades.length)} unidade(s) monitoradas · fechamento cobrado ${fmtData(d?.d1)}`,
+    })}
+    ${faixaPeriodo(d)}
+    ${pior}
     ${topo}
-    ${secao({ titulo: "Unidades", sub: "Toque para o calendário mensal", corpo: listaUnidades })}`;
+    ${secPendentes}
+    ${secEmDia}`;
 }
 
-function linhaUnidadeDetalhe(u) {
+/** Linha de unidade no detalhe — mostra a frase operacional, não só o enum. */
+function linhaUnidadeDetalhe(u, ordem) {
   const dias = fmtDiasPendentes(u.diasPendentes);
+  const cat = CATEGORIA_D1[u.d1Status] ?? { classe: "muted", rotulo: u.d1Status ?? "—" };
   return `
-    <li class="padm-lista-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}" tabindex="0" role="button">
-      <span class="padm-lista-princ"><b>${escapeHtml(u.unidadeNome ?? "—")}</b></span>
-      <span class="padm-lista-meta">
-        ${chipCategoria(u.d1Status)}
-        ${chipCriticidade(u.criticidade)}
-        ${dias ? `<span class="padm-lista-pend">${escapeHtml(dias)}</span>` : ""}
-        <span class="padm-lista-conf">mês ${fmtConformidade(u.conformidadeMes, { semBase: "—" }).texto}</span>
+    <li class="padm-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}" tabindex="0" role="button">
+      <span class="padm-item-ordem">${ordem}</span>
+      <span class="padm-item-txt">
+        <b>${escapeHtml(u.unidadeNome ?? "—")}</b>
+        <small>${escapeHtml(EXPLICACAO_D1[u.d1Status] ?? cat.rotulo)}</small>
+        ${notaHerdada(u.pendenciaHerdada, u.pendenciaHerdadaDesde)}
       </span>
+      <span class="padm-item-tags">
+        ${chipCategoria(u.d1Status, { comIcone: true })}
+        ${chipCriticidade(u.criticidade)}
+      </span>
+      <span class="padm-item-dados">
+        ${dias ? `<span class="padm-dado padm-dado--alerta"><small>no período</small><b>${escapeHtml(dias)}</b></span>` : ""}
+        <span class="padm-dado"><small>conf. mês</small><b>${fmtConformidade(u.conformidadeMes, { semBase: "—" }).texto}</b></span>
+      </span>
+      <span class="padm-item-ir" aria-hidden="true">›</span>
     </li>`;
 }
 
 const rotuloStatusOrg = (s) => ({ ativa: "Ativa", teste: "Em teste", bloqueada: "Bloqueada", suspensa: "Suspensa", cancelada: "Cancelada" }[s] ?? (s ?? "—"));
 
+function cabecalhoDetalhe({ voltar, titulo, selo = "", sub = "" }) {
+  return `
+    <div class="padm-detalhe-head">
+      <button class="btn btn-ghost btn-sm padm-voltar" data-padm-acao="voltar">
+        <span aria-hidden="true">‹</span> ${escapeHtml(voltar)}
+      </button>
+      <div class="padm-detalhe-titulo"><h2>${escapeHtml(titulo)}</h2>${selo}</div>
+      ${sub ? `<p class="padm-detalhe-sub">${escapeHtml(sub)}</p>` : ""}
+    </div>`;
+}
+
 // ===========================================================================
 // 6. CALENDÁRIO DA UNIDADE
 // ===========================================================================
 
+const LEGENDA_CAL = [
+  ["concluido", "Concluído"],
+  ["em-preenchimento", "Em preenchimento"],
+  ["nao-realizado", "Não realizado"],
+  ["bloqueado", "Bloqueado"],
+  ["hoje", "Hoje"],
+  ["futuro", "Ainda não venceu"],
+  ["na", "Não aplicável"],
+];
+
 export function htmlCalendario(d, unidadeNome) {
   const dias = d?.dias ?? [];
   const nome = unidadeNome || d?.unidade?.unidadeNome || "Unidade";
-  const mesLabel = fmtMesLongo(d?.mes);
   const podeAvancar = mesPodeAvancar(d?.mes, d?.dataReferencia);
 
   const primeiro = dias[0]?.data ? new Date(dias[0].data + "T12:00:00") : null;
@@ -427,35 +776,41 @@ export function htmlCalendario(d, unidadeNome) {
     ...dias.map((dia) => {
       const est = estadoDiaCalendario(dia);
       const n = Number(dia.data.slice(8, 10));
-      return `<span class="padm-cal-dia padm-cal-dia--${est.classe}" title="${escapeHtml(fmtData(dia.data))} · ${escapeHtml(est.rotulo)}">
-        <i>${n}</i>
-      </span>`;
+      return `<span class="padm-cal-dia padm-cal-dia--${est.classe}" title="${escapeHtml(fmtData(dia.data))} — ${escapeHtml(est.rotulo)}" aria-label="${escapeHtml(fmtData(dia.data))} — ${escapeHtml(est.rotulo)}"><i>${n}</i></span>`;
     }),
   ].join("");
 
-  const legenda = [
-    ["concluido", "Concluído"], ["em-preenchimento", "Em preenchimento"],
-    ["nao-realizado", "Não realizado"], ["bloqueado", "Bloqueado"],
-    ["na", "Não aplicável"], ["futuro", "Futuro / hoje"],
-  ].map(([c, r]) => `<span class="padm-cal-leg"><i class="padm-cal-dia--${c}"></i>${escapeHtml(r)}</span>`).join("");
+  const contagem = dias.reduce((acc, dia) => {
+    const c = estadoDiaCalendario(dia).classe;
+    acc[c] = (acc[c] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return `
-    <div class="padm-detalhe-head">
-      <button class="btn btn-ghost btn-sm" data-padm-acao="voltar">‹ Voltar</button>
-      <div class="padm-detalhe-titulo"><h2>${escapeHtml(nome)}</h2></div>
-      <span class="padm-detalhe-sub">${escapeHtml(d?.unidade?.empresaNome ?? "")}</span>
-    </div>
-    <div class="padm-cal-nav">
-      <button class="btn btn-ghost btn-sm" data-padm-acao="mes-anterior" aria-label="Mês anterior">‹</button>
-      <b class="padm-cal-mes">${escapeHtml(mesLabel)}</b>
-      <button class="btn btn-ghost btn-sm" data-padm-acao="mes-proximo" aria-label="Próximo mês" ${podeAvancar ? "" : "disabled"}>›</button>
-    </div>
-    ${d?.sequenciaBloqueada ? `<div class="padm-cal-aviso">Sequência bloqueada — há dia(s) sem lançamento travando os seguintes.</div>` : ""}
-    <div class="padm-cal">
-      <div class="padm-cal-semana">${["S", "T", "Q", "Q", "S", "S", "D"].map((x) => `<span>${x}</span>`).join("")}</div>
-      <div class="padm-cal-grade">${celulas}</div>
-    </div>
-    <div class="padm-cal-legenda">${legenda}</div>`;
+    ${cabecalhoDetalhe({
+      voltar: "Voltar",
+      titulo: nome,
+      sub: d?.unidade?.empresaNome ? `${d.unidade.empresaNome} · ${fmtMesLongo(d?.mes)}` : fmtMesLongo(d?.mes),
+    })}
+    ${d?.sequenciaBloqueada ? `<div class="padm-aviso padm-aviso--critico">${icon("ban", { size: 15 })}<span><b>Sequência bloqueada.</b> Há dia(s) sem lançamento travando os seguintes — resolva o mais antigo primeiro.</span></div>` : ""}
+    <div class="padm-cal-wrap">
+      <div class="padm-cal">
+        <header class="padm-cal-nav">
+          <button class="btn btn-ghost btn-sm" data-padm-acao="mes-anterior" aria-label="Mês anterior">‹</button>
+          <b class="padm-cal-mes">${escapeHtml(fmtMesLongo(d?.mes))}</b>
+          <button class="btn btn-ghost btn-sm" data-padm-acao="mes-proximo" aria-label="Próximo mês" ${podeAvancar ? "" : "disabled"}>›</button>
+        </header>
+        <div class="padm-cal-semana">${["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].map((x) => `<span>${x}</span>`).join("")}</div>
+        <div class="padm-cal-grade">${celulas}</div>
+      </div>
+      <aside class="padm-cal-lado">
+        <h3>Como ler</h3>
+        <ul class="padm-cal-legenda">
+          ${LEGENDA_CAL.map(([c, r]) => `
+            <li><i class="padm-cal-dia--${c}"></i><span>${escapeHtml(r)}</span><b>${contagem[c] ? contagem[c] : ""}</b></li>`).join("")}
+        </ul>
+      </aside>
+    </div>`;
 }
 
 /** "próximo mês" só até o mês corrente (dataReferencia). Sem futuro infinito. */
@@ -476,16 +831,301 @@ export function deslocarMes(mesIso, delta) {
 }
 
 // ===========================================================================
-// 7. HISTÓRICO — sem endpoint próprio nesta fase
+// 7. RELATÓRIOS — resumo executivo, rankings e evolução
 // ===========================================================================
 
-export function htmlHistorico() {
+/**
+ * ÁREA RELATÓRIOS — uma tela, abas internas. Substituiu o "Histórico"
+ * informativo: agora há dado real de período para relatar.
+ *
+ * @param {object} d saída de /relatorios/resumo
+ * @param {object} ev saída de /relatorios/evolucao
+ * @param {{aba: string, escopo: string}} estado
+ */
+export function htmlRelatorios(d, ev, estado = viewRelatorios) {
+  const abas = [
+    ["resumo", "Resumo executivo", "clipboard-list"],
+    ["faturamento", "Faturamento", "banknote"],
+    ["conformidade", "Conformidade", "target"],
+    ["evolucao", "Evolução", "trending-up"],
+  ];
+  const nav = `<div class="padm-abas" role="tablist">${abas.map(([id, rot, ic]) => `
+    <button class="padm-aba ${id === estado.aba ? "ativo" : ""}" data-padm-aba="${id}" role="tab" aria-selected="${id === estado.aba}">
+      ${icon(ic, { size: 14 })}${escapeHtml(rot)}
+    </button>`).join("")}</div>`;
+
+  const corpo =
+    estado.aba === "faturamento" ? abaFaturamento(d, estado)
+    : estado.aba === "conformidade" ? abaConformidade(d, estado)
+    : estado.aba === "evolucao" ? abaEvolucao(d, ev)
+    : abaResumo(d);
+
   return `
-    <section class="padm-estado padm-estado--info">
-      <span class="padm-estado-ic" aria-hidden="true">${icon("archive", { size: 22 })}</span>
-      <h3>Histórico</h3>
-      <p>Histórico consolidado será disponibilizado em uma próxima etapa.</p>
-    </section>`;
+    ${faixaPeriodo(d)}
+    <div class="padm-barra-id">
+      ${nav}
+      <span class="padm-exportar">
+        <button class="btn btn-ghost btn-sm" data-padm-acao="csv">${icon("package", { size: 13 })}CSV</button>
+        <button class="btn btn-primary btn-sm" data-padm-acao="pdf">${icon("receipt", { size: 13 })}Gerar relatório PDF</button>
+      </span>
+    </div>
+    ${corpo}`;
+}
+
+/** Cartão de comparação com o mês anterior (período equivalente). */
+function cardComparacao(c, chave, { rotulo, atual, formata, maiorEhMelhor = true, modo = "pct" }) {
+  const bloco = c?.[chave];
+  if (!bloco) return card({ label: rotulo, valor: formata(atual), icone: "trending-up" });
+  const varia = modo === "pp" ? bloco.variacaoPP : bloco.variacao;
+  const t = tomVariacao(varia, { maiorEhMelhor });
+  // `absoluto`: a variação de PENDÊNCIAS é uma contagem (−5 pendências), não
+  // uma fração — formatá-la como percentual viraria "−500%".
+  const txt = modo === "pp" ? fmtVariacaoPP(varia)
+    : modo === "absoluto" ? (varia == null ? "" : `${varia > 0 ? "+" : ""}${fmtNum(varia)}`)
+    : fmtVariacao(varia);
+  return card({
+    label: rotulo,
+    valor: formata(atual),
+    icone: "trending-up",
+    tom: t.classe === "neutro" ? "" : t.classe,
+    nota: txt ? `${t.seta} ${txt} vs ${fmtMesLongo(c.periodo)} (1–${String(c.diasEquivalentes).padStart(2, "0")})` : "sem base comparável",
+  });
+}
+
+function abaResumo(d) {
+  const o = d?.operacao ?? {};
+  const cf = d?.conformidade ?? {};
+  const f = d?.faturamento ?? {};
+  const c = d?.comparacao;
+
+  const operacao = cards([
+    card({ label: "Empresas monitoradas", valor: fmtNum(o.empresasMonitoradas), icone: "building" }),
+    card({ label: "Unidades monitoradas", valor: fmtNum(o.unidadesMonitoradas), icone: "store" }),
+    card({ label: "Empresas com pendência", valor: fmtNum(o.empresasComPendencia), icone: "alert-triangle", tom: o.empresasComPendencia > 0 ? "critico" : "ok" }),
+    card({ label: "Unidades com pendência", valor: fmtNum(o.unidadesComPendencia), icone: "alert-triangle", tom: o.unidadesComPendencia > 0 ? "critico" : "ok" }),
+    card({ label: "Críticas", valor: fmtNum(o.criticas), icone: "ban", tom: o.criticas > 0 ? "critico" : "" }),
+    card({ label: "Atenção", valor: fmtNum(o.atencao), icone: "clock", tom: o.atencao > 0 ? "atencao" : "" }),
+    card({ label: "Em dia", valor: fmtNum(o.emDia), icone: "check-circle", tom: "ok" }),
+  ].join(""));
+
+  const saude = cards([
+    cardComparacao(c, "conformidadeMes", {
+      rotulo: "Conformidade do mês", atual: cf.mes, formata: fmtPct, modo: "pp",
+    }),
+    card({ label: "Conformidade D-1", valor: fmtPct(cf.d1), icone: "target", progresso: cf.d1 ?? null, nota: `${fmtNum(cf.mesCompleto)} de ${fmtNum(cf.mesEsperado)} dias no mês` }),
+    cardComparacao(c, "pendencias", {
+      rotulo: "Pendências", atual: (o.criticas ?? 0) + (o.atencao ?? 0), formata: fmtNum,
+      maiorEhMelhor: false, modo: "absoluto",
+    }),
+  ].join(""));
+
+  const financeiro = `
+    <div class="padm-fin-destaque">
+      <div class="padm-fin-total">
+        <span class="padm-fin-rot">Faturamento do período</span>
+        <b class="padm-fin-valor">${escapeHtml(fmtDinheiro(f.total))}</b>
+        <span class="padm-fin-linhas">
+          <span>Confirmado <b>${escapeHtml(fmtDinheiro(f.confirmado))}</b></span>
+          <span>Provisório <b>${escapeHtml(fmtDinheiro(f.provisorio))}</b></span>
+          ${textoCobertura(f.cobertura) ? `<span>Cobertura <b>${escapeHtml(textoCobertura(f.cobertura))}</b></span>` : ""}
+        </span>
+        ${seloProvisorio(f)}
+      </div>
+      ${c?.faturamento ? `<div class="padm-fin-comp padm-fin-comp--${tomVariacao(c.faturamento.variacao).classe}">
+        <span class="padm-fin-comp-v">${tomVariacao(c.faturamento.variacao).seta} ${escapeHtml(fmtVariacao(c.faturamento.variacao) || "—")}</span>
+        <small>vs ${escapeHtml(fmtMesLongo(c.periodo))} · mesmos ${c.diasEquivalentes} dias${c.faturamento.incluiProvisorio ? " · inclui dados não finalizados" : ""}</small>
+      </div>` : ""}
+      <div class="padm-fin-lideres">
+        ${f.liderEmpresa ? `<span class="padm-fin-lider"><small>Empresa líder</small><b>${escapeHtml(f.liderEmpresa.nome ?? "—")}</b><i>${escapeHtml(fmtDinheiro(f.liderEmpresa.total))}</i></span>` : ""}
+        ${f.liderUnidade ? `<span class="padm-fin-lider"><small>Unidade líder</small><b>${escapeHtml(f.liderUnidade.nome ?? "—")}</b><i>${escapeHtml(fmtDinheiro(f.liderUnidade.total))}</i></span>` : ""}
+      </div>
+    </div>`;
+
+  const prio = d?.prioridades ?? {};
+  const listaPrio = (prio.empresas ?? []).length
+    ? `<ul class="padm-lista">${prio.empresas.map((e, i) => `
+        <li class="padm-item" data-padm-nav="empresa" data-id="${escapeHtml(e.organizacaoId ?? "")}" data-nome="${escapeHtml(e.empresaNome ?? "")}" tabindex="0" role="button">
+          <span class="padm-item-ordem">${i + 1}</span>
+          <span class="padm-item-txt">
+            <b>${escapeHtml(e.empresaNome ?? "—")}</b>
+            <small>${e.unidadesPendentes} unidade(s) pendente(s)${e.piorUnidade ? ` · prioridade: ${escapeHtml(e.piorUnidade.unidadeNome ?? "—")}` : ""}</small>
+          </span>
+          <span class="padm-item-tags">
+            ${e.criticas > 0 ? `<span class="padm-chip padm-chip--critico">${e.criticas} crítica(s)</span>` : ""}
+            ${e.atencao > 0 ? `<span class="padm-chip padm-chip--atencao">${e.atencao} atenção</span>` : ""}
+          </span>
+          <span class="padm-item-ir" aria-hidden="true">›</span>
+        </li>`).join("")}</ul>`
+    : vazio("Nenhuma empresa com pendência", "A rede está em dia neste período.");
+
+  const r = d?.rankings ?? {};
+  const top = (titulo, itens, tipo, icone) => secao({
+    titulo, icone,
+    corpo: (itens ?? []).length
+      ? `<ul class="padm-ranks">${itens.map((i) => linhaRanking(i, { tipo })).join("")}</ul>`
+      : vazio("Sem dado no período", "", { tom: "muted", icone: "inbox" }),
+  });
+
+  return `
+    ${secao({ titulo: "Operação", icone: "building", corpo: operacao })}
+    ${secao({ titulo: "Financeiro", icone: "banknote", corpo: financeiro })}
+    ${secao({ titulo: "Conformidade", icone: "target", corpo: saude })}
+    ${secao({ titulo: "Prioridades", icone: "alert-triangle", sub: "Empresas que mais precisam de ação", corpo: listaPrio })}
+    ${top("Top 5 — faturamento", r.faturamentoEmpresas, "faturamento", "banknote")}
+    ${top("Top 5 — conformidade", r.conformidadeEmpresas, "conformidade", "target")}
+    ${top("Maior atenção necessária", r.atencaoEmpresas, "conformidade", "clock")}`;
+}
+
+/** Alternador empresas | unidades, comum às abas de ranking. */
+function segEscopo(estado) {
+  return `<div class="padm-segm padm-segm--alt">${[["empresas", "Empresas"], ["unidades", "Unidades"]]
+    .map(([v, r]) => `<button class="padm-segm-btn ${v === estado.escopo ? "ativo" : ""}" data-padm-escopo="${v}">${r}</button>`)
+    .join("")}</div>`;
+}
+
+function abaFaturamento(d, estado) {
+  const r = d?.rankings ?? {};
+  const itens = estado.escopo === "unidades" ? r.faturamentoUnidades : r.faturamentoEmpresas;
+  const f = d?.faturamento ?? {};
+  return `
+    ${segEscopo(estado)}
+    ${secao({
+      titulo: `Ranking de faturamento — ${estado.escopo === "unidades" ? "unidades" : "empresas"}`,
+      icone: "banknote",
+      sub: "Posição = faturamento absoluto do período. A cobertura mostra se o dado está completo.",
+      acoes: `<span class="padm-selo padm-selo--ok">${escapeHtml(fmtDinheiro(f.total))} na rede</span>`,
+      corpo: (itens ?? []).length
+        ? `<ul class="padm-ranks">${itens.map((i) => linhaRanking(i, { tipo: "faturamento" })).join("")}</ul>`
+        : vazio("Sem faturamento no período", "Nenhuma unidade monitorada lançou o financeiro.", { tom: "muted", icone: "inbox" }),
+    })}`;
+}
+
+function abaConformidade(d, estado) {
+  const r = d?.rankings ?? {};
+  return `
+    ${secao({
+      titulo: "Melhores em conformidade",
+      icone: "check-circle",
+      sub: "Percentual real de dias lançados no período",
+      corpo: (r.conformidadeEmpresas ?? []).length
+        ? `<ul class="padm-ranks">${r.conformidadeEmpresas.map((i) => linhaRanking(i, { tipo: "conformidade" })).join("")}</ul>`
+        : vazio("Sem base de conformidade", "", { tom: "muted", icone: "inbox" }),
+    })}
+    ${secao({
+      titulo: "Maior atenção necessária",
+      icone: "clock",
+      sub: "As mesmas empresas, pela outra ponta — onde apoiar primeiro",
+      corpo: (r.atencaoEmpresas ?? []).length
+        ? `<ul class="padm-ranks">${r.atencaoEmpresas.map((i) => linhaRanking(i, { tipo: "conformidade" })).join("")}</ul>`
+        : vazio("Sem base de conformidade", "", { tom: "muted", icone: "inbox" }),
+    })}`;
+}
+
+function abaEvolucao(d, ev) {
+  const serie = ev?.serie ?? [];
+  const comDado = serie.filter((p) => p.valor != null);
+  const total = comDado.reduce((s, p) => s + Number(p.valor), 0);
+  const media = comDado.length ? total / comDado.length : null;
+  const melhor = comDado.length ? comDado.reduce((m, p) => (Number(p.valor) > Number(m.valor) ? p : m)) : null;
+
+  return `
+    ${cards([
+      card({ label: "Faturamento acumulado", valor: fmtDinheiro(d?.faturamento?.total), icone: "banknote" }),
+      card({ label: "Média por dia lançado", valor: fmtDinheiro(media), icone: "trending-up", nota: `${comDado.length} dia(s) com lançamento` }),
+      card({ label: "Melhor dia", valor: melhor ? fmtDinheiro(melhor.valor) : "—", icone: "target", nota: melhor ? fmtData(melhor.data) : "sem base" }),
+    ].join(""))}
+    ${secao({
+      titulo: "Evolução do faturamento",
+      icone: "bar-chart",
+      sub: "Valor de cada dia (delta do acumulado). Dia sem lançamento fica vazio — nunca estimado.",
+      corpo: barrasEvolucao(serie),
+    })}`;
+}
+
+// ---------------------------------------------------------------------------
+// CSV — sem dependência: Blob + createObjectURL
+// ---------------------------------------------------------------------------
+
+/** Escapa um campo CSV (aspas duplicadas, campo entre aspas). */
+export function csvCampo(v) {
+  if (v === null || v === undefined) return "";
+  const t = String(v);
+  return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+}
+
+/** Monta o CSV (`;` — o separador que o Excel pt-BR espera). */
+export function montarCsv(linhas) {
+  return (linhas ?? []).map((l) => l.map(csvCampo).join(";")).join("\r\n");
+}
+
+/**
+ * CSV do relatório. Uma seção por bloco, na mesma ordem da tela — o arquivo é
+ * o relatório, não um dump da API.
+ */
+export function csvDoRelatorio(d, estado = viewRelatorios) {
+  const o = d?.operacao ?? {}, cf = d?.conformidade ?? {}, f = d?.faturamento ?? {};
+  const L = [];
+  L.push(["Painel Administrativo — Relatório Executivo"]);
+  L.push(["Período", fmtMesLongo(d?.periodo)], ["Fechamento monitorado", fmtData(d?.d1)], []);
+
+  L.push(["OPERAÇÃO"]);
+  L.push(["Empresas monitoradas", o.empresasMonitoradas], ["Unidades monitoradas", o.unidadesMonitoradas]);
+  L.push(["Empresas com pendência", o.empresasComPendencia], ["Unidades com pendência", o.unidadesComPendencia]);
+  L.push(["Críticas", o.criticas], ["Atenção", o.atencao], ["Em dia", o.emDia], []);
+
+  L.push(["CONFORMIDADE"]);
+  L.push(["D-1", fmtPct(cf.d1)], ["Mês", fmtPct(cf.mes)], ["Dias completos", cf.mesCompleto], ["Dias esperados", cf.mesEsperado], []);
+
+  L.push(["FINANCEIRO"]);
+  L.push(["Faturamento total", fmtDinheiroExato(f.total)]);
+  L.push(["Faturamento confirmado", fmtDinheiroExato(f.confirmado)]);
+  L.push(["Faturamento provisório (não finalizado)", fmtDinheiroExato(f.provisorio)]);
+  L.push(["Cobertura", textoCobertura(f.cobertura)]);
+  if (d?.comparacao?.faturamento) {
+    L.push([`Variação vs ${fmtMesLongo(d.comparacao.periodo)} (1–${d.comparacao.diasEquivalentes})`, fmtVariacao(d.comparacao.faturamento.variacao) || "sem base"]);
+    if (d.comparacao.faturamento.incluiProvisorio) L.push(["Aviso", "A comparação inclui dados não finalizados"]);
+  }
+  L.push([]);
+
+  const r = d?.rankings ?? {};
+  const bloco = (titulo, itens, cols, linha) => {
+    L.push([titulo]); L.push(cols);
+    for (const i of itens ?? []) L.push(linha(i));
+    L.push([]);
+  };
+  bloco("RANKING — FATURAMENTO (EMPRESAS)", r.faturamentoEmpresas,
+    ["Posição", "Empresa", "Faturamento", "Confirmado", "Provisório", "Cobertura", "Conformidade"],
+    (i) => [i.posicao, i.nome, fmtDinheiroExato(i.faturamento?.total), fmtDinheiroExato(i.faturamento?.confirmado),
+            fmtDinheiroExato(i.faturamento?.provisorio), textoCobertura(i.cobertura), fmtPct(i.conformidadeMes)]);
+  bloco("RANKING — FATURAMENTO (UNIDADES)", r.faturamentoUnidades,
+    ["Posição", "Unidade", "Empresa", "Faturamento", "Cobertura", "Conformidade"],
+    (i) => [i.posicao, i.nome, i.empresaNome, fmtDinheiroExato(i.faturamento?.total), textoCobertura(i.cobertura), fmtPct(i.conformidadeMes)]);
+  bloco("RANKING — CONFORMIDADE", r.conformidadeEmpresas,
+    ["Posição", "Empresa", "Conformidade", "Faturamento"],
+    (i) => [i.posicao, i.nome, fmtPct(i.conformidadeMes), fmtDinheiroExato(i.faturamento?.total)]);
+  bloco("MAIOR ATENÇÃO NECESSÁRIA", r.atencaoEmpresas,
+    ["Posição", "Empresa", "Conformidade", "Faturamento"],
+    (i) => [i.posicao, i.nome, fmtPct(i.conformidadeMes), fmtDinheiroExato(i.faturamento?.total)]);
+  bloco("PRIORIDADES — EMPRESAS COM PENDÊNCIA", d?.prioridades?.empresas,
+    ["Empresa", "Unidades pendentes", "Críticas", "Atenção", "Pendência mais antiga", "Prioridade"],
+    (e) => [e.empresaNome, e.unidadesPendentes, e.criticas, e.atencao, fmtData(e.pendenciaMaisAntiga), e.piorUnidade?.unidadeNome ?? ""]);
+
+  void estado;
+  return montarCsv(L);
+}
+
+/** Dispara o download. `﻿` (BOM) faz o Excel abrir em UTF-8. */
+function baixarCsv(d, estado) {
+  const csv = "﻿" + csvDoRelatorio(d, estado);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `painel-administrativo-${d?.periodo ?? "periodo"}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +1134,8 @@ export function htmlHistorico() {
 
 function ligarLista() {
   ligarNav();
+  els("[data-padm-ir]").forEach((b) =>
+    b.addEventListener("click", () => nav.irParaTela?.(b.dataset.padmIr)));
   ligarBuscaLocal();
 }
 
@@ -509,6 +1151,34 @@ function ligarNav() {
   });
 }
 
+/**
+ * Liga os segmentos (filtro / agrupamento) e a busca das telas de
+ * identificação. A busca repinta para poder DESTACAR o termo — esconder linhas
+ * não mostraria onde bateu, e o gestor perderia o contexto da empresa.
+ */
+function ligarBarraIdentificacao({ estado, buscaId, repintar, comAgrupar = false }) {
+  els("[data-padm-filtro]").forEach((b) =>
+    b.addEventListener("click", () => { estado.filtro = b.dataset.padmFiltro; repintar(); }));
+  if (comAgrupar) {
+    els("[data-padm-agrupar]").forEach((b) =>
+      b.addEventListener("click", () => { estado.agrupar = b.dataset.padmAgrupar; repintar(); }));
+  }
+  const inp = el(buscaId);
+  if (!inp) return;
+  let t;
+  inp.addEventListener("input", () => {
+    clearTimeout(t);
+    const valor = inp.value;
+    t = setTimeout(() => {
+      estado.termo = valor;
+      repintar();
+      // devolve o foco/cursor ao campo recriado, senão o gestor perde a digitação
+      const novo = el(buscaId);
+      if (novo) { novo.focus(); novo.setSelectionRange?.(valor.length, valor.length); }
+    }, 160);
+  });
+}
+
 function ligarBuscaLocal() {
   els('input[type="search"][id^="padm-busca"]').forEach((inp) => {
     inp.addEventListener("input", () => {
@@ -520,9 +1190,9 @@ function ligarBuscaLocal() {
   });
 }
 
-function ligarDiario(api) {
+function ligarDiario(api, mes) {
   ligarLista();
-  const aplicar = () => renderViewPadm({ tipo: "tela", id: "diario" }, { api });
+  const aplicar = () => renderViewPadm({ tipo: "tela", id: "diario" }, { api, mes });
   const bind = (sel, chave) => {
     const n = el(sel);
     if (n) n.addEventListener("change", () => { filtrosDiario[chave] = n.value; aplicar(); });
@@ -534,19 +1204,125 @@ function ligarDiario(api) {
   el('[data-padm-acao="limpar-filtros"]')?.addEventListener("click", () => { resetFiltrosDiario(); aplicar(); });
 }
 
-function ligarDetalheEmpresa() {
+function ligarDetalhe() {
   ligarNav();
   el('[data-padm-acao="voltar"]')?.addEventListener("click", () => nav.voltar?.());
 }
 
-function ligarCalendario(dados, entrada) {
+/**
+ * O calendário navega o PERÍODO GLOBAL — mudar o mês aqui move o painel
+ * inteiro, para o gestor não voltar e encontrar outro mês.
+ */
+function ligarCalendario() {
   el('[data-padm-acao="voltar"]')?.addEventListener("click", () => nav.voltar?.());
-  const mesAtual = dados?.mes || entrada.mes;
-  el('[data-padm-acao="mes-anterior"]')?.addEventListener("click", () =>
-    nav.abrirUnidade(entrada.unidadeId, entrada.unidadeNome, deslocarMes(mesAtual, -1)));
+  el('[data-padm-acao="mes-anterior"]')?.addEventListener("click", () => nav.mudarPeriodo?.(-1));
   const prox = el('[data-padm-acao="mes-proximo"]');
-  if (prox && !prox.disabled) {
-    prox.addEventListener("click", () =>
-      nav.abrirUnidade(entrada.unidadeId, entrada.unidadeNome, deslocarMes(mesAtual, +1)));
+  if (prox && !prox.disabled) prox.addEventListener("click", () => nav.mudarPeriodo?.(+1));
+}
+
+// ===========================================================================
+// 8. RELATÓRIO EXECUTIVO EM PDF
+// ===========================================================================
+
+/** Estado do modal — a resposta do endpoint fica em cache enquanto ele vive. */
+let pdfDados = null;
+
+/**
+ * HTML do modal de geração. Construtor PURO — o teste monta e inspeciona sem
+ * abrir nada.
+ * @param {{periodo?: string, carregando?: boolean, erro?: string|null}} ctx
+ * @param {Record<string, boolean>} secoes
+ */
+export function htmlModalPdf(ctx = {}, secoes = secoesPdf) {
+  const itens = SECOES_PDF.map((sec) => `
+    <label class="padm-pdf-opt">
+      <input type="checkbox" data-padm-secao="${sec.id}" ${secoes[sec.id] ? "checked" : ""} />
+      <span>${escapeHtml(sec.label)}</span>
+    </label>`).join("");
+
+  return `
+    <div class="padm-modal-fundo" data-padm-acao="fechar-pdf"></div>
+    <div class="padm-modal" role="dialog" aria-modal="true" aria-labelledby="padm-pdf-tit">
+      <header class="padm-modal-head">
+        <div>
+          <h2 id="padm-pdf-tit">Relatório executivo</h2>
+          <p>Período: <b>${escapeHtml(fmtMesLongo(ctx.periodo))}</b></p>
+        </div>
+        <button class="padm-modal-x" data-padm-acao="fechar-pdf" aria-label="Fechar">✕</button>
+      </header>
+
+      <div class="padm-modal-corpo">
+        <span class="padm-pdf-rot">Incluir no relatório</span>
+        <div class="padm-pdf-opts">${itens}</div>
+        ${ctx.erro ? `<p class="padm-pdf-erro">${escapeHtml(ctx.erro)}</p>` : ""}
+        <p class="padm-pdf-nota">
+          O arquivo é salvo pelo diálogo do navegador — escolha <b>Salvar como PDF</b>.
+          Nome sugerido: <code>${escapeHtml(nomeArquivoPdf(ctx.periodo))}</code>
+        </p>
+      </div>
+
+      <footer class="padm-modal-pe">
+        <button class="btn btn-ghost btn-sm" data-padm-acao="fechar-pdf">Cancelar</button>
+        <button class="btn btn-ghost btn-sm" data-padm-acao="pdf-preview" ${ctx.carregando ? "disabled" : ""}>Visualizar</button>
+        <button class="btn btn-primary btn-sm" data-padm-acao="pdf-gerar" ${ctx.carregando ? "disabled" : ""}>
+          ${ctx.carregando ? "Preparando…" : "Gerar PDF"}
+        </button>
+      </footer>
+    </div>`;
+}
+
+const caixaModal = () => el("#padm-modal");
+
+function pintarModalPdf(ctx) {
+  const cx = caixaModal();
+  if (!cx) return;
+  cx.hidden = false;
+  cx.innerHTML = htmlModalPdf(ctx, secoesPdf);
+
+  els('[data-padm-acao="fechar-pdf"]').forEach((b) => b.addEventListener("click", fecharModalPdf));
+  els("[data-padm-secao]").forEach((c) =>
+    c.addEventListener("change", () => { secoesPdf[c.dataset.padmSecao] = !!c.checked; }));
+  el('[data-padm-acao="pdf-gerar"]')?.addEventListener("click", () => {
+    if (pdfDados) gerarPdf(pdfDados, secoesPdf);
+  });
+  el('[data-padm-acao="pdf-preview"]')?.addEventListener("click", () => {
+    if (pdfDados) previewPdf(pdfDados, secoesPdf);
+  });
+}
+
+export function fecharModalPdf() {
+  const cx = caixaModal();
+  if (!cx) return;
+  cx.hidden = true;
+  cx.innerHTML = "";
+  pdfDados = null;
+}
+
+/**
+ * Abre o modal e busca o pacote do relatório. O 403 segue a mesma regra do
+ * resto do painel: volta para a seleção de ambiente.
+ * @param {{api?: object, mes?: string}} [opts]
+ */
+export async function abrirModalPdf(opts = {}) {
+  const api = opts.api ?? ultimoDados.apiAtual ?? painelAdmApi;
+  const mes = opts.mes ?? ultimoDados.mesAtivo ?? undefined;
+
+  pdfDados = null;
+  pintarModalPdf({ periodo: mes ?? ultimoDados.relatorio?.periodo, carregando: true });
+  try {
+    pdfDados = await api.relatorioExecutivo({ mes });
+    pintarModalPdf({ periodo: pdfDados.periodo, carregando: false });
+  } catch (e) {
+    if (e && e.status === 403) {
+      fecharModalPdf();
+      nav.aoAcessoRevogado?.(e.message || "Seu acesso ao Painel Administrativo não está mais disponível.");
+      return;
+    }
+    pintarModalPdf({
+      periodo: mes, carregando: true,
+      erro: /failed to fetch|networkerror/i.test(e?.message ?? "")
+        ? "Falha de conexão ao preparar o relatório. Tente novamente."
+        : (e?.message ?? "Não foi possível preparar o relatório."),
+    });
   }
 }

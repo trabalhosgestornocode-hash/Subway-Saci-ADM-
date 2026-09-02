@@ -18,8 +18,11 @@ import assert from "node:assert/strict";
 
 import {
   visaoGeral, monitoramentoDiario, pendencias, empresas, detalheEmpresa, calendarioUnidade, avaliarFrota,
+  alvoDoPeriodo,
 } from "../src/modules/administrativo/administrativo.service.js";
-import { D1_CATEGORIA, ROLLUP } from "../src/modules/administrativo/administrativo.status.js";
+import {
+  D1_CATEGORIA, ROLLUP, pendenciasAntesDe, pendenciasNoIntervalo, pendenciaHerdada,
+} from "../src/modules/administrativo/administrativo.status.js";
 import { ApiError } from "../src/shared/ApiError.js";
 
 const MOD = "ifood_dashboard";
@@ -236,7 +239,7 @@ describe("E) projeção de D-1 — cada estado do domínio", () => {
 });
 
 describe("F/G/H — datas", () => {
-  test("F) pendência que atravessa a virada de mês (D-1 = 01/09)", async () => {
+  test("F) a pendência atravessa a virada de mês no HISTÓRICO, mas não classifica o período", async () => {
     const HOJE2 = "2026-09-02"; // D-1 = 2026-09-01
     const st = frotaBase();
     st.organizacoes = [org(UUID("o1"), "Alfa")];
@@ -247,9 +250,18 @@ describe("F/G/H — datas", () => {
     st.lancamentos_financeiros_diarios.push(...preenche(UUID("u"), "2026-08-01", "2026-08-29"));
     const r = await avaliarFrota({ hojeIso: HOJE2 }, { supabase: fakeDb(st) });
     const u = r.unidades[0];
-    assert.equal(u.rollup.status, ROLLUP.CRITICO);
+
+    // o motor continua enxergando agosto (cross-month intacto)
     assert.equal(u.pendenciasAcum.desde, "2026-08-30");
     assert.ok(u.pendenciasAcum.total >= 2);
+    assert.equal(u.historicoAnterior.existe, true);
+    assert.equal(u.historicoAnterior.desde, "2026-08-30");
+
+    // mas a CLASSIFICAÇÃO é do período: dentro de setembro só o D-1 (01/09)
+    // está em aberto -> ATENÇÃO, não CRÍTICO por causa de agosto.
+    assert.equal(u.pendenciasPeriodo.total, 0);
+    assert.equal(u.d1.categoria, D1_CATEGORIA.NAO_REALIZADO);
+    assert.equal(u.rollup.status, ROLLUP.ATENCAO);
   });
 
   test("G) 01/10 -> referência D-1 = 30/09", async () => {
@@ -451,5 +463,287 @@ describe("endpoints — pendências, detalhe da empresa, calendário", () => {
       () => calendarioUnidade({ unidadeId: UUID("u3b"), mes: "2026-09", hojeIso: HOJE }, { supabase: fakeDb(st) }),
       (e) => e instanceof ApiError && e.statusCode === 404,
     );
+  });
+});
+
+// ===========================================================================
+// PERÍODO ATIVO (`mes=AAAA-MM`) — extensão do contrato
+// ===========================================================================
+describe("período ativo (mes=AAAA-MM)", () => {
+  /** Uma unidade: agosto 1..29 completo (30 e 31 vazios), setembro 1..14 completo. */
+  const stPeriodo = () => {
+    const st = frotaBase();
+    st.organizacoes = [org(UUID("o1"), "Alfa")];
+    st.unidades = [uni(UUID("u"), UUID("o1"), "Alfa Centro")];
+    st.organizacao_modulos = [{ organizacao_id: UUID("o1"), modulo_id: MOD }];
+    st.unidade_modulos = [{ unidade_id: UUID("u"), modulo_id: MOD }];
+    st.lancamentos_financeiros_diarios.push(
+      ...preenche(UUID("u"), "2026-07-01", "2026-07-31"),
+      ...preenche(UUID("u"), "2026-08-01", "2026-08-29"),
+      ...preenche(UUID("u"), "2026-09-01", D1),
+    );
+    return st;
+  };
+
+  test("alvoDoPeriodo: mês corrente -> D-1 ; mês fechado -> último dia do mês", () => {
+    assert.deepEqual(alvoDoPeriodo(null, HOJE), { periodo: "2026-09", dataAlvo: D1, mesCorrente: true });
+    assert.deepEqual(alvoDoPeriodo("2026-09", HOJE), { periodo: "2026-09", dataAlvo: D1, mesCorrente: true });
+    assert.deepEqual(alvoDoPeriodo("2026-08", HOJE), { periodo: "2026-08", dataAlvo: "2026-08-31", mesCorrente: false });
+    assert.deepEqual(alvoDoPeriodo("2026-02", HOJE).dataAlvo, "2026-02-28");
+  });
+
+  test("sem `mes` o comportamento é o de sempre (mês corrente, D-1)", async () => {
+    const r = await visaoGeral({ hojeIso: HOJE }, { supabase: fakeDb(stPeriodo()) });
+    assert.equal(r.periodo, "2026-09");
+    assert.equal(r.mesCorrente, true);
+    assert.equal(r.d1, D1);
+  });
+
+  test("visão geral de um mês FECHADO usa o último dia daquele mês e a conformidade dele", async () => {
+    const r = await visaoGeral({ hojeIso: HOJE, mes: "2026-08" }, { supabase: fakeDb(stPeriodo()) });
+    assert.equal(r.periodo, "2026-08");
+    assert.equal(r.mesCorrente, false);
+    assert.equal(r.d1, "2026-08-31");
+    // agosto: 29 dias completos de 31 esperados
+    assert.equal(r.resumo.mesCompleto, 29);
+    assert.equal(r.resumo.mesEsperado, 31);
+    // 31/08 não foi lançado -> a unidade não está concluída naquele fechamento
+    assert.equal(r.resumo.concluidasD1, 0);
+  });
+
+  test("mês futuro -> 400 ; formato inválido -> 400", async () => {
+    const db = { supabase: fakeDb(stPeriodo()) };
+    await assert.rejects(() => visaoGeral({ hojeIso: HOJE, mes: "2026-10" }, db),
+      (e) => e instanceof ApiError && e.statusCode === 400);
+    await assert.rejects(() => visaoGeral({ hojeIso: HOJE, mes: "2026/09" }, db),
+      (e) => e instanceof ApiError && e.statusCode === 400);
+    await assert.rejects(() => visaoGeral({ hojeIso: HOJE, mes: "2026-13" }, db),
+      (e) => e instanceof ApiError && e.statusCode === 400);
+  });
+
+  test("pendências e empresas respeitam o período", async () => {
+    const p = await pendencias({ hojeIso: HOJE, mes: "2026-08" }, { supabase: fakeDb(stPeriodo()) });
+    assert.equal(p.periodo, "2026-08");
+    assert.equal(p.d1, "2026-08-31");
+    assert.equal(p.total, 1);                     // 30 e 31/08 sem lançamento
+
+    const e = await empresas({ hojeIso: HOJE, mes: "2026-08" }, { supabase: fakeDb(stPeriodo()) });
+    assert.equal(e.periodo, "2026-08");
+    assert.equal(e.empresas[0].mesEsperado, 31);
+  });
+
+  test("detalhe da empresa respeita o período", async () => {
+    const d = await detalheEmpresa({ organizacaoId: UUID("o1"), hojeIso: HOJE, mes: "2026-08" }, { supabase: fakeDb(stPeriodo()) });
+    assert.equal(d.periodo, "2026-08");
+    assert.equal(d.d1, "2026-08-31");
+    assert.equal(d.unidades[0].mesEsperado, 31);
+  });
+
+  test("monitoramento diário: `mes` define o dia padrão; `data` explícita continua mandando", async () => {
+    const db = () => ({ supabase: fakeDb(stPeriodo()) });
+    const porMes = await monitoramentoDiario({ hojeIso: HOJE, mes: "2026-08" }, db());
+    assert.equal(porMes.referencia, "2026-08-31");
+    assert.equal(porMes.periodo, "2026-08");
+
+    const porData = await monitoramentoDiario({ hojeIso: HOJE, mes: "2026-08", data: "2026-08-15" }, db());
+    assert.equal(porData.referencia, "2026-08-15");
+    assert.equal(porData.unidades[0].categoria, D1_CATEGORIA.CONCLUIDO);
+  });
+
+  test("calendário abre no mês pedido; mês futuro -> 400", async () => {
+    const r = await calendarioUnidade({ unidadeId: UUID("u"), mes: "2026-08", hojeIso: HOJE }, { supabase: fakeDb(stPeriodo()) });
+    assert.equal(r.mes, "2026-08");
+    assert.equal(r.periodo, "2026-08");
+    assert.equal(r.dias.length, 31);
+    assert.equal(r.dias.find((d) => d.data === "2026-08-31").completo, false);
+    await assert.rejects(
+      () => calendarioUnidade({ unidadeId: UUID("u"), mes: "2027-01", hojeIso: HOJE }, { supabase: fakeDb(stPeriodo()) }),
+      (e) => e instanceof ApiError && e.statusCode === 400,
+    );
+  });
+
+  test("período não aumenta o nº de queries (continua ≤ 6)", async () => {
+    const db = fakeDb(stPeriodo());
+    await visaoGeral({ hojeIso: HOJE, mes: "2026-08" }, { supabase: db });
+    assert.ok(db.__contador.queries <= 6, `queries: ${db.__contador.queries}`);
+  });
+});
+
+// ===========================================================================
+// RECORTE VISUAL DO PERÍODO — pendência HISTÓRICA vs pendência DO PERÍODO
+//
+// Regressão do bug: olhando SETEMBRO em 02/09, a Visão Geral exibia
+// "6 dias · desde 26/08" — importando agosto para dentro da contagem mensal.
+// O motor continua olhando agosto (sequência/bloqueio/criticidade); só a
+// PROJEÇÃO exibida passou a respeitar o piso do período.
+// ===========================================================================
+describe("recorte visual do período (pendência do período vs histórica)", () => {
+  /**
+   * Unidade com pendência que COMEÇA em 26/08.
+   *   julho     -> completo (não polui a janela do motor)
+   *   agosto    -> 01..25 completo ; 26..31 SEM lançamento
+   *   setembro  -> conforme `setAte` (null = nada lançado)
+   */
+  const stHerdada = ({ setAte = null } = {}) => {
+    const st = frotaBase();
+    st.organizacoes = [org(UUID("o1"), "Alfa")];
+    st.unidades = [uni(UUID("u"), UUID("o1"), "Alfa Centro")];
+    st.organizacao_modulos = [{ organizacao_id: UUID("o1"), modulo_id: MOD }];
+    st.unidade_modulos = [{ unidade_id: UUID("u"), modulo_id: MOD }];
+    st.lancamentos_financeiros_diarios.push(
+      ...preenche(UUID("u"), "2026-07-01", "2026-07-31"),
+      ...preenche(UUID("u"), "2026-08-01", "2026-08-25"),
+    );
+    if (setAte) st.lancamentos_financeiros_diarios.push(...preenche(UUID("u"), "2026-09-01", setAte));
+    return st;
+  };
+  const unidadeDe = (r) => r.unidades[0];
+
+  test("1) hoje 02/09, período setembro: a contagem do período NÃO importa agosto", async () => {
+    const r = await avaliarFrota({ hojeIso: "2026-09-02" }, { supabase: fakeDb(stHerdada()) });
+    const u = unidadeDe(r);
+    assert.equal(r.referencia, "2026-09-01", "D-1 do mês corrente");
+
+    // histórica (motor): atravessa a virada de mês, como sempre
+    assert.equal(u.pendenciasAcum.desde, "2026-08-26");
+    assert.equal(u.pendenciasAcum.total, 6);                     // 26..31/08
+
+    // do período (interface): setembro começa em 01/09 — que é o próprio D-1,
+    // então não há dia ACUMULADO antes dele dentro do mês
+    assert.equal(u.inicioPeriodo, "2026-09-01");
+    assert.equal(u.pendenciasPeriodo.desde, null);
+    assert.equal(u.pendenciasPeriodo.total, 0);
+
+    // e a herança fica registrada, separada
+    assert.equal(u.pendenciaHerdada.herdada, true);
+    assert.equal(u.pendenciaHerdada.desde, "2026-08-26");
+    assert.equal(u.pendenciaHerdada.total, 6);
+  });
+
+  test("1b) hoje 05/09: a contagem do período começa em 01/09, nunca em 26/08", async () => {
+    const r = await avaliarFrota({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada()) });
+    const u = unidadeDe(r);
+    assert.equal(r.referencia, "2026-09-04");
+    assert.equal(u.pendenciasPeriodo.desde, "2026-09-01", "piso no dia 1 do período");
+    assert.equal(u.pendenciasPeriodo.total, 3);                  // 01, 02, 03/09
+    assert.equal(u.pendenciasAcum.desde, "2026-08-26");          // histórica intacta
+    assert.equal(u.pendenciasAcum.total, 9);                     // 6 de agosto + 3 de setembro
+    assert.equal(u.pendenciaHerdada.total, 6);                   // a diferença é o herdado
+  });
+
+  test("1c) Visão Geral de setembro exibe a contagem do período + a nota de herança", async () => {
+    const vg = await visaoGeral({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada()) });
+    const item = vg.acaoNecessariaHoje.find((i) => i.unidadeId === UUID("u"));
+    assert.ok(item, "a unidade aparece em Ação necessária");
+    assert.deepEqual(item.pendencia, { total: 3, desde: "2026-09-01" });
+    assert.deepEqual(item.herdada, { desde: "2026-08-26", total: 6 });
+    // o texto exibido NUNCA pode carregar a data de agosto na métrica principal
+    assert.notEqual(item.pendencia.desde, "2026-08-26");
+  });
+
+  test("2) a MESMA unidade, com o período em agosto, mostra 26/08 normalmente", async () => {
+    const r = await avaliarFrota({ hojeIso: "2026-09-05", dataAlvo: "2026-08-31" }, { supabase: fakeDb(stHerdada()) });
+    const u = unidadeDe(r);
+    assert.equal(u.inicioPeriodo, "2026-08-01");
+    assert.equal(u.pendenciasPeriodo.desde, "2026-08-26");       // agora agosto É o período
+    assert.equal(u.pendenciasPeriodo.total, 5);                  // 26..30 (31 é o próprio alvo)
+    assert.equal(u.pendenciaHerdada.herdada, false, "nada herdado: julho está completo");
+
+    const vg = await visaoGeral({ hojeIso: "2026-09-05", mes: "2026-08" }, { supabase: fakeDb(stHerdada()) });
+    const item = vg.acaoNecessariaHoje.find((i) => i.unidadeId === UUID("u"));
+    assert.equal(item.pendencia.desde, "2026-08-26");
+    assert.equal(item.herdada, null);
+  });
+
+  test("3) período limpo -> EM DIA, mesmo com pendência histórica (caso Pastel Di Féra)", async () => {
+    // setembro 01..04 TODO lançado -> nada pendente dentro do período
+    const r = await avaliarFrota({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada({ setAte: "2026-09-04" })) });
+    const u = unidadeDe(r);
+    assert.equal(u.d1.categoria, D1_CATEGORIA.CONCLUIDO, "D-1 de setembro fechado");
+    assert.equal(u.pendenciasPeriodo.total, 0, "período limpo");
+    assert.equal(u.conformidade.taxa, 1, "setembro 100%");
+
+    // o histórico de agosto continua VISÍVEL, mas não classifica setembro
+    assert.equal(u.pendenciasAcum.total, 6);
+    assert.equal(u.historicoAnterior.existe, true);
+    assert.equal(u.historicoAnterior.desde, "2026-08-26");
+    assert.equal(u.rollup.status, ROLLUP.EM_DIA, "a classificação é DO PERÍODO");
+
+    // e ela SAI da fila de pendências do período
+    const p = await pendencias({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada({ setAte: "2026-09-04" })) });
+    assert.ok(!p.unidades.some((x) => x.unidadeId === UUID("u")),
+      "setembro 100% não aparece na fila de pendências de setembro");
+    assert.equal(p.total, 0);
+  });
+
+  test("3b) a pendência histórica volta a pesar quando causa efeito DENTRO do período", async () => {
+    // setembro 01 e 02 vazios, D-1 = 04/09 -> há dia pendente NO MÊS
+    const r = await avaliarFrota({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada()) });
+    const u = unidadeDe(r);
+    assert.ok(u.pendenciasPeriodo.total > 0, "setembro tem dia em aberto");
+    assert.equal(u.rollup.status, ROLLUP.CRITICO, "aí sim é crítico — o efeito é do próprio mês");
+  });
+
+  test("3c) com AGOSTO selecionado, a mesma pendência classifica normalmente", async () => {
+    const r = await avaliarFrota({ hojeIso: "2026-09-05", dataAlvo: "2026-08-31" }, { supabase: fakeDb(stHerdada()) });
+    const u = unidadeDe(r);
+    assert.equal(u.pendenciasPeriodo.desde, "2026-08-26", "agosto É o período agora");
+    assert.equal(u.rollup.status, ROLLUP.CRITICO);
+    assert.equal(u.historicoAnterior.existe, false, "julho está completo — nada herdado");
+  });
+
+  test("4) conformidade de setembro NÃO inclui nenhum dia de agosto", async () => {
+    const vg = await visaoGeral({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada({ setAte: "2026-09-02" })) });
+    // esperados de setembro até D-1 (04/09) = 01,02,03,04 = 4 ; completos = 01,02 = 2
+    assert.equal(vg.resumo.mesEsperado, 4, "denominador é só setembro");
+    assert.equal(vg.resumo.mesCompleto, 2);
+    assert.ok(vg.resumo.mesEsperado < 31, "não carregou os dias de agosto");
+    assert.ok(Math.abs(vg.resumo.conformidadeMes - 0.5) < 1e-9);
+  });
+
+  test("5) D-1 do mês corrente continua sendo 01/09 quando hoje é 02/09", async () => {
+    const vg = await visaoGeral({ hojeIso: "2026-09-02", mes: "2026-09" }, { supabase: fakeDb(stHerdada()) });
+    assert.equal(vg.d1, "2026-09-01");
+    assert.equal(vg.periodo, "2026-09");
+    assert.equal(vg.mesCorrente, true);
+  });
+
+  test("6) hoje NÃO conta como atraso nem entra nos dias esperados", async () => {
+    const r = await avaliarFrota({ hojeIso: "2026-09-05" }, { supabase: fakeDb(stHerdada()) });
+    const u = unidadeDe(r);
+    assert.ok(!u.pendenciasPeriodo.dias.includes("2026-09-05"), "hoje nunca é pendência");
+    assert.ok(!u.pendenciasAcum.dias.includes("2026-09-05"));
+    // esperados vão só até D-1 (04/09): 01..04 = 4 dias
+    assert.equal(u.conformidade.esperados, 4);
+    const hojeProj = u.diasProjetados.find((d) => d.data === "2026-09-05");
+    assert.equal(hojeProj.motivoNaoAplicavel, "hoje");
+  });
+
+  test("7) mês passado completo usa TODOS os dias do mês (01/08 a 31/08)", async () => {
+    const vg = await visaoGeral({ hojeIso: "2026-09-05", mes: "2026-08" }, { supabase: fakeDb(stHerdada()) });
+    assert.equal(vg.d1, "2026-08-31", "num mês fechado o alvo é o último dia");
+    assert.equal(vg.resumo.mesEsperado, 31);
+    assert.equal(vg.resumo.mesCompleto, 25);                     // 01..25 lançados
+  });
+
+  test("as funções puras do recorte são independentes do I/O", () => {
+    const dias = [
+      { data: "2026-09-01", painel: "NAO_LANCADO", bloqueada: false },
+      { data: "2026-09-02", painel: "NAO_LANCADO", bloqueada: false },
+      { data: "2026-09-03", painel: "COMPLETO", bloqueada: false },
+    ];
+    const anteriores = [{ data: "2026-08-30", painel: "NAO_LANCADO", bloqueada: false }];
+
+    const hist = pendenciasAntesDe([...anteriores, ...dias], "2026-09-03");
+    assert.deepEqual([hist.desde, hist.total], ["2026-08-30", 3]);
+
+    const doPeriodo = pendenciasNoIntervalo([...anteriores, ...dias], "2026-09-01", "2026-09-03");
+    assert.deepEqual([doPeriodo.desde, doPeriodo.total], ["2026-09-01", 2], "piso descarta 30/08");
+
+    const h = pendenciaHerdada(hist, doPeriodo, "2026-09-01");
+    assert.deepEqual(h, { herdada: true, desde: "2026-08-30", total: 1 });
+
+    // sem herança quando a histórica já começa dentro do período
+    assert.equal(pendenciaHerdada(doPeriodo, doPeriodo, "2026-09-01").herdada, false);
   });
 });

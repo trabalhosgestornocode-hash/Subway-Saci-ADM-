@@ -38,5 +38,13 @@ administrativoRouter.get("/empresas", c.empresas);            // antes de /empre
 administrativoRouter.get("/empresas/:organizacaoId", c.detalheEmpresa);
 administrativoRouter.get("/unidades/:unidadeId/calendario", c.calendarioUnidade);
 
+// ---- Financeiro / Relatorios. Rankings e relatorio executivo vivem em rotas
+// proprias para nao inchar o payload da Visao Geral.
+administrativoRouter.get("/rankings/faturamento", c.rankingFaturamento);
+administrativoRouter.get("/rankings/conformidade", c.rankingConformidade);
+administrativoRouter.get("/relatorios/resumo", c.relatorioResumo);
+administrativoRouter.get("/relatorios/evolucao", c.relatorioEvolucao);
+administrativoRouter.get("/relatorios/executivo", c.relatorioExecutivo);
+
 // Qualquer outra coisa sob /administrativo é 404 em JSON.
 administrativoRouter.use(c.naoEncontrado);
