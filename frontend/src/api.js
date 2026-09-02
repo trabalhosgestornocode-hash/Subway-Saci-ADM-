@@ -119,6 +119,11 @@ export async function obterProduto(id) {
   return getJson(`/api/v1/produtos/${id}`);
 }
 
+// ---------- Inteligência (seção do menu) ----------
+// Catálogo de integrações do sistema. Servido só com o módulo `inteligencia`
+// (403 sem ele) — não há cópia/fallback no bundle.
+export const obterCatalogoIntegracoes = () => getJson(`/api/v1/inteligencia/integracoes`);
+
 export async function obterHistoricoProduto(id) {
   return getJson(`/api/v1/produtos/${id}/historico`);
 }

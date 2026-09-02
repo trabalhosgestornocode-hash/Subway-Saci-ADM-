@@ -1,0 +1,71 @@
+-- =====================================================================
+-- MIGRATION 059 — Módulo "Inteligência" (gate da seção do menu lateral)
+-- =====================================================================
+-- OBJETIVO
+--   Novo módulo `inteligencia` no catálogo (`modulos`). Ele é o GATE-PAI da
+--   seção "INTELIGÊNCIA" do menu lateral (Agente Crescer · Relatórios ·
+--   Integrações):
+--
+--     * inteligencia = false  -> a seção inteira some do menu e todas as
+--       rotas/endpoints ligados a ela recusam (mesmo que `agente_ia` esteja
+--       habilitado).
+--     * inteligencia = true    -> a seção aparece; cada item ainda respeita o
+--       próprio módulo (o Agente Crescer continua exigindo `agente_ia` por
+--       cima — dupla autorização).
+--
+--   O conteúdo estratégico da página Integrações (Supabase, iFood, SWFast,
+--   Martin Brower, Coca-Cola, fornecedores, WhatsApp, arquitetura) deixou de
+--   ser constante no bundle do frontend e passou a ser servido por
+--   GET /api/v1/inteligencia/integracoes, atrás de requireModulo('inteligencia').
+--
+--   Mesmo padrão de rollout da migration 047 (Agente Crescer) e 037 (Parser
+--   Food Delivery): entra no catálogo SEM backfill em organizacao_modulos /
+--   unidade_modulos — começa FECHADO para todas as empresas. O SuperAdmin
+--   libera para as organizações internas pela aba "Acessos" já existente.
+--   Isso garante que nenhum franqueado enxergue a seção no deploy.
+--
+--   `categoria` = 'operacao' de propósito (mesma escolha de `agente_ia`):
+--   evita ampliar o CHECK de `modulos.categoria` e evita depender de um novo
+--   grupo nos checklists de Acessos (empresa/unidade). O módulo aparece no
+--   grupo "Operação" desses checklists, como o Agente Crescer já aparece.
+--
+-- PRÉ-REQUISITOS: migrations 030 e 047 aplicadas (tabela `modulos`,
+--   `organizacao_modulos`, `unidade_modulos`, snapshot `sessoes_contexto.modulos`).
+-- IDEMPOTENTE: pode ser reexecutada com segurança (ON CONFLICT DO UPDATE).
+-- SEM alteração de schema, RLS ou constraint — só uma linha nova no catálogo.
+-- COMO USAR: Supabase -> SQL Editor -> cole e execute este arquivo inteiro.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 0. CATÁLOGO DE MÓDULOS — nova entrada, sem conceder a ninguém.
+-- ---------------------------------------------------------------------
+insert into modulos (id, nome, categoria, ordem) values
+  ('inteligencia', 'Inteligência (seção)', 'operacao', 16)
+on conflict (id) do update set nome = excluded.nome, categoria = excluded.categoria, ordem = excluded.ordem;
+
+-- ---------------------------------------------------------------------
+-- 1. VERIFICAÇÃO (rode separadamente para conferir)
+-- ---------------------------------------------------------------------
+--   select id, nome, categoria, ordem from modulos where id = 'inteligencia';
+--   -- Esperado: 1 linha.
+--   -- E 0 linhas concedidas até o SuperAdmin liberar manualmente:
+--   select count(*) from organizacao_modulos where modulo_id = 'inteligencia';  -- 0
+--   select count(*) from unidade_modulos     where modulo_id = 'inteligencia';  -- 0
+
+-- ---------------------------------------------------------------------
+-- 2. ROLLBACK (se algum dia for necessário desfazer)
+-- ---------------------------------------------------------------------
+--   Como esta migration NÃO tocou o CHECK de `modulos.categoria` nem criou
+--   qualquer objeto novo, a reversão é só remover o módulo e seus vínculos.
+--   A ordem importa por causa das FKs (organizacao_modulos / unidade_modulos
+--   referenciam modulos.id com ON DELETE CASCADE, mas deixamos explícito):
+--
+--   delete from unidade_modulos     where modulo_id = 'inteligencia';
+--   delete from organizacao_modulos where modulo_id = 'inteligencia';
+--   delete from modulos             where id        = 'inteligencia';
+--   -- Depois, reverter o código (backend/src/shared/modulos.js, routes.js,
+--   -- frontend/src/config.js) e revogar as sessões vivas para o snapshot
+--   -- `sessoes_contexto.modulos` deixar de referenciar 'inteligencia'.
+-- =====================================================================
+-- FIM
+-- =====================================================================

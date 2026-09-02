@@ -20,6 +20,16 @@ export const COMISSAO = { balcao: 0, ifood: 0.27, uber: 0.15, app: 0, outro: 0 }
 // Ordem das seções da sidebar
 export const SECOES = ["OPERAÇÃO", "INTEGRAÇÕES", "INTELIGÊNCIA", "SISTEMA"];
 
+// Módulo que faz de GATE-PAI de uma seção inteira do menu. Se a empresa/unidade
+// do contexto não tem o módulo, a seção some por completo (título + todos os
+// itens) e as rotas dela ficam inacessíveis — mesmo que um item interno tenha
+// o próprio módulo habilitado (ex.: `agente_ia` sem `inteligencia` = seção
+// oculta). Consumido por app.js#montarMenu e router.js#acessivel; o bloqueio
+// real de dado está na API (backend/src/routes.js — requireModulo).
+export const SECAO_MODULO = {
+  "INTELIGÊNCIA": "inteligencia",
+};
+
 // Itens da sidebar. tipo: pagina | construcao | integracao | integracoes
 //
 // `modulo`: id do módulo contratável (ver backend/src/shared/modulos.js) que
@@ -83,46 +93,19 @@ export const STATUS_INTEGRACAO = {
   nao_conectado: { label: "Não conectado",          classe: "muted" },
 };
 
-// Catálogo de integrações (usado na página Integrações e nas telas individuais).
-// `icon` também é nome do conjunto SVG (ver MENU acima) — só aparece quando
-// não há `logo` (marca real do parceiro).
-export const INTEGRACOES = {
-  supabase: {
-    nome: "Supabase", icon: "database", status: "conectado",
-    desc: "Banco de dados PostgreSQL. Já conectado e servindo os dados do sistema.",
-    features: ["Catálogo, insumos e fichas técnicas", "Cálculo de CMV via views", "Base para RLS multi-loja"],
-  },
-  ifood: {
-    nome: "iFood", icon: "truck", logo: "/assets/menu-dashboard-ifood.png", status: "planejamento",
-    desc: "Monitora o cardápio do iFood em tempo real (preços e itens publicados). Não recebe pedidos — foco em acompanhar e detectar divergências.",
-    features: ["Monitorar cardápio ao vivo", "Conferir preços publicados", "Alertar divergências de preço"],
-  },
-  swfast: {
-    nome: "SWFast / PDV", icon: "credit-card", logo: "/assets/menu-swfast.png", status: "planejamento",
-    desc: "Recebe o fechamento de caixa diário da Subway Saci — o que vendeu e como vendeu. Não registra vendas nem faz fechamento: apenas importa e agrega para melhorar o CMV.",
-    features: ["Importar fechamento diário", "Mix de produtos vendidos", "CMV real x teórico"],
-  },
-  martinbrower: {
-    nome: "Martin Brower", icon: "package", logo: "/assets/menu-martinbrower.png", status: "futuro",
-    desc: "Distribuidora oficial: fonte do custo real de cada insumo comprado, mantendo o CMV sempre preciso e atualizado.",
-    features: ["Custo real por insumo", "Atualização automática de custos", "Notas e histórico de compra"],
-  },
-  cocacola: {
-    nome: "Coca-Cola", icon: "tag", logo: "/assets/menu-cocacola.png", status: "futuro",
-    desc: "Distribuidora de bebidas (Coca-Cola): custo real de refrigerantes, sucos e água para manter o CMV das bebidas sempre preciso.",
-    features: ["Custo real das bebidas", "Atualização de preços de refrigerantes", "Notas e histórico de compra"],
-  },
-  claudiahortifruti: {
-    nome: "Cláudia Hortifruti", icon: "tag", logo: "/assets/menu-claudiahortifruti.png", status: "futuro",
-    desc: "Fornecedor de hortifrúti: custo real dos vegetais e frutas usados nos sanduíches e saladas, com controle de perdas de itens frescos.",
-    features: ["Custo real de vegetais e frutas", "Controle de perdas de itens frescos", "Notas e histórico de compra"],
-  },
-  whatsapp: {
-    nome: "WhatsApp", icon: "message-circle", status: "planejamento",
-    desc: "Notificações automáticas (Evolution API / Baileys) do agente operacional.",
-    features: ["Alertas de estoque crítico", "Aviso de CMV/margem", "Resumo diário de faturamento"],
-  },
-  // "ia" saiu daqui: virou módulo real (ver MENU acima, item "ia" com
-  // tipo "agente") em vez de card "em planejamento" — listar os dois ao
-  // mesmo tempo (um dizendo "em breve" e outro já funcionando) confundiria.
+// O CATÁLOGO de integrações (descrições, features, status, arquitetura) SAIU
+// daqui: é informação interna/estratégica e agora é servido só pelo backend,
+// atrás do módulo `inteligencia` (GET /api/v1/inteligencia/integracoes — ver
+// backend/src/modules/inteligencia/inteligencia.catalogo.js). O frontend não
+// guarda mais cópia nem fallback: sem o módulo, a página Integrações nem carrega.
+//
+// O que fica aqui é só o mínimo para o menu: o LOGO das integrações que têm
+// item próprio na seção operacional "INTEGRAÇÕES" (e o do Dashboard iFood).
+// Caminhos de imagem pública em /assets — nada sensível.
+export const INTEGRACOES_LOGOS = {
+  ifood: "/assets/menu-dashboard-ifood.png",
+  swfast: "/assets/menu-swfast.png",
+  martinbrower: "/assets/menu-martinbrower.png",
+  cocacola: "/assets/menu-cocacola.png",
+  claudiahortifruti: "/assets/menu-claudiahortifruti.png",
 };

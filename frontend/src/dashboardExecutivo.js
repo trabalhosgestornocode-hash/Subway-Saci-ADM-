@@ -10,7 +10,7 @@ import {
   dashExecUnidades, dashExecMes, dashExecHistorico,
   dashExecAtualizarModeloLogistico,
 } from "./api.js";
-import { INTEGRACOES } from "./config.js";
+import { INTEGRACOES_LOGOS } from "./config.js";
 import {
   destruirGraficosDashboardExecutivo, barraComparativaMeta, roscaDeducoes,
   linhaEvolucao, linhaFinanceiroAcumulado, linhaDeducoesAcumuladas, barraComparativoMensal, visaoAnual,
@@ -125,7 +125,7 @@ function montarLayout() {
   view.innerHTML = `
     <div class="dex-head">
       <div class="dex-head-txt">
-        <h2>${INTEGRACOES.ifood?.logo ? `<img src="${INTEGRACOES.ifood.logo}" alt="iFood" class="dex-logo">` : ""}Dashboard iFood</h2>
+        <h2>${INTEGRACOES_LOGOS.ifood ? `<img src="${INTEGRACOES_LOGOS.ifood}" alt="iFood" class="dex-logo">` : ""}Dashboard iFood</h2>
         <p>Lançamento financeiro diário do iFood — preencha os dados brutos; percentuais, deduções e projeções são calculados automaticamente.</p>
         ${botaoContextualHtml("dashboard_executivo")}
       </div>

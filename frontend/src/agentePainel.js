@@ -18,6 +18,15 @@ import {
 } from "./agenteBotoes.js";
 import { registrarResetDeContexto } from "./contextoEscopo.js";
 import { state } from "./state.js";
+import { temModulo } from "./sessao.js";
+
+// Gate DUPLO do Agente Crescer, igual ao item "ia" do menu e ao backend
+// (routes.js): a seção `inteligencia` E o módulo `agente_ia`. Cobre TODA
+// entrada indireta — botão da topbar, atalho, e os botões "✦ Analisar" que as
+// telas embutem no próprio cabeçalho. `temModulo` já bypassa em impersonação.
+function podeUsarAgente() {
+  return temModulo("inteligencia") && temModulo("agente_ia");
+}
 
 let overlayEl = null;
 let corpoEl = null;
@@ -69,6 +78,7 @@ export function montarPainelGlobal() {
  *   sozinho (mesma regra do item 9 / Etapa F).
  */
 export function abrirPainel(opts = {}) {
+  if (!podeUsarAgente()) return; // barreira final — nenhuma entrada abre o painel sem o gate duplo
   montarPainelGlobal();
   aberto = true;
   overlayEl.classList.add("aberto");
@@ -90,6 +100,7 @@ export function fecharPainel() {
 }
 
 export function alternarPainel() {
+  if (!podeUsarAgente()) return;
   if (aberto) fecharPainel(); else abrirPainel();
 }
 
@@ -116,6 +127,7 @@ export function sincronizarContextoPainel() {
  * @param {string} chave
  */
 export function botaoContextualHtml(chave) {
+  if (!podeUsarAgente()) return ""; // sem o gate duplo, a tela não oferece o atalho
   return construirBotaoContextual(chave);
 }
 
@@ -128,6 +140,7 @@ export function botaoContextualHtml(chave) {
  * @param {string} [tipo] CRITICAL | WARNING | HEALTHY | DATA_PENDING
  */
 export function botaoDiagnosticoHtml(attentionPoint, tipo) {
+  if (!podeUsarAgente()) return "";
   return construirBotaoDiagnostico(attentionPoint, tipo);
 }
 

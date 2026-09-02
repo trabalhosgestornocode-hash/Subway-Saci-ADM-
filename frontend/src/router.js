@@ -1,5 +1,5 @@
 import { state } from "./state.js";
-import { MENU } from "./config.js";
+import { MENU, SECAO_MODULO } from "./config.js";
 import { el, els, toast } from "./utils.js";
 import { temModulo } from "./sessao.js";
 import * as views from "./views.js";
@@ -13,8 +13,18 @@ import { renderParserFoodDelivery } from "./parserFoodDelivery.js";
 import { renderAgente } from "./agente.js";
 import { sincronizarContextoPainel } from "./agentePainel.js";
 
-/** Um item da sidebar está liberado para a empresa do contexto atual? */
-const acessivel = (item) => !item.modulo || temModulo(item.modulo);
+/**
+ * Um item da sidebar está liberado para a empresa do contexto atual?
+ * Duas barreiras, nesta ordem:
+ *   1. gate-pai da SEÇÃO (SECAO_MODULO) — ex.: sem `inteligencia`, nenhum item
+ *      da seção "INTELIGÊNCIA" passa, mesmo que tenha módulo próprio;
+ *   2. módulo do próprio item (ex.: `agente_ia`).
+ */
+const acessivel = (item) => {
+  const gateSecao = SECAO_MODULO[item.secao];
+  if (gateSecao && !temModulo(gateSecao)) return false;
+  return !item.modulo || temModulo(item.modulo);
+};
 
 /**
  * Primeira rota que a empresa atual pode ver — usado como destino de entrada
@@ -61,7 +71,7 @@ export function renderRotaAtual() {
       views.renderIntegracoes();
       break;
     case "integracao":
-      views.renderIntegracaoDetalhe(item.integ);
+      views.renderIntegracaoDetalhe(item.integ, item.label);
       break;
     case "configuracoes":
       renderConfiguracoes();

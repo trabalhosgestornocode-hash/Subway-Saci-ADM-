@@ -1,9 +1,9 @@
 import { state, linhasFiltradas, tabelaAtiva, emComparacao } from "./state.js";
-import { INTEGRACOES, STATUS_INTEGRACAO } from "./config.js";
+import { INTEGRACOES_LOGOS, STATUS_INTEGRACAO } from "./config.js";
 import { acoesTabela } from "./actions.js";
 import { el, fmtMoeda, fmtPct, fmtTexto, fmtHora, fmtRelativo, escapeHtml, temValor, statusCmv } from "./utils.js";
 import { renderGraficos } from "./charts.js";
-import { obterHistoricoRecente } from "./api.js";
+import { obterHistoricoRecente, obterCatalogoIntegracoes } from "./api.js";
 import { abrirHistoricoModal, fmtValor } from "./historicoModal.js";
 import { icon } from "./icons.js";
 import { botaoContextualHtml, ligarBotoesContextuais } from "./agentePainel.js";
@@ -322,30 +322,61 @@ export function renderProdutos() {
 }
 
 // ======================= INTEGRAÇÕES =======================
+// O catálogo (descrições/features/status) vem do backend, atrás do módulo
+// `inteligencia` — GET /api/v1/inteligencia/integracoes. Nada disso mora mais
+// no bundle: sem o módulo a chamada dá 403 e a página mostra o aviso de acesso.
 function integraCard(ig) {
   const st = STATUS_INTEGRACAO[ig.status] || STATUS_INTEGRACAO.nao_conectado;
+  const features = Array.isArray(ig.features) ? ig.features : [];
   return `<div class="integra-card">
     <div class="integra-head">
-      <div class="integra-icon">${ig.logo ? `<img src="${ig.logo}" alt="${escapeHtml(ig.nome)}" class="integra-logo" />` : icon(ig.icon, { size: 22 })}</div>
-      <div><div class="integra-nome">${ig.nome}</div><span class="pill ${st.classe}">${st.label}</span></div>
+      <div class="integra-icon">${ig.logo ? `<img src="${escapeHtml(ig.logo)}" alt="${escapeHtml(ig.nome)}" class="integra-logo" />` : icon(ig.icon, { size: 22 })}</div>
+      <div><div class="integra-nome">${escapeHtml(ig.nome)}</div><span class="pill ${st.classe}">${st.label}</span></div>
     </div>
-    <div class="integra-desc">${ig.desc}</div>
-    <ul class="integra-features">${ig.features.map((f) => `<li>${f}</li>`).join("")}</ul>
+    <div class="integra-desc">${escapeHtml(ig.desc || "")}</div>
+    <ul class="integra-features">${features.map((f) => `<li>${escapeHtml(f)}</li>`).join("")}</ul>
   </div>`;
 }
 
-export function renderIntegracoes() {
-  const cards = Object.values(INTEGRACOES).map(integraCard).join("");
+/** Aviso quando o catálogo recusa (403 — empresa sem o módulo `inteligencia`). */
+function integracoesSemAcesso() {
+  el("#view").innerHTML = estadoVazio("link", "Integrações", "Esta área é restrita — fale com a administração da plataforma.");
+}
+
+export async function renderIntegracoes() {
   el("#view").innerHTML = `
     <p class="secao-titulo">${icon("link", { size: 16 })} Integrações do sistema</p>
     <p style="color:var(--cinza);font-size:14px;margin:-6px 0 16px">Conforme cada integração for conectada, os dados fluem automaticamente para o painel.</p>
-    <div class="integra-grid">${cards}</div>`;
+    <div class="integra-grid" id="integra-grid"><p style="color:var(--cinza)">Carregando…</p></div>`;
+  try {
+    const { data } = await obterCatalogoIntegracoes();
+    const cards = (data?.integracoes ?? []).map(integraCard).join("");
+    const grid = el("#integra-grid");
+    if (grid) grid.innerHTML = cards;
+  } catch {
+    integracoesSemAcesso();
+  }
 }
 
-export function renderIntegracaoDetalhe(key) {
-  const ig = INTEGRACOES[key];
-  if (!ig) { el("#view").innerHTML = estadoVazio("link", "Integração", "Não encontrada."); return; }
-  el("#view").innerHTML = `<div class="integra-grid" style="grid-template-columns:minmax(0,560px)">${integraCard(ig)}</div>`;
+export async function renderIntegracaoDetalhe(key, rotulo) {
+  try {
+    const { data } = await obterCatalogoIntegracoes();
+    const ig = (data?.integracoes ?? []).find((i) => i.chave === key);
+    if (!ig) { el("#view").innerHTML = estadoVazio("link", "Integração", "Não encontrada."); return; }
+    el("#view").innerHTML = `<div class="integra-grid" style="grid-template-columns:minmax(0,560px)">${integraCard(ig)}</div>`;
+  } catch {
+    // Sem o módulo `inteligencia`: mostra um card mínimo com o pouco que o
+    // menu já expõe (rótulo + logo), sem detalhes do catálogo.
+    const logo = INTEGRACOES_LOGOS[key];
+    el("#view").innerHTML = `<div class="integra-grid" style="grid-template-columns:minmax(0,560px)">
+      <div class="integra-card">
+        <div class="integra-head">
+          <div class="integra-icon">${logo ? `<img src="${escapeHtml(logo)}" alt="" class="integra-logo" />` : icon("link", { size: 22 })}</div>
+          <div><div class="integra-nome">${escapeHtml(rotulo || "Integração")}</div></div>
+        </div>
+        <div class="integra-desc">Integração operacional do sistema.</div>
+      </div></div>`;
+  }
 }
 
 // ======================= PÁGINAS EM CONSTRUÇÃO =======================
