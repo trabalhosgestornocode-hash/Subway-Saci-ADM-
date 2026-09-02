@@ -1574,6 +1574,21 @@ body {
 .sel-logo { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; display: grid; place-items: center; }
 .sel-logo--txt { background: var(--grad-verde); color: #fff; font-weight: 800; font-size: 19px; }
 
+/* ===== Tela "Selecione seu usuário" (Fase F — multi-perfil) ===== */
+#selecao-perfil-screen .sel-lista { grid-template-columns: 1fr; gap: 12px; }
+#selp-lista .sel-card {
+  width: 100%; text-align: left; font: inherit; cursor: pointer; align-items: stretch; gap: 4px;
+}
+#selp-lista .sel-card[disabled] { opacity: .55; cursor: not-allowed; }
+#selp-lista .sel-card:focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
+.sel-card-nome { font-size: 15.5px; font-weight: 700; letter-spacing: -.2px; }
+.sel-card-sub { color: var(--cinza); font-size: 12.5px; }
+.selp-pin { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.selp-pin #selp-pin-input {
+  width: 100%; font-size: 22px; letter-spacing: 8px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.selp-pin-acoes { display: flex; gap: 10px; justify-content: flex-end; }
+
 /* Card de empresa multi-unidade — botão "Ver unidades" + lista revelada dentro do card. */
 .sel-card-exp {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -2021,6 +2036,98 @@ body {
   .adm-vinculo { flex-direction: column; align-items: stretch; }
   .adm-assoc { grid-template-columns: auto 1fr; }
   .adm-assoc select { grid-column: 1 / -1; }
+}
+
+/* =========================================================================
+   PAINEL ADMINISTRATIVO DA CRESCER (#painel-adm-screen)
+   Ambiente GERENCIAL — reaproveita a linguagem visual do painel (.adm-*), com
+   acento VERDE para diferenciar do Painel SuperAdmin (azul).
+   ========================================================================= */
+
+/* Botão de entrada na tela de seleção — destacado, claramente "outro ambiente",
+   nunca confundível com um card de empresa. */
+.sel-btn-ambiente {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  margin: 6px 0 18px; padding: 15px 18px; border-radius: 14px;
+  background: linear-gradient(135deg, var(--verde-vivo, #1e9e6a), #14805a);
+  color: #fff; border: none; font-size: 15px; font-weight: 700;
+  box-shadow: 0 10px 24px rgba(20,128,90,.28); cursor: pointer;
+  transition: transform var(--t), box-shadow var(--t);
+}
+.sel-btn-ambiente:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(20,128,90,.36); }
+.sel-btn-ambiente-ic { font-size: 20px; line-height: 1; }
+
+.padm { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100dvh; animation: fadeIn .25s; }
+.padm-sidebar {
+  background: linear-gradient(180deg, #0c2019 0%, #071310 100%);
+  color: #d9efe6; display: flex; flex-direction: column; padding: 18px 12px;
+  position: sticky; top: 0; height: 100dvh;
+}
+.padm-brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 20px; }
+.padm-brand-mark {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #1e9e6a, #14805a); color: #fff; flex: 0 0 auto; font-size: 18px;
+}
+.padm-brand-txt { display: flex; flex-direction: column; line-height: 1.2; }
+.padm-brand-txt b { font-size: 14.5px; letter-spacing: -.2px; }
+.padm-brand-txt small { font-size: 11px; color: #7fb79f; }
+
+.padm-menu { flex: 1; overflow-y: auto; }
+.padm-menu ul { list-style: none; }
+.padm-menu .menu-secao { font-size: 10.5px; letter-spacing: .9px; text-transform: uppercase; color: #6fa38d; padding: 6px 10px 6px; font-weight: 700; }
+.padm-menu li[data-tela] {
+  display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: var(--raio-sm);
+  cursor: pointer; font-size: 13.5px; transition: var(--t); color: #bfd9cd;
+}
+.padm-menu li[data-tela]:hover { background: rgba(255,255,255,.07); color: #fff; }
+.padm-menu li[data-tela].ativo { background: linear-gradient(135deg, #1e9e6a, #14805a); color: #fff; box-shadow: 0 8px 20px rgba(20,128,90,.32); }
+.padm-menu .m-icon { width: 20px; text-align: center; flex: 0 0 auto; display: inline-flex; }
+.padm-menu li.padm-menu-embreve { opacity: .62; }
+.padm-tag-embreve { margin-left: auto; font-size: 9.5px; }
+
+.padm-main { display: flex; flex-direction: column; min-width: 0; }
+.padm-topbar {
+  display: flex; align-items: center; gap: 14px; padding: 10px 20px;
+  background: var(--topbar-bg); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--linha); position: sticky; top: 0; z-index: 30;
+}
+.padm-topbar-titulo { display: flex; flex-direction: column; line-height: 1.2; }
+.padm-topbar-sub { font-size: 11.5px; color: var(--cinza); }
+.padm-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 11px; }
+.user-chip--estatico { cursor: default; }
+.padm-content { padding: 26px; }
+#padm-btn-menu { display: none; }
+
+.padm-hero {
+  max-width: 620px; margin: 24px auto 0; text-align: center;
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
+  padding: 34px 28px; box-shadow: var(--sombra-sm);
+}
+.padm-hero-tit { font-size: 21px; font-weight: 750; }
+.padm-hero-sub { font-size: 13.5px; color: var(--cinza); margin: 3px 0 18px; }
+.padm-hero-msg { font-size: 14px; line-height: 1.6; }
+.padm-hero-nota { font-size: 12.5px; color: var(--cinza); margin-top: 14px; }
+
+.padm-vazio { text-align: center; padding: 46px 20px; color: var(--cinza); }
+.padm-vazio-ic { display: inline-flex; color: var(--cinza-claro); margin-bottom: 10px; }
+.padm-vazio h3 { font-size: 16px; font-weight: 700; color: var(--texto); margin-bottom: 5px; }
+.padm-vazio p { font-size: 13px; max-width: 380px; margin: 0 auto; }
+
+@media (max-width: 980px) {
+  .padm { grid-template-columns: 1fr; }
+  #padm-btn-menu { display: inline-flex; }
+  .padm-sidebar {
+    position: fixed; inset: 0 auto 0 0; width: var(--sidebar-w); z-index: 90;
+    transform: translateX(-100%); transition: transform var(--t-lenta);
+  }
+  .padm.menu-aberto .padm-sidebar { transform: none; box-shadow: var(--sombra-lg); }
+  #padm-backdrop { display: none; }
+  .padm.menu-aberto #padm-backdrop { display: block; position: fixed; inset: 0; z-index: 80; background: rgba(7,19,16,.5); }
+  .padm-content { padding: 16px; }
+}
+@media (max-width: 620px) {
+  .padm-topbar { padding: 10px 13px; gap: 9px; }
+  .padm-topbar-right .user-box { display: none; }
 }
 
 /* =========================================================================

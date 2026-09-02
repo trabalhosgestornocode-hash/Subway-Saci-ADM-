@@ -29,6 +29,10 @@ export const MODULOS = {
   HORTIFRUTI: "hortifruti",
   PARSER_FOOD_DELIVERY: "parser_food_delivery",
   AGENTE_IA: "agente_ia",
+  // Gate-pai da seção "INTELIGÊNCIA" do menu (Agente Crescer · Relatórios ·
+  // Integrações). Sem ele a seção inteira some e os endpoints ligados a ela
+  // recusam — mesmo com `agente_ia` habilitado (dupla autorização no /agente).
+  INTELIGENCIA: "inteligencia",
 };
 
 /**
@@ -52,6 +56,10 @@ export const CATALOGO_MODULOS = [
   { id: MODULOS.HORTIFRUTI, nome: "Cláudia Hortifruti", categoria: "integracao", ordem: 13 },
   { id: MODULOS.PARSER_FOOD_DELIVERY, nome: "Parser Food Delivery", categoria: "operacao", ordem: 14 },
   { id: MODULOS.AGENTE_IA, nome: "Agente Crescer (IA)", categoria: "operacao", ordem: 15 },
+  // `inteligencia` fica em 'operacao' (mesma escolha de `agente_ia`) para não
+  // depender de uma categoria/grupo novo nos checklists de Acessos (empresa e
+  // unidade). Aparece no grupo "Operação", ao lado do Agente Crescer.
+  { id: MODULOS.INTELIGENCIA, nome: "Inteligência (seção)", categoria: "operacao", ordem: 16 },
 ];
 
 const IDS_VALIDOS = new Set(CATALOGO_MODULOS.map((m) => m.id));

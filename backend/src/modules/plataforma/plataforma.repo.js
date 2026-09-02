@@ -42,11 +42,12 @@ export async function contarVarios(pedidos) {
  * @param {string} tabela
  * @param {string} colunas
  * @param {(q: any) => any} [filtro]
+ * @param {typeof supabase} [cliente] injeção para teste (padrão: o cliente real)
  * @returns {Promise<any[]>}
  */
-export async function buscar(tabela, colunas, filtro) {
+export async function buscar(tabela, colunas, filtro, cliente = supabase) {
   try {
-    let q = supabase.from(tabela).select(colunas);
+    let q = cliente.from(tabela).select(colunas);
     if (filtro) q = filtro(q);
     const { data, error } = await q;
     if (error) return [];

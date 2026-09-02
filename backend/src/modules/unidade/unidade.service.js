@@ -17,6 +17,7 @@ import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
 import { auditarReq, ACOES } from "../../shared/auditoria.js";
+import { identidadeOperacional } from "../../shared/identidade.js";
 import { resolverTabelasComerciaisUnidade, normalizarCanalTabela, catalogoTabelasComerciais } from "../../shared/tabelaComercial.js";
 
 // Defaults OFICIAIS do sistema para "Metas e Limites de CMV" quando a unidade
@@ -84,10 +85,11 @@ export async function alterarTabelaComercial(req, body) {
   // Histórico dedicado (migration 051) — guarda o antes/depois; a linha em
   // plataforma_auditoria abaixo é o espelho geral (mesmo padrão de
   // unidade_modelo_logistico_historico / migration 024).
+  const ator = identidadeOperacional(req); // nome = a PESSOA; id/email = a CONTA (Fase I)
   const { error: erroHistorico } = await supabase.from("unidade_tabela_comercial_historico").insert({
     unidade_id: unidadeId, organizacao_id: organizacaoId, canal,
     tabela_anterior: tabelaAnterior, tabela_nova: novaTabela,
-    usuario_id: req.user?.id ?? null, usuario_nome: req.user?.nome ?? null, usuario_email: req.user?.email ?? null,
+    usuario_id: ator.id, usuario_nome: ator.nome, usuario_email: ator.email,
     origem: "tenant", motivo,
   });
   if (erroHistorico) console.error("[unidade] falha ao gravar histórico de tabela comercial:", erroHistorico.message);

@@ -18,7 +18,13 @@ import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 import { PAPEIS_VINCULO, rotuloPapel } from "../../shared/permissoes.js";
 import { revogarSessoes } from "../sessao/sessao.service.js";
+import { garantirPerfilOperacionalInicial, inserirVinculoOrgComPerfil } from "../sessao/perfil.service.js";
 import * as v from "../../shared/validar.js";
+
+// Vínculo é chaveado pela IDENTIDADE OPERACIONAL (`perfil_id`) desde a Fase E —
+// `usuario_id` (a conta) continua gravado (LEGACY). Nesta fase só há 1 perfil
+// por conta (`perfil_id == usuario_id`). Ver perfil.service.js#inserirVinculoOrgComPerfil.
+const inserirVinculoOrg = inserirVinculoOrgComPerfil;
 
 /**
  * @typedef {object} UsuarioDaEmpresa
@@ -142,9 +148,8 @@ export async function criarUsuario({ organizacaoId, nome, email, senha, papel })
       .select("id, ativo").eq("usuario_id", existente.id).eq("organizacao_id", organizacaoId).maybeSingle();
     if (vinculo?.ativo) throw ApiError.badRequest("Este usuário já tem acesso a esta empresa.");
 
-    const { error } = await supabase.from("usuarios_organizacoes").upsert(
-      { usuario_id: existente.id, organizacao_id: organizacaoId, papel: papelNorm, ativo: true },
-      { onConflict: "usuario_id,organizacao_id" });
+    const perfilId = await garantirPerfilOperacionalInicial({ contaId: existente.id, nome: existente.nome, ativo: existente.ativo });
+    const error = await inserirVinculoOrg({ usuarioId: existente.id, perfilId, organizacaoId, papel: papelNorm, upsert: true });
     if (error) throw ApiError.internal(error.message);
 
     return {
@@ -173,8 +178,11 @@ export async function criarUsuario({ organizacaoId, nome, email, senha, papel })
     throw ApiError.badRequest(traduz(e2.message));
   }
 
-  const { error: e3 } = await supabase.from("usuarios_organizacoes")
-    .insert({ usuario_id: uid, organizacao_id: organizacaoId, papel: papelNorm, ativo: true });
+  // Perfil operacional INICIAL da conta nova (a migration 060 só backfillou
+  // contas que já existiam). id == uid (UUID reaproveitado). FK do vínculo.
+  const perfilId = await garantirPerfilOperacionalInicial({ contaId: uid, nome: nomeNorm, ativo: true });
+
+  const e3 = await inserirVinculoOrg({ usuarioId: uid, perfilId, organizacaoId, papel: papelNorm });
   if (e3) {
     // Sem vínculo a conta nasce inútil — desfaz tudo em vez de deixar sobra.
     await supabase.auth.admin.deleteUser(uid).catch(() => {});
@@ -197,29 +205,36 @@ export async function criarUsuario({ organizacaoId, nome, email, senha, papel })
  * @param {string} params.id
  * @param {unknown} [params.papel]
  * @param {unknown} [params.ativo]
- * @param {string} params.solicitanteId
+ * @param {string} params.solicitanteId          conta que fez a chamada (req.user.id)
+ * @param {string} [params.solicitantePerfilId]  PERFIL de quem fez a chamada (req.perfil.id) — Fase E
  */
-export async function atualizarUsuario({ organizacaoId, id, papel, ativo, solicitanteId }) {
+export async function atualizarUsuario({ organizacaoId, id, papel, ativo, solicitanteId, solicitantePerfilId }) {
   const usuarioId = v.uuid(id, "Usuário");
   const patch = {};
   if (papel !== undefined) patch.papel = v.umDe(papel, "Cargo", PAPEIS_VINCULO);
   if (ativo !== undefined) patch.ativo = v.booleano(ativo, true);
   if (!Object.keys(patch).length) throw ApiError.badRequest("Informe o cargo ou o status do acesso.");
 
-  // Impedir o auto-rebaixamento evita o cenário em que o único administrador da
-  // empresa se torna 'viewer' e ninguém mais consegue gerenciar usuários.
-  if (usuarioId === solicitanteId) {
+  // Auto-rebaixamento: quem edita não pode alterar o PRÓPRIO acesso (evita o
+  // único admin virar viewer e travar a gestão). Fase E — compara PERFIL, não
+  // conta: numa conta compartilhada, Fulana 1 PODE editar o vínculo da Fulana
+  // 2, mesmo `req.user.id` sendo o mesmo. Para conta legada de 1 perfil,
+  // `perfil_id == usuario_id`, então o self-edit continua barrado.
+  const solicitante = solicitantePerfilId ?? solicitanteId;
+  if (usuarioId === solicitante) {
     throw ApiError.badRequest("Você não pode alterar o próprio acesso. Peça a outro administrador.");
   }
 
   const { data, error } = await supabase.from("usuarios_organizacoes")
     .update(patch)
     .eq("usuario_id", usuarioId).eq("organizacao_id", organizacaoId)
-    .select("papel, ativo").single();
+    .select("papel, ativo, perfil_id").single();
   if (error || !data) throw ApiError.notFound("Usuário não encontrado nesta empresa.");
 
+  // MODEL Y: revoga só as sessões DAQUELE PERFIL naquela empresa — nunca as de
+  // um perfil irmão da mesma conta, nem as da conta em outra empresa.
   const sessoesRevogadas = await revogarSessoes({
-    usuarioId, organizacaoId,
+    perfilId: data.perfil_id ?? usuarioId, organizacaoId,
     motivo: patch.ativo === false ? "acesso_bloqueado" : "papel_alterado",
   });
 
@@ -236,17 +251,19 @@ export async function atualizarUsuario({ organizacaoId, id, papel, ativo, solici
  * @param {object} params
  * @param {string} params.organizacaoId
  * @param {string} params.id
- * @param {string} params.solicitanteId
+ * @param {string} params.solicitanteId          conta (req.user.id)
+ * @param {string} [params.solicitantePerfilId]  PERFIL (req.perfil.id) — Fase E
  */
-export async function excluirUsuario({ organizacaoId, id, solicitanteId }) {
+export async function excluirUsuario({ organizacaoId, id, solicitanteId, solicitantePerfilId }) {
   const usuarioId = v.uuid(id, "Usuário");
-  if (usuarioId === solicitanteId) {
+  if (usuarioId === (solicitantePerfilId ?? solicitanteId)) {
     throw ApiError.badRequest("Você não pode remover o próprio acesso.");
   }
 
   const { data: vinculo } = await supabase.from("usuarios_organizacoes")
-    .select("id").eq("usuario_id", usuarioId).eq("organizacao_id", organizacaoId).maybeSingle();
+    .select("id, perfil_id").eq("usuario_id", usuarioId).eq("organizacao_id", organizacaoId).maybeSingle();
   if (!vinculo) throw ApiError.notFound("Usuário não encontrado nesta empresa.");
+  const perfilId = vinculo.perfil_id ?? usuarioId;
 
   // Último administrador não sai: a empresa ficaria sem quem gerencia acessos,
   // e a saída seria depender do SuperAdmin para uma operação de rotina.
@@ -270,7 +287,9 @@ export async function excluirUsuario({ organizacaoId, id, solicitanteId }) {
       .eq("usuario_id", usuarioId).in("unidade_id", unidades.map((u) => u.id));
   }
 
-  const sessoesRevogadas = await revogarSessoes({ usuarioId, organizacaoId, motivo: "acesso_removido" });
+  // MODEL Y: só as sessões desse PERFIL naquela empresa (não a conta inteira,
+  // não os perfis irmãos).
+  const sessoesRevogadas = await revogarSessoes({ perfilId, organizacaoId, motivo: "acesso_removido" });
   return { id: usuarioId, acessoRemovido: true, contaPreservada: true, sessoesRevogadas };
 }
 

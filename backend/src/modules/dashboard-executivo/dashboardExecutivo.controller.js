@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
+import { identidadeOperacional } from "../../shared/identidade.js";
 import * as service from "./dashboardExecutivo.service.js";
 import { simularPrecoProduto } from "./dashboardExecutivo.simulador.service.js";
 
@@ -36,7 +37,7 @@ export const criarLancamento = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     acesso: req.acesso,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     dados: req.body ?? {},
   });
   res.status(201).json({ data });
@@ -47,7 +48,7 @@ export const atualizarLancamento = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     acesso: req.acesso,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     id: req.params.id,
     dados: req.body ?? {},
   });
@@ -62,7 +63,7 @@ export const excluirLancamento = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     unidadeIdSolicitado: b.unidadeId,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     id: req.params.id,
     motivo: b.motivo,
   });
@@ -83,7 +84,7 @@ export const atualizarModeloLogistico = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     unidadeIdSolicitado: req.params.unidadeId,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     dados: req.body ?? {},
   });
   res.json({ data });
@@ -109,7 +110,7 @@ export const resetTeste = asyncHandler(async (req, res) => {
       unidadeIdSessao: req.tenant.unidadeId,
       unidadeIdSolicitado: req.params.unidadeId,
       data: b.data,
-      usuario: req.user,
+      usuario: identidadeOperacional(req),
     });
     res.json({ data: { confirmado: true, ...data } });
   } else {
@@ -131,7 +132,7 @@ export const lancamentoMensal = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     unidadeIdSolicitado: b.unidadeId,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     dados: b,
     confirmar: b.confirmar === true,
   });
@@ -158,7 +159,7 @@ export const atualizarLancamentoMensal = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     unidadeIdSolicitado: (req.body ?? {}).unidadeId,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     id: req.params.id,
     dados: req.body ?? {},
   });
@@ -173,7 +174,7 @@ export const excluirLancamentoMensal = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeIdSessao: req.tenant.unidadeId,
     unidadeIdSolicitado: b.unidadeId,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
     id: req.params.id,
     motivo: b.motivo,
   });

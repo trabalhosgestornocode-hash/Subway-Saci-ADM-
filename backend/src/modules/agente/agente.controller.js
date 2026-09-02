@@ -17,6 +17,7 @@ export const mensagem = asyncHandler(async (req, res) => {
     unidadeId: req.tenant.unidadeId,
     acesso: req.acesso,
     usuario: req.user,
+    perfil: req.perfil,        // Fase D — a PESSOA (isolamento da conversa); null em impersonação
     mensagem: b.mensagem,
     conversationId: b.conversationId,
     pageContext: b.pageContext,
@@ -30,6 +31,7 @@ export const historicoConversa = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     unidadeId: req.tenant.unidadeId,
     usuario: req.user,
+    perfil: req.perfil,        // Fase D — isolamento por perfil
     conversationId: req.params.conversationId,
   });
   res.json({ data });

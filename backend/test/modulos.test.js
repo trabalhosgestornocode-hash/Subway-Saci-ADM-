@@ -32,6 +32,15 @@ describe("catálogo de módulos", () => {
   test("categoria de todo módulo é operacao ou integracao", () => {
     for (const m of CATALOGO_MODULOS) assert.ok(["operacao", "integracao"].includes(m.categoria), m.id);
   });
+
+  test("`inteligencia` está no catálogo (gate-pai da seção do menu)", () => {
+    assert.equal(MODULOS.INTELIGENCIA, "inteligencia");
+    const m = CATALOGO_MODULOS.find((x) => x.id === "inteligencia");
+    assert.ok(m, "módulo `inteligencia` ausente do catálogo");
+    // Fica em 'operacao' de propósito — não amplia o CHECK nem depende de um
+    // grupo novo nos checklists de Acessos (ver migration 059).
+    assert.equal(m.categoria, "operacao");
+  });
 });
 
 describe("validarModulos", () => {
@@ -118,6 +127,53 @@ describe("requireModulo", () => {
     const { next, erro } = proximo();
     requireModulo(MODULOS.MARTIN_BROWER)({ acesso: { impersonando: false, modulos: [MODULOS.DASHBOARD] } }, {}, next);
     assert.equal(erro().statusCode, 403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DUPLA AUTORIZAÇÃO do /agente (routes.js): requireModulo(INTELIGENCIA) seguido
+// de requireModulo(AGENTE_IA). A matriz de aceite:
+//   inteligencia | agente_ia | resultado
+//   -------------|-----------|----------
+//   false        | false     | 403 (na seção)
+//   false        | true      | 403 (na seção — gate-pai)
+//   true         | false     | 403 (no item)
+//   true         | true      | passa
+//   impersonação | qualquer  | passa
+// ---------------------------------------------------------------------------
+describe("dupla autorização do Agente Crescer (inteligencia + agente_ia)", () => {
+  // Simula a cadeia de middlewares de routes.js para um dado conjunto de módulos.
+  function rodarCadeia(modulos, impersonando = false) {
+    const req = { acesso: { impersonando, modulos } };
+    const cadeia = [requireModulo(MODULOS.INTELIGENCIA), requireModulo(MODULOS.AGENTE_IA)];
+    let idx = 0, erroFinal = null;
+    const next = (e) => {
+      if (e) { erroFinal = e; return; }
+      idx += 1;
+      if (idx < cadeia.length) cadeia[idx](req, {}, next);
+    };
+    cadeia[0](req, {}, next);
+    return { passou: erroFinal === null, status: erroFinal?.statusCode ?? null };
+  }
+
+  test("sem inteligencia e sem agente_ia -> 403", () => {
+    assert.deepEqual(rodarCadeia([]), { passou: false, status: 403 });
+  });
+
+  test("sem inteligencia mas com agente_ia -> 403 (o gate-pai barra antes)", () => {
+    assert.deepEqual(rodarCadeia([MODULOS.AGENTE_IA]), { passou: false, status: 403 });
+  });
+
+  test("com inteligencia mas sem agente_ia -> 403 (barra no item)", () => {
+    assert.deepEqual(rodarCadeia([MODULOS.INTELIGENCIA]), { passou: false, status: 403 });
+  });
+
+  test("com inteligencia e agente_ia -> passa", () => {
+    assert.deepEqual(rodarCadeia([MODULOS.INTELIGENCIA, MODULOS.AGENTE_IA]), { passou: true, status: null });
+  });
+
+  test("impersonação de SuperAdmin passa mesmo sem nenhum dos dois", () => {
+    assert.deepEqual(rodarCadeia([], true), { passou: true, status: null });
   });
 });
 

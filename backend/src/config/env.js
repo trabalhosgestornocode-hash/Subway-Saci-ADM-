@@ -26,12 +26,22 @@ if (!process.env.CONTEXT_TOKEN_SECRET && process.env.NODE_ENV === "production") 
   console.warn("[config] CONTEXT_TOKEN_SECRET não definida — usando segredo derivado da service_role key. Defina a variável para desacoplar a rotação das chaves.");
 }
 
+// Segredo que assina o Profile Selection Token (Fase H — a prova de que o PIN
+// do perfil foi validado). Mesma estratégia do Context Token, mas DERIVAÇÃO
+// DISTINTA ("crescer:profile-selection:v1" != "crescer:context-token:v1") —
+// assim as duas chaves são criptograficamente independentes mesmo quando ambas
+// caem no fallback, e um Context Token nunca verifica como selection token.
+const profileSelectionSecret = process.env.PROFILE_SELECTION_TOKEN_SECRET
+  || crypto.createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY)
+      .update("crescer:profile-selection:v1").digest("hex");
+
 export const config = {
   port: Number(process.env.PORT) || 3001,
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY, // pública — enviada ao frontend p/ Supabase Auth
   contextTokenSecret,
+  profileSelectionSecret,
   // Janela que define "usuário online" no Dashboard Global (minutos).
   janelaOnlineMin: Number(process.env.JANELA_ONLINE_MIN) || 15,
 };

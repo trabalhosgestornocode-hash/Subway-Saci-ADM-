@@ -73,6 +73,23 @@ plataformaRouter.post("/usuarios/:id/senha", c.redefinirSenha);
 plataformaRouter.post("/usuarios/:id/email", c.alterarEmail);
 plataformaRouter.post("/usuarios/:id/logout", c.forcarLogout);
 plataformaRouter.post("/usuarios/:id/superadmin", c.definirSuperadmin);
+// Perfis operacionais da conta (Fase G) — múltiplos usuários por conta de acesso.
+// `:id` = a CONTA; `:perfilId` = o PERFIL. Rotas mais específicas antes das genéricas.
+plataformaRouter.get("/usuarios/:id/perfis", c.perfisDaConta);
+plataformaRouter.post("/usuarios/:id/perfis", c.criarPerfil);
+plataformaRouter.put("/usuarios/:id/perfis/:perfilId/pin", c.definirPinPerfil);   // Fase H — definir/reset
+plataformaRouter.delete("/usuarios/:id/perfis/:perfilId/pin", c.removerPinPerfil); // Fase H
+plataformaRouter.patch("/usuarios/:id/perfis/:perfilId", c.renomearPerfil);
+plataformaRouter.patch("/usuarios/:id/perfis/:perfilId/ativo", c.alternarAtivoPerfil);
+
+// ---- Acesso ao PAINEL ADMINISTRATIVO da Crescer (monitoramento gerencial).
+// É um poder GLOBAL separado do SuperAdmin: quem administra este acesso é
+// SEMPRE o SuperAdmin (requireSuperadmin já protege o router inteiro). Um
+// usuário que só tem o Painel Administrativo NÃO chega aqui.
+// `/painel-administrativo/usuarios` vem antes de `/usuarios/:id`? Não colide —
+// prefixo diferente ("painel-administrativo" vs "usuarios").
+plataformaRouter.get("/painel-administrativo/usuarios", c.listarUsuariosPainelAdministrativo);
+plataformaRouter.post("/usuarios/:id/painel-administrativo", c.definirPainelAdministrativo);
 
 // ---- Associação de usuários a empresas/unidades
 plataformaRouter.post("/usuarios/:id/empresas", c.associarEmpresa);

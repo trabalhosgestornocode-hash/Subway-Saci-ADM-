@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
+import { identidadeOperacional } from "../../shared/identidade.js";
 import * as service from "./produtos.service.js";
 
 export const listar = asyncHandler(async (req, res) => {
@@ -24,7 +25,7 @@ export const atualizar = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     id: req.params.id,
     dados: req.body ?? {},
-    usuario: req.user, // { id, nome, email } — para a auditoria
+    usuario: identidadeOperacional(req), // { id: conta, nome: PESSOA, email: conta } — snapshot "por Fulano"
   });
   res.json({ data });
 });
@@ -60,7 +61,7 @@ export const adicionarComponente = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     produtoId: req.params.id,
     dados: req.body ?? {},
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
   });
   res.status(201).json({ data });
 });

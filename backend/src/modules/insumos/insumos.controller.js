@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
+import { identidadeOperacional } from "../../shared/identidade.js";
 import * as service from "./insumos.service.js";
 
 export const listar = asyncHandler(async (req, res) => {
@@ -27,7 +28,7 @@ export const criar = asyncHandler(async (req, res) => {
   const data = await service.criarInsumo({
     organizacaoId: req.tenant.organizacaoId,
     dados: req.body ?? {},
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
   });
   res.status(201).json({ data });
 });
@@ -37,7 +38,7 @@ export const atualizar = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     id: req.params.id,
     dados: req.body ?? {},
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
   });
   res.json({ data });
 });
@@ -55,7 +56,7 @@ export const definirAtivo = asyncHandler(async (req, res) => {
     organizacaoId: req.tenant.organizacaoId,
     id: req.params.id,
     ativo: req.body?.ativo,
-    usuario: req.user,
+    usuario: identidadeOperacional(req),
   });
   res.json({ data });
 });

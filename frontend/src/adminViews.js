@@ -399,7 +399,7 @@ async function viewUsuarios() {
        <span class="adm-logo adm-logo--txt">${escapeHtml(((u.nome || u.email || "?")[0]).toUpperCase())}</span>
        <span><b>${escapeHtml(u.nome ?? "—")}</b><small>${escapeHtml(u.email ?? "—")}</small></span>
      </div>`,
-    u.superadmin ? '<span class="pill warn">SuperAdmin</span>' : (u.ativo ? '<span class="pill ok">Ativo</span>' : '<span class="pill bad">Bloqueado</span>'),
+    `${u.superadmin ? '<span class="pill warn">SuperAdmin</span>' : (u.ativo ? '<span class="pill ok">Ativo</span>' : '<span class="pill bad">Bloqueado</span>')}${u.painelAdministrativo ? ' <span class="pill info">Painel Adm.</span>' : ""}`,
     u.online ? '<span class="pill ok">Online</span>' : '<span class="pill muted">Offline</span>',
     u.empresas.length
       ? u.empresas.map((x) => `<span class="adm-tag ${x.ativo ? "" : "adm-tag--off"}" title="${escapeHtml(x.papelRotulo)}">${escapeHtml(x.empresaNome)}</span>`).join(" ")
@@ -418,9 +418,12 @@ async function viewUsuarios() {
        </div>`
     : "";
 
+  const comPainelAdm = usuarios.filter((u) => u.painelAdministrativo).length;
+
   view().innerHTML = aviso + secao({
     titulo: `Usuários (${usuarios.length})`,
-    acoes: `<button class="btn btn-primary btn-sm" data-adm-acao="usuario-novo">+ Novo usuário</button>`,
+    acoes: `<button class="btn btn-ghost btn-sm" data-adm-acao="painel-adm-lista">Painel Administrativo (${comPainelAdm})</button>
+            <button class="btn btn-primary btn-sm" data-adm-acao="usuario-novo">+ Novo usuário</button>`,
     nota: "O login pertence ao usuário; as empresas são associadas a ele. O cargo pertence a cada associação — o mesmo usuário pode ser Administrador em uma empresa e Financeiro em outra.",
     corpo: tabela({
       colunas: ["Usuário", "Conta", "Sessão", "Empresas", "Ações"],
@@ -461,11 +464,42 @@ function lerEmpresasMarcadas() {
     }));
 }
 
+/** Card compacto de um perfil (usuário) na seção "Usuários desta conta". */
+function cardPerfil(contaId, p) {
+  const emp = p.empresas.filter((e) => e.ativo)
+    .map((e) => `${escapeHtml(e.empresaNome)} — ${escapeHtml(e.papelRotulo)}`).join("<br>") || "<i>sem empresa</i>";
+  const pin = p.temPin
+    ? '<span class="pill ok">PIN configurado</span>'
+    : '<span class="pill warn">PIN não configurado</span>';
+  const d = `data-conta="${escapeHtml(contaId)}" data-perfil="${escapeHtml(p.id)}" data-nome="${escapeHtml(p.nome)}"`;
+  return `
+    <div class="adm-vinculo" style="flex-wrap:wrap">
+      <span class="adm-vinculo-nome"><b>${escapeHtml(p.nome)}</b>
+        ${p.ativo ? '<span class="pill ok">Ativo</span>' : '<span class="pill muted">Inativo</span>'}
+        ${p.inicial ? '<span class="pill muted">usuário inicial</span>' : ""} ${pin}</span>
+      <small style="flex-basis:100%;color:var(--muted)">${emp}</small>
+      <button class="btn btn-ghost btn-sm" data-adm-acao="perfil-renomear" ${d}>Renomear</button>
+      <button class="btn btn-ghost btn-sm" data-adm-acao="perfil-pin" ${d}>${p.temPin ? "Resetar PIN" : "Definir PIN"}</button>
+      <button class="btn btn-ghost btn-sm" data-adm-acao="perfil-toggle" ${d} data-ativo="${p.ativo}">${p.ativo ? "Desativar" : "Ativar"}</button>
+    </div>`;
+}
+
 async function abrirDetalheUsuario(id) {
-  const u = await adminApi.usuario(id);
+  const [u, perfisConta] = await Promise.all([
+    adminApi.usuario(id),
+    adminApi.perfisDaConta(id).catch(() => null), // Fase G — tolera 060 pendente
+  ]);
   const papeis = cache.papeis.length ? cache.papeis : await adminApi.papeis();
   cache.papeis = papeis;
   if (!cache.empresas.length) cache.empresas = await adminApi.empresas();
+
+  const perfisHtml = perfisConta ? `
+    <h3 class="adm-det-tit">Usuários desta conta</h3>
+    ${perfisConta.multiPerfil && !perfisConta.configPinCompleta
+      ? '<div class="adm-aviso"><b>Configuração incompleta.</b> Esta conta tem 2+ usuários e nem todos têm PIN — ninguém consegue entrar até que todos tenham. Defina o PIN dos que faltam.</div>' : ""}
+    <div class="adm-vinculos">${perfisConta.perfis.map((p) => cardPerfil(id, p)).join("")}</div>
+    <div class="adm-det-acoes"><button class="btn btn-ghost btn-sm" data-adm-acao="perfil-novo" data-conta="${escapeHtml(id)}">+ Adicionar usuário</button></div>
+  ` : "";
 
   const vinculos = u.empresas.length
     ? u.empresas.map((x) => `
@@ -532,9 +566,28 @@ async function abrirDetalheUsuario(id) {
         <div class="adm-det-linha"><span>E-mail de login</span><b>${escapeHtml(u.emailLogin ?? u.email ?? "—")}</b></div>
         ${u.emailDivergente ? `<div class="adm-det-linha"><span>E-mail no cadastro</span><b>${escapeHtml(u.email ?? "—")}</b></div>` : ""}
         <div class="adm-det-linha"><span>Conta</span>${u.ativo ? '<span class="pill ok">Ativa</span>' : '<span class="pill bad">Bloqueada</span>'}</div>
-        <div class="adm-det-linha"><span>SuperAdmin</span>${u.superadmin ? '<span class="pill warn">Sim</span>' : '<span class="pill muted">Não</span>'}</div>
         <div class="adm-det-linha"><span>Último login</span><b>${u.ultimoLogin ? escapeHtml(fmtDataHora(u.ultimoLogin)) : "nunca"}</b></div>
         <div class="adm-det-linha"><span>Criado em</span><b>${escapeHtml(fmtDataHora(u.criadoEm))}</b></div>
+      </div>
+
+      <h3 class="adm-det-tit">Acessos globais</h3>
+      <div class="adm-det">
+        <div class="adm-det-linha">
+          <span>SuperAdmin da plataforma</span>
+          ${u.superadmin ? '<span class="pill warn">Sim</span>' : '<span class="pill muted">Não</span>'}
+        </div>
+        <div class="adm-det-linha">
+          <span>Painel Administrativo Crescer</span>
+          ${u.painelAdministrativo
+            ? '<span class="pill ok">Com acesso</span>'
+            : (u.superadmin
+                ? '<span class="pill muted">Não associado</span> <small>SuperAdmin acessa mesmo assim (bypass)</small>'
+                : '<span class="pill muted">Sem acesso</span>')}
+        </div>
+        ${u.painelAdministrativo && u.painelAdministrativoDesde
+          ? `<div class="adm-det-linha"><span>Acesso concedido em</span><b>${escapeHtml(fmtDataHora(u.painelAdministrativoDesde))}</b></div>` : ""}
+        ${u.painelAdministrativo && u.observacaoPainelAdministrativo
+          ? `<div class="adm-det-linha"><span>Observação</span><b>${escapeHtml(u.observacaoPainelAdministrativo)}</b></div>` : ""}
       </div>
 
       <div class="adm-det-acoes">
@@ -545,13 +598,16 @@ async function abrirDetalheUsuario(id) {
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-logout" ${dId}>Forçar logout</button>
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-toggle" ${dId} data-ativo="${u.ativo}">${u.ativo ? "Bloquear conta" : "Reativar conta"}</button>
         <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-super" ${dId} data-super="${u.superadmin}">${u.superadmin ? "Revogar SuperAdmin" : "Tornar SuperAdmin"}</button>
+        <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-painel-adm" ${dId} data-tem="${u.painelAdministrativo}">${u.painelAdministrativo ? "Revogar acesso ao Painel Administrativo" : "Conceder acesso ao Painel Administrativo"}</button>
         <button class="btn btn-perigo btn-sm" data-adm-acao="usuario-excluir" ${dId}>Excluir conta</button>
       </div>
 
-      <h3 class="adm-det-tit">Empresas associadas</h3>
+      ${perfisHtml}
+
+      <h3 class="adm-det-tit">Empresas associadas ${perfisConta && perfisConta.multiPerfil ? "<small>(do usuário inicial)</small>" : ""}</h3>
       <div class="adm-vinculos">${vinculos}</div>
 
-      <h3 class="adm-det-tit">Unidades associadas</h3>
+      <h3 class="adm-det-tit">Unidades associadas ${perfisConta && perfisConta.multiPerfil ? "<small>(do usuário inicial)</small>" : ""}</h3>
       <div class="adm-vinculos">${vinculosUnidade}</div>
 
       <h3 class="adm-det-tit">Sessões</h3>${sessoes}
@@ -1174,6 +1230,44 @@ async function agir(fn, mensagem) {
   }
 }
 
+/**
+ * Lista, num modal, as contas com acesso ao Painel Administrativo da Crescer.
+ * Integra ao fluxo de Usuários (item 9 do pedido) — sem nova navegação.
+ * `usuarios-*` no data-adm-acao já são cobertos pela delegação de eventos do
+ * admin.js (o modal é irmão de #adm-view, não filho).
+ */
+async function abrirListaPainelAdministrativo() {
+  let dados;
+  try {
+    dados = await adminApi.usuariosPainelAdministrativo();
+  } catch (e) {
+    toast("Erro ao carregar: " + e.message);
+    return;
+  }
+  const linhas = dados.usuarios.map((u) => [
+    `<b>${escapeHtml(u.nome)}</b>`,
+    escapeHtml(u.email),
+    u.acessoAtivo ? '<span class="pill ok">Ativo</span>' : '<span class="pill muted">Revogado</span>',
+    escapeHtml(fmtDataHora(u.concedidoEm)),
+    `<div class="adm-acoes-cel">
+       <button class="btn btn-ghost btn-sm" data-adm-acao="usuario-ver" data-id="${escapeHtml(u.id)}">Ver usuário</button>
+       ${u.acessoAtivo
+         ? `<button class="btn btn-ghost btn-sm" data-adm-acao="usuario-painel-adm" data-id="${escapeHtml(u.id)}" data-nome="${escapeHtml(u.nome)}" data-tem="true">Revogar acesso</button>`
+         : ""}
+     </div>`,
+  ]);
+  abrirModal({
+    titulo: `Painel Administrativo — ${dados.total} com acesso`,
+    corpo: `
+      <p class="adm-nota">Acesso GLOBAL de monitoramento. Não é SuperAdmin e não altera vínculos de empresa/unidade.</p>
+      ${tabela({
+        colunas: ["Nome", "E-mail", "Status", "Concedido em", "Ações"],
+        linhas,
+        vazio: "Nenhuma conta com acesso ao Painel Administrativo.",
+      })}`,
+  });
+}
+
 const ACOES = {
   // ---- Empresas
   // A criação vira um assistente de 4 passos (empresa/acessos/modelo/revisão)
@@ -1477,20 +1571,94 @@ const ACOES = {
 
   // ---- Usuários
   "usuario-novo": () => abrirModal({
-    titulo: "Novo usuário",
+    titulo: "Nova conta de acesso",
     corpo: formUsuario(),
-    confirmar: "Criar usuário",
+    confirmar: "Criar conta",
     aoConfirmar: async () => {
       await adminApi.criarUsuario({
         nome: valor("u-nome"), email: valor("u-email"), senha: valor("u-senha"),
         empresas: lerEmpresasMarcadas(),
       });
-      toast("Usuário criado.");
+      toast("Conta criada. Para adicionar mais usuários a ela, abra o detalhe.");
       recarregarAdmin();
     },
   }),
 
   "usuario-ver": ({ id }) => abrirDetalheUsuario(id),
+
+  // ---- Perfis operacionais da conta (Fase G)
+  "perfil-novo": async ({ conta }) => {
+    if (!cache.papeis.length) cache.papeis = await adminApi.papeis();
+    if (!cache.empresas.length) cache.empresas = await adminApi.empresas();
+    const estado = await adminApi.perfisDaConta(conta);
+    // perfis ativos existentes SEM PIN — precisam ser configurados junto
+    const semPin = estado.perfis.filter((p) => p.ativo && !p.temPin);
+    const camposPinExistentes = semPin.map((p) => `
+      <label class="adm-campo"><span>PIN de ${escapeHtml(p.nome)} (usuário já existente)</span>
+        <input class="pf-pin-exist" data-perfil="${escapeHtml(p.id)}" type="text" inputmode="numeric" maxlength="6" placeholder="4 a 6 dígitos" /></label>`).join("");
+    abrirModal({
+      titulo: "Adicionar usuário à conta",
+      corpo: grade(
+        campo({ id: "pf-nome", label: "Nome do usuário", obrigatorio: true }) +
+        campo({ id: "pf-pin", label: "PIN deste usuário", tipo: "text", ph: "4 a 6 dígitos", obrigatorio: true, dica: "Numérico. O usuário informa esse PIN ao escolher o perfil após o login." })
+      ) + (camposPinExistentes ? `<p class="adm-nota">A conta passará a ter 2+ usuários — todos precisam de PIN. Defina os que faltam:</p><div class="adm-grade">${camposPinExistentes}</div>` : "") + `
+        <h3 class="adm-det-tit">Empresas e cargos</h3>
+        <p class="adm-nota">Marque as empresas que este usuário poderá acessar.</p>
+        <div class="adm-assoc-lista">${cache.empresas.map((e) => `
+          <label class="adm-assoc">
+            <input type="checkbox" class="u-emp-chk" data-org="${escapeHtml(e.id)}" />
+            <span class="adm-assoc-nome">${escapeHtml(e.nome)} ${pill(STATUS_EMPRESA, e.status)}</span>
+            <select class="u-emp-papel" data-org="${escapeHtml(e.id)}">
+              ${cache.papeis.map((p) => `<option value="${escapeHtml(p.valor)}" ${p.valor === "operations" ? "selected" : ""}>${escapeHtml(p.rotulo)}</option>`).join("")}
+            </select>
+          </label>`).join("")}</div>`,
+      confirmar: "Adicionar usuário",
+      aoConfirmar: async () => {
+        const empresas = lerEmpresasMarcadas();
+        if (!empresas.length) throw new Error("Marque ao menos uma empresa.");
+        const pinsPerfisExistentes = [...document.querySelectorAll(".pf-pin-exist")]
+          .map((i) => ({ perfilId: i.dataset.perfil, pin: i.value.trim() }))
+          .filter((x) => x.pin);
+        await adminApi.criarPerfil(conta, {
+          nome: valor("pf-nome"), pin: valor("pf-pin"), empresas,
+          ...(pinsPerfisExistentes.length ? { pinsPerfisExistentes } : {}),
+        });
+        toast("Usuário adicionado.");
+        abrirDetalheUsuario(conta);
+      },
+    });
+  },
+
+  "perfil-renomear": async ({ conta, perfil, nome }) => {
+    const novo = prompt("Novo nome do usuário:", nome);
+    if (!novo || novo.trim() === nome) return;
+    await adminApi.renomearPerfil(conta, perfil, novo.trim());
+    toast("Usuário renomeado.");
+    abrirDetalheUsuario(conta);
+  },
+
+  "perfil-pin": ({ conta, perfil, nome }) => abrirModal({
+    titulo: `PIN — ${nome}`,
+    corpo: grade(campo({ id: "pf-pin-novo", label: "Novo PIN", tipo: "text", ph: "4 a 6 dígitos", obrigatorio: true, dica: "Define um PIN NOVO. O anterior nunca é exibido. As sessões abertas deste usuário caem." })),
+    confirmar: "Salvar PIN",
+    aoConfirmar: async () => {
+      await adminApi.definirPinPerfil(conta, perfil, valor("pf-pin-novo"));
+      toast("PIN definido.");
+      abrirDetalheUsuario(conta);
+    },
+  }),
+
+  "perfil-toggle": async ({ conta, perfil, nome, ativo }) => {
+    const ativar = ativo === "false" || ativo === false;
+    if (!ativar && !confirm(`Desativar "${nome}"? As sessões abertas deste usuário caem na hora. Os outros usuários da conta seguem normalmente.`)) return;
+    try {
+      await adminApi.alternarAtivoPerfil(conta, perfil, ativar);
+      toast(ativar ? "Usuário ativado." : "Usuário desativado.");
+    } catch (e) {
+      toast(e?.message || "Não foi possível alterar o status.");
+    }
+    abrirDetalheUsuario(conta);
+  },
 
   "usuario-associar": ({ id, nome }) => abrirModalAssociarEmpresas(id, nome),
 
@@ -1587,6 +1755,20 @@ const ACOES = {
     return agir(() => adminApi.definirSuperadmin(id, conceder),
       conceder ? "SuperAdmin concedido." : "SuperAdmin revogado.");
   },
+
+  // Painel Administrativo da Crescer — acesso GLOBAL de monitoramento. É outro
+  // ambiente: não torna o usuário SuperAdmin, não mexe nos vínculos de empresa.
+  "usuario-painel-adm": ({ id, nome, tem }) => {
+    const conceder = tem !== "true";
+    const msg = conceder
+      ? `Conceder a "${nome}" acesso ao Painel Administrativo?\n\nO usuário poderá acompanhar o monitoramento geral das empresas (preenchimento e qualidade dos dados). Isso NÃO o torna SuperAdmin e não altera os acessos dele às empresas e unidades.`
+      : `Revogar o acesso de "${nome}" ao Painel Administrativo?\n\nO usuário deixará de conseguir acessar o monitoramento geral das empresas. Seus acessos normais às empresas e unidades não serão alterados.`;
+    if (!confirm(msg)) return;
+    return agir(() => adminApi.definirPainelAdministrativo(id, conceder),
+      conceder ? "Acesso ao Painel Administrativo concedido." : "Acesso ao Painel Administrativo revogado.");
+  },
+
+  "painel-adm-lista": () => abrirListaPainelAdministrativo(),
 
   "usuario-excluir": ({ id, nome }) => {
     if (!confirm(`Excluir DEFINITIVAMENTE a conta de "${nome}"?\n\nA conta é removida do provedor de autenticação e perde acesso a todas as empresas. Não há como desfazer.`)) return;

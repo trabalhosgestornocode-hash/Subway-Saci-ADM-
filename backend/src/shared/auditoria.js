@@ -67,6 +67,25 @@ export const ACOES = {
   VINCULO_EDITADO: "vinculo.editado",
   VINCULO_REMOVIDO: "vinculo.removido",
 
+  // Perfis operacionais (Fase G) — CRUD administrativo de múltiplos usuários
+  // por conta de acesso.
+  PERFIL_CRIADO: "perfil.criado",
+  PERFIL_EDITADO: "perfil.editado",
+  PERFIL_ATIVADO: "perfil.ativado",
+  PERFIL_DESATIVADO: "perfil.desativado",
+
+  // PIN do perfil operacional (Fase H) — NUNCA grava o PIN nem o hash, só o
+  // fato + o perfil afetado.
+  PERFIL_PIN_DEFINIDO: "perfil.pin_definido",
+  PERFIL_PIN_REMOVIDO: "perfil.pin_removido",
+  PERFIL_PIN_BLOQUEADO: "perfil.pin_bloqueado",
+
+  // Painel Administrativo da Crescer — acesso GLOBAL de monitoramento
+  // (painel_administrativo_usuarios). NÃO é SuperAdmin: não concede poder
+  // técnico. Concessão/revogação são feitas pelo SuperAdmin.
+  PAINEL_ADM_CONCEDIDO: "usuario.painel_administrativo_concedido",
+  PAINEL_ADM_REVOGADO: "usuario.painel_administrativo_revogado",
+
   // configuração global
   CONFIG_ALTERADA: "config.alterada",
 
@@ -82,8 +101,12 @@ export const ACOES = {
 
 /**
  * @typedef {object} EntradaAuditoria
- * @property {string|null} [atorId]
+ * @property {string|null} [atorId]   auth.users.id — a CONTA
  * @property {string|null} [atorEmail]
+ * @property {string|null} [perfilId] perfis_operacionais.id — a PESSOA operacional (Fase D).
+ *   null em ações de superadmin/sistema e em impersonação.
+ * @property {string|null} [perfilNome] nome da PESSOA no momento da ação — gravado
+ *   em `detalhes.perfil_nome` para o log seguir legível se o perfil for desativado (Fase I).
  * @property {'usuario'|'superadmin'|'sistema'} [atorTipo]
  * @property {string} acao
  * @property {string|null} [entidade]
@@ -100,21 +123,38 @@ export const ACOES = {
  * @param {EntradaAuditoria} entrada
  * @returns {Promise<void>}
  */
+// `perfil_id` é da migration 060. Enquanto ela não roda no ambiente, o insert
+// com essa coluna falha — então degrada graciosamente (mesmo padrão de
+// agente.conversas.service.js#RE_COLUNA_AUSENTE) e grava sem ela. A Fase D
+// exige 060, mas isto cobre a janela de transição / o cache de schema.
+const RE_COLUNA_AUSENTE = /perfil_id|does not exist|schema cache|could not find/i;
+
 export async function auditar(entrada) {
+  // `perfil_nome` vai para dentro de `detalhes` (não é coluna) — o log fica
+  // autoexplicativo mesmo se o perfil for desativado depois. Só quando há nome.
+  const detalhes = entrada.perfilNome
+    ? { ...(entrada.detalhes ?? {}), perfil_nome: entrada.perfilNome }
+    : (entrada.detalhes ?? {});
+  const linha = {
+    ator_id: entrada.atorId ?? null,
+    ator_email: entrada.atorEmail ?? null,
+    perfil_id: entrada.perfilId ?? null,   // Fase D — a PESSOA (coluna da migration 060)
+    ator_tipo: entrada.atorTipo ?? "usuario",
+    acao: entrada.acao,
+    entidade: entrada.entidade ?? null,
+    entidade_id: entrada.entidadeId != null ? String(entrada.entidadeId) : null,
+    organizacao_id: entrada.organizacaoId ?? null,
+    impersonado_por: entrada.impersonadoPor ?? null,
+    detalhes,
+    ip: entrada.ip ?? null,
+    user_agent: entrada.userAgent ?? null,
+  };
   try {
-    const { error } = await supabase.from("plataforma_auditoria").insert({
-      ator_id: entrada.atorId ?? null,
-      ator_email: entrada.atorEmail ?? null,
-      ator_tipo: entrada.atorTipo ?? "usuario",
-      acao: entrada.acao,
-      entidade: entrada.entidade ?? null,
-      entidade_id: entrada.entidadeId != null ? String(entrada.entidadeId) : null,
-      organizacao_id: entrada.organizacaoId ?? null,
-      impersonado_por: entrada.impersonadoPor ?? null,
-      detalhes: entrada.detalhes ?? {},
-      ip: entrada.ip ?? null,
-      user_agent: entrada.userAgent ?? null,
-    });
+    let { error } = await supabase.from("plataforma_auditoria").insert(linha);
+    if (error && RE_COLUNA_AUSENTE.test(error.message || "")) {
+      const { perfil_id: _semPerfil, ...semColunaNova } = linha;
+      ({ error } = await supabase.from("plataforma_auditoria").insert(semColunaNova));
+    }
     if (error) console.error("[auditoria] falha ao registrar:", entrada.acao, error.message);
   } catch (e) {
     console.error("[auditoria] exceção ao registrar:", entrada.acao, e?.message);
@@ -135,6 +175,11 @@ export function contextoDaRequisicao(req) {
   return {
     atorId: req.user?.id ?? null,
     atorEmail: req.user?.email ?? null,
+    // Fase D — a PESSOA operacional da sessão. `req.perfil` é setado por
+    // requireContexto (null em impersonação e onde não há contexto).
+    perfilId: req.perfil?.id ?? req.acesso?.perfilId ?? null,
+    perfilNome: req.perfil?.nome ?? null, // Fase I — snapshot em detalhes.perfil_nome
+
     atorTipo: req.user?.superadmin ? "superadmin" : "usuario",
     organizacaoId: req.tenant?.organizacaoId ?? null,
     impersonadoPor: req.acesso?.impersonadoPor ?? null,

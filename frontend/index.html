@@ -161,6 +161,14 @@
         <p id="sel-contagem" class="sel-contagem" hidden></p>
       </header>
 
+      <!-- Ambiente GERENCIAL da Crescer — só aparece para quem tem acesso
+           efetivo (associação explícita ou SuperAdmin por bypass). É outro
+           ambiente, não um card de empresa: visual destacado, texto próprio. -->
+      <button id="sel-painel-adm" class="btn sel-btn-ambiente" hidden>
+        <span class="sel-btn-ambiente-ic" aria-hidden="true">📊</span>
+        <span>Acessar Painel Administrativo</span>
+      </button>
+
       <div id="sel-busca-wrap" class="sel-busca-wrap" hidden>
         <span class="sel-busca-ic" aria-hidden="true">🔎</span>
         <input id="sel-busca" type="search" class="sel-busca" autocomplete="off"
@@ -176,6 +184,43 @@
       <footer class="sel-foot">
         <button id="sel-admin" class="btn btn-ghost btn-sm" hidden>Ir para o Painel SuperAdmin</button>
         <button id="sel-sair" class="btn btn-ghost btn-sm">Sair</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ============= SELECIONE SEU USUÁRIO (multi-perfil) =============
+       Só aparece quando a CONTA (e-mail+senha) tem 2+ perfis operacionais
+       ativos. Conta de 1 perfil nunca vê esta tela (fluxo automático). -->
+  <div id="selecao-perfil-screen" class="sel-screen" hidden>
+    <div class="sel-wrap sel-wrap--estreito">
+      <header class="sel-head">
+        <img class="sel-brand-logo" src="/assets/logo-crescercomdeliverylogin.png" alt="Crescer com Delivery" />
+        <h1 class="sel-titulo">Selecione seu usuário</h1>
+        <p class="sel-sub">Conta <b id="selp-conta">—</b></p>
+      </header>
+
+      <!-- lista de perfis -->
+      <div id="selp-lista" class="sel-lista" role="list"></div>
+      <div id="selp-aviso" class="lg-erro" hidden></div>
+
+      <!-- painel de PIN (aparece ao escolher um perfil) -->
+      <div id="selp-pin" class="selp-pin" hidden>
+        <p class="sel-sub">Entrar como <b id="selp-pin-nome">—</b></p>
+        <label class="lg-campo">
+          <span>PIN</span>
+          <input id="selp-pin-input" type="text" inputmode="numeric" autocomplete="off"
+                 maxlength="6" pattern="[0-9]*" aria-describedby="selp-pin-erro"
+                 placeholder="••••" />
+        </label>
+        <div id="selp-pin-erro" class="lg-erro" hidden></div>
+        <div class="selp-pin-acoes">
+          <button id="selp-pin-voltar" class="btn btn-ghost btn-sm" type="button">Voltar</button>
+          <button id="selp-pin-ok" class="btn btn-primary" type="button">Confirmar</button>
+        </div>
+      </div>
+
+      <footer class="sel-foot">
+        <button id="selp-sair" class="btn btn-ghost btn-sm">Sair</button>
       </footer>
     </div>
   </div>
@@ -419,6 +464,50 @@
       </header>
 
       <main id="adm-view" class="adm-content" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <!-- ============= PAINEL ADMINISTRATIVO DA CRESCER =============
+       Terceiro ambiente: GERENCIAL (monitoramento cross-tenant). NÃO é o
+       Painel SuperAdmin. Shell irmão de #login/#senha/#selecao/#app/#admin —
+       nunca visível ao mesmo tempo. Autenticado globalmente (Bearer), sem
+       Context Token, sem empresa selecionada. Ver frontend/src/painelAdm.js. -->
+  <div id="painel-adm-screen" class="padm" hidden>
+    <div id="padm-backdrop" class="backdrop"></div>
+
+    <aside class="padm-sidebar">
+      <div class="padm-brand">
+        <span class="padm-brand-mark" aria-hidden="true">📊</span>
+        <span class="padm-brand-txt">
+          <b>Painel Administrativo</b>
+          <small>Crescer com Delivery</small>
+        </span>
+      </div>
+      <nav class="padm-menu"><ul id="padm-menu"></ul></nav>
+    </aside>
+
+    <div class="padm-main">
+      <header class="padm-topbar">
+        <button id="padm-btn-menu" class="icon-btn" aria-label="Menu">☰</button>
+        <div class="padm-topbar-titulo">
+          <h1 id="padm-titulo" class="page-title">Visão Geral</h1>
+          <small class="padm-topbar-sub">Monitoramento das operações</small>
+        </div>
+        <div class="padm-topbar-right">
+          <button id="padm-trocar" class="btn btn-ghost btn-sm">Trocar ambiente</button>
+          <div class="user-box">
+            <span class="user-chip user-chip--estatico">
+              <span class="avatar" id="padm-avatar">C</span>
+              <span class="user-meta">
+                <span class="user-nome" id="padm-nome">—</span>
+                <span class="user-empresa" id="padm-email">—</span>
+              </span>
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <main id="padm-view" class="padm-content" aria-live="polite"></main>
     </div>
   </div>
 

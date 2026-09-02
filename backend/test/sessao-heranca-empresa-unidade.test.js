@@ -227,7 +227,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => null,
       buscarUnidade: async (id) => { assert.equal(id, U1); return { id: U1, nome: "Loja 1", organizacao_id: ORG_A, ativo: true }; },
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U1, organizacaoId: ORG_A, papelDaEmpresa: "organization_admin" }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U1, organizacaoId: ORG_A, papelDaEmpresa: "organization_admin" }, deps);
     assert.equal(r.autorizado, true);
     assert.equal(r.papel, "organization_admin");
     assert.equal(r.unidade.id, U1);
@@ -238,7 +238,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => ({ papel: "unit_manager", unidades: { id: U2, nome: "Loja 2", organizacao_id: ORG_A, ativo: true } }),
       buscarUnidade: async () => { throw new Error("não deveria chamar — já veio junto do vínculo direto"); },
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: null }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: null }, deps);
     assert.equal(r.autorizado, true);
     assert.equal(r.papel, "unit_manager");
   });
@@ -248,7 +248,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => ({ papel: "unit_manager", unidades: { id: U2, nome: "Loja 2", organizacao_id: ORG_B, ativo: true } }),
       buscarUnidade: async () => null,
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: null }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: null }, deps);
     assert.equal(r.autorizado, false);
   });
 
@@ -258,7 +258,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => null,
       buscarUnidade: async () => { chamouBuscarUnidade = true; return null; },
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U1, organizacaoId: ORG_A, papelDaEmpresa: null }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U1, organizacaoId: ORG_A, papelDaEmpresa: null }, deps);
     assert.equal(r.autorizado, false);
     assert.equal(chamouBuscarUnidade, false);
   });
@@ -268,7 +268,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => null,
       buscarUnidade: async () => ({ id: U1, nome: "Loja Fechada", organizacao_id: ORG_A, ativo: false }),
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U1, organizacaoId: ORG_A, papelDaEmpresa: "organization_admin" }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U1, organizacaoId: ORG_A, papelDaEmpresa: "organization_admin" }, deps);
     assert.equal(r.autorizado, false);
   });
 
@@ -277,7 +277,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => null, // sem vínculo direto pra essa unidade
       buscarUnidade: async () => ({ id: U3, nome: "Loja de B", organizacao_id: ORG_B, ativo: true }),
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U3, organizacaoId: ORG_A, papelDaEmpresa: "organization_admin" }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U3, organizacaoId: ORG_A, papelDaEmpresa: "organization_admin" }, deps);
     assert.equal(r.autorizado, false, "empresa A não autoriza unidade de empresa B, mesmo o usuário tendo acesso a A");
   });
 
@@ -286,7 +286,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => ({ papel: "organization_admin", unidades: { id: U2, nome: "Loja 2", organizacao_id: ORG_A, ativo: true } }),
       buscarUnidade: async () => { throw new Error("não deveria chamar"); },
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: "viewer" }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: "viewer" }, deps);
     assert.equal(r.papel, "organization_admin");
   });
 
@@ -295,7 +295,7 @@ describe("acessoEfetivoDaUnidade — a regra OR (empresa OU unidade direta)", ()
       buscarVinculoDireto: async () => ({ papel: null, unidades: { id: U2, nome: "Loja 2", organizacao_id: ORG_A, ativo: true } }),
       buscarUnidade: async () => { throw new Error("não deveria chamar"); },
     };
-    const r = await acessoEfetivoDaUnidade({ usuarioId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: "viewer" }, deps);
+    const r = await acessoEfetivoDaUnidade({ perfilId: USUARIO_ID, unidadeId: U2, organizacaoId: ORG_A, papelDaEmpresa: "viewer" }, deps);
     assert.equal(r.papel, "viewer");
   });
 });

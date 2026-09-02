@@ -154,14 +154,45 @@ export const redefinirSenha = asyncHandler(async (req, res) =>
 export const alterarEmail = asyncHandler(async (req, res) =>
   ok(res, await usuarios.alterarEmail(req, req.params.id, v.corpo(req.body))));
 
+// POST /usuarios/:id/logout  — sem corpo: encerra a CONTA inteira (todos os
+// perfis + credencial Auth). Com { perfilId }: encerra só aquele perfil
+// (as demais pessoas da mesma conta seguem logadas). Ver Fase I, ponto 17.
 export const forcarLogout = asyncHandler(async (req, res) =>
-  ok(res, await usuarios.forcarLogout(req, req.params.id)));
+  ok(res, await usuarios.forcarLogout(req, req.params.id, (req.body ?? {}).perfilId ?? null)));
 
 export const excluirUsuario = asyncHandler(async (req, res) =>
   ok(res, await usuarios.excluirUsuario(req, req.params.id)));
 
+// PIN do perfil operacional (Fase H) — SuperAdmin define/reseta/remove. Atua
+// só em perfil existente; nunca cria perfil. `pin` nunca é logado.
+export const definirPinPerfil = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.definirPinPerfil(req, req.params.id, req.params.perfilId, v.corpo(req.body))));
+
+export const removerPinPerfil = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.removerPinPerfil(req, req.params.id, req.params.perfilId)));
+
+// ---- Perfis operacionais da conta (Fase G) — múltiplos usuários por conta.
+export const perfisDaConta = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.perfisDaConta(req.params.id)));
+
+export const criarPerfil = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.criarPerfilNaConta(req, req.params.id, v.corpo(req.body)), 201));
+
+export const renomearPerfil = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.renomearPerfil(req, req.params.id, req.params.perfilId, v.corpo(req.body))));
+
+export const alternarAtivoPerfil = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.alternarAtivoPerfil(req, req.params.id, req.params.perfilId, v.corpo(req.body))));
+
 export const definirSuperadmin = asyncHandler(async (req, res) =>
   ok(res, await usuarios.definirSuperadmin(req, req.params.id, v.corpo(req.body))));
+
+// --------------------------------------------------- Painel Administrativo (acesso)
+export const definirPainelAdministrativo = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.definirPainelAdministrativo(req, req.params.id, v.corpo(req.body))));
+
+export const listarUsuariosPainelAdministrativo = asyncHandler(async (req, res) =>
+  ok(res, await usuarios.listarUsuariosPainelAdministrativo({ status: req.query.status })));
 
 // --------------------------------------------------- Associações (vínculos)
 export const associarEmpresa = asyncHandler(async (req, res) =>

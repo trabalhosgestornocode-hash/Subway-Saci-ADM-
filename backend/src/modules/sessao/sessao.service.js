@@ -45,10 +45,18 @@ import { emitirContextToken, VALIDADE_PADRAO_S } from "../../shared/contextToken
 import { permissoesDoPapel, rotuloPapel } from "../../shared/permissoes.js";
 import { modulosDaEmpresa, modulosEfetivosDaUnidade } from "../../shared/modulos.js";
 import { auditar, ACOES } from "../../shared/auditoria.js";
+import { resolverPerfilParaContexto } from "./perfil.service.js";
 import * as v from "../../shared/validar.js";
 
 /** Status de empresa que impedem o tenant de entrar. */
 const STATUS_BLOQUEANTES = { bloqueada: "Empresa bloqueada.", suspensa: "Empresa suspensa.", cancelada: "Empresa cancelada." };
+
+// Migração 060 ainda não aplicada em todo ambiente: se `usuarios_*.perfil_id`
+// não existe, a autorização degrada para `usuario_id`. Pré-060 a conta tem
+// exatamente 1 perfil e `perfil_id == usuario_id` (UUID reaproveitado), então
+// o resultado é idêntico. Ver docs/multi-perfil-fase-e-*.md ("janela de transição").
+const RE_PERFIL_ID_AUSENTE = /perfil_id|does not exist|schema cache|could not find/i;
+const colunaPerfilAusente = (error) => error && RE_PERFIL_ID_AUSENTE.test(error.message || "");
 
 /**
  * @typedef {object} OpcaoAcesso
@@ -90,15 +98,33 @@ const STATUS_BLOQUEANTES = { bloqueada: "Empresa bloqueada.", suspensa: "Empresa
  * com o motivo. Esconder geraria o pior suporte possível: "minha empresa
  * desapareceu".
  *
- * @param {{usuarioId: string}} params
- * @param {{buscarVinculos: typeof buscarVinculosOrgEUnidade, buscarUnidadesAtivas: typeof buscarUnidadesAtivasDasOrgs, buscarInfoOrganizacoes: typeof buscarInfoDasOrganizacoes}} [deps] injeção para teste (mesmo padrão de cmv.service.js#listarMargensOficialOuComparacao) — sem isto a lógica de herança só seria exercitável contra um Supabase real.
+ * IDENTIDADE (Fase C do multi-perfil): aceita DUAS formas, mutuamente
+ * exclusivas:
+ *   * `{ usuarioId }`         — LEGACY. Vínculos por `usuarios_*.usuario_id`.
+ *                              É o que `GET /sessao/acessos` (sem perfilId)
+ *                              continua usando — inalterado.
+ *   * `{ contaId, perfilId }` — NOVO. Vínculos por `usuarios_*.perfil_id`
+ *                              (a identidade operacional). `superadmin` ainda
+ *                              é checado por CONTA (`contaId`). Só é alcançado
+ *                              via `perfil.service.js#listarAcessosDoPerfil`,
+ *                              que valida a posse do perfil ANTES.
+ *
+ * @param {{usuarioId?: string, contaId?: string, perfilId?: string}} params
+ * @param {{buscarVinculos?: typeof buscarVinculosOrgEUnidade, buscarVinculosPorPerfil?: typeof buscarVinculosDeUmPerfil, buscarUnidadesAtivas?: typeof buscarUnidadesAtivasDasOrgs, buscarInfoOrganizacoes?: typeof buscarInfoDasOrganizacoes}} [deps] injeção para teste (mesmo padrão de cmv.service.js#listarMargensOficialOuComparacao) — sem isto a lógica de herança só seria exercitável contra um Supabase real.
  * @returns {Promise<{superadmin: boolean, opcoes: OpcaoAcesso[]}>}
  */
 export async function listarAcessos(
-  { usuarioId },
-  deps = { buscarVinculos: buscarVinculosOrgEUnidade, buscarUnidadesAtivas: buscarUnidadesAtivasDasOrgs, buscarInfoOrganizacoes: buscarInfoDasOrganizacoes },
+  { usuarioId, contaId, perfilId },
+  deps = {
+    buscarVinculos: buscarVinculosOrgEUnidade,
+    buscarVinculosPorPerfil: buscarVinculosDeUmPerfil,
+    buscarUnidadesAtivas: buscarUnidadesAtivasDasOrgs,
+    buscarInfoOrganizacoes: buscarInfoDasOrganizacoes,
+  },
 ) {
-  const { superadmin, vinculosOrg, vinculosUni } = await deps.buscarVinculos(usuarioId);
+  const { superadmin, vinculosOrg, vinculosUni } = perfilId
+    ? await deps.buscarVinculosPorPerfil({ contaId, perfilId })
+    : await deps.buscarVinculos(usuarioId);
 
   // Vínculo direto por unidade, agrupado pela empresa DONA dela agora — não
   // pela empresa de quando o vínculo foi criado. É isto que faz uma unidade
@@ -225,6 +251,37 @@ async function buscarVinculosOrgEUnidade(usuarioId) {
   return { superadmin: !!superRes.data, vinculosOrg: vinculosOrgRes.data ?? [], vinculosUni: vinculosUniRes.data ?? [] };
 }
 
+/**
+ * Igual a `buscarVinculosOrgEUnidade`, mas escopado pela IDENTIDADE OPERACIONAL
+ * (`perfil_id`) — Fase C do multi-perfil. O `superadmin` continua sendo um
+ * atributo da CONTA (`plataforma_admins.usuario_id = contaId`), não do perfil.
+ *
+ * Requer a migration 060 aplicada (`usuarios_*.perfil_id`). Com o backfill de
+ * UUID reaproveitado, para uma conta legada de 1 perfil o resultado é idêntico
+ * ao de `buscarVinculosOrgEUnidade(contaId)` — `perfil_id == usuario_id`.
+ * @param {{contaId: string, perfilId: string}} params
+ */
+async function buscarVinculosDeUmPerfil({ contaId, perfilId }) {
+  const orgSel = "papel, organizacao_id, organizacoes(id, nome, logo_url, status)";
+  const uniSel = "papel, unidade_id, unidades(id, nome, organizacao_id, cidade, cnpj, ativo)";
+  let [superRes, vinculosOrgRes, vinculosUniRes] = await Promise.all([
+    supabase.from("plataforma_admins").select("usuario_id")
+      .eq("usuario_id", contaId).eq("ativo", true).maybeSingle(),
+    supabase.from("usuarios_organizacoes").select(orgSel).eq("perfil_id", perfilId).eq("ativo", true),
+    supabase.from("usuarios_unidades").select(uniSel).eq("perfil_id", perfilId).eq("ativo", true),
+  ]);
+  // Pré-060: `perfil_id` não existe -> filtra pela conta (== perfilId legado).
+  if (colunaPerfilAusente(vinculosOrgRes.error)) {
+    vinculosOrgRes = await supabase.from("usuarios_organizacoes").select(orgSel).eq("usuario_id", contaId).eq("ativo", true);
+  }
+  if (colunaPerfilAusente(vinculosUniRes.error)) {
+    vinculosUniRes = await supabase.from("usuarios_unidades").select(uniSel).eq("usuario_id", contaId).eq("ativo", true);
+  }
+  if (vinculosOrgRes.error) throw ApiError.internal(vinculosOrgRes.error.message);
+  if (vinculosUniRes.error) throw ApiError.internal(vinculosUniRes.error.message);
+  return { superadmin: !!superRes.data, vinculosOrg: vinculosOrgRes.data ?? [], vinculosUni: vinculosUniRes.data ?? [] };
+}
+
 /** Busca-padrão das unidades ATIVAS de um conjunto de organizações — a base da herança Empresa -> Unidade em `listarAcessos`. */
 async function buscarUnidadesAtivasDasOrgs(organizacaoIds) {
   const { data, error } = await supabase.from("unidades")
@@ -253,14 +310,17 @@ async function buscarInfoDasOrganizacoes(organizacaoIds) {
  * `listarAcessos` (que enumera todas de uma vez para a tela inteira); as
  * duas implementam a MESMA regra, cada uma na forma que seu chamador precisa.
  *
- * @param {{usuarioId: string, unidadeId: string, organizacaoId: string, papelDaEmpresa: string|null}} params
+ * IDENTIDADE (Fase D): escopo por `perfilId` — o vínculo direto de unidade é
+ * do PERFIL, nunca da conta nem de outro perfil.
+ *
+ * @param {{perfilId: string, unidadeId: string, organizacaoId: string, papelDaEmpresa: string|null}} params
  * @returns {Promise<{autorizado: boolean, papel: string|null, unidade: {id: string, nome: string}|null}>}
  */
 export async function acessoEfetivoDaUnidade(
-  { usuarioId, unidadeId, organizacaoId, papelDaEmpresa },
+  { perfilId, unidadeId, organizacaoId, papelDaEmpresa },
   deps = { buscarVinculoDireto: buscarVinculoDiretoDaUnidade, buscarUnidade: buscarUnidadePorId },
 ) {
-  const vinculoUni = await deps.buscarVinculoDireto({ usuarioId, unidadeId });
+  const vinculoUni = await deps.buscarVinculoDireto({ perfilId, unidadeId });
 
   const unidadeViaVinculoDireto = vinculoUni?.unidades?.organizacao_id === organizacaoId ? vinculoUni.unidades : null;
   const autorizado = papelDaEmpresa != null || !!unidadeViaVinculoDireto;
@@ -280,13 +340,31 @@ export async function acessoEfetivoDaUnidade(
   return { autorizado: true, papel, unidade: { id: unidade.id, nome: unidade.nome } };
 }
 
-/** Busca-padrão do vínculo direto (usuarios_unidades) de `acessoEfetivoDaUnidade`. */
-async function buscarVinculoDiretoDaUnidade({ usuarioId, unidadeId }) {
-  const { data, error } = await supabase
-    .from("usuarios_unidades")
-    .select("papel, unidades(id, nome, organizacao_id, ativo)")
-    .eq("usuario_id", usuarioId).eq("unidade_id", unidadeId).eq("ativo", true)
-    .maybeSingle();
+/**
+ * Busca-padrão do vínculo de EMPRESA de UM PERFIL (Fase E) — nunca pela conta.
+ * @param {{perfilId: string, organizacaoId: string}} params
+ */
+async function buscarVinculoOrgDoPerfil({ perfilId, organizacaoId }) {
+  const sel = "papel, organizacoes(id, nome, logo_url, status)";
+  let { data, error } = await supabase.from("usuarios_organizacoes").select(sel)
+    .eq("perfil_id", perfilId).eq("organizacao_id", organizacaoId).eq("ativo", true).maybeSingle();
+  if (colunaPerfilAusente(error)) {
+    ({ data, error } = await supabase.from("usuarios_organizacoes").select(sel)
+      .eq("usuario_id", perfilId).eq("organizacao_id", organizacaoId).eq("ativo", true).maybeSingle());
+  }
+  if (error) throw ApiError.internal(error.message);
+  return data;
+}
+
+/** Busca-padrão do vínculo direto (usuarios_unidades) de `acessoEfetivoDaUnidade` — por PERFIL. */
+async function buscarVinculoDiretoDaUnidade({ perfilId, unidadeId }) {
+  const sel = "papel, unidades(id, nome, organizacao_id, ativo)";
+  let { data, error } = await supabase.from("usuarios_unidades").select(sel)
+    .eq("perfil_id", perfilId).eq("unidade_id", unidadeId).eq("ativo", true).maybeSingle();
+  if (colunaPerfilAusente(error)) {
+    ({ data, error } = await supabase.from("usuarios_unidades").select(sel)
+      .eq("usuario_id", perfilId).eq("unidade_id", unidadeId).eq("ativo", true).maybeSingle());
+  }
   if (error) throw ApiError.internal(error.message);
   return data;
 }
@@ -300,24 +378,43 @@ async function buscarUnidadePorId(unidadeId) {
 }
 
 /**
- * Valida a escolha e emite o Context Token.
+ * Valida CONTA → PERFIL → EMPRESA → UNIDADE e emite o Context Token v2.
  *
- * TODA sessão viva anterior do usuário é revogada antes. É o requisito "ao
- * trocar de unidade o Context Token é invalidado e um novo é emitido" — e tem
- * o efeito colateral desejável de o usuário ter um contexto por vez, o que
- * torna "usuários online" e "forçar logout" honestos.
+ * MODEL Y (Fase D): NÃO revoga sessões irmãs. Só revoga `revogarSessionId`
+ * (a sessão da própria aba, numa troca de unidade/empresa).
+ *
+ * PERFIL: `perfilId` opcional no corpo. `resolverPerfilParaContexto` decide:
+ *   ausente + conta com 1 perfil ativo -> usa esse (compat frontend antigo);
+ *   ausente + 2+ perfis -> 400 "perfil obrigatório";
+ *   informado -> valida posse + ativo.
+ * A partir daí, TODA a autorização (vínculo de empresa, vínculo de unidade,
+ * papel) é escopada por `perfil.id` — nunca pela conta nem por outro perfil.
  *
  * @param {object} params
- * @param {{id: string, email: string}} params.usuario
+ * @param {{id: string, email: string}} params.usuario  a CONTA (req.user)
+ * @param {unknown} [params.perfilId]     candidato vindo do cliente (opcional)
  * @param {unknown} params.organizacaoId  candidato vindo do cliente
  * @param {unknown} params.unidadeId      candidato vindo do cliente
+ * @param {string|null} [params.revogarSessionId]  sessão da aba a substituir (troca de unidade)
  * @param {string|null} [params.ip]
  * @param {string|null} [params.userAgent]
- * @param {boolean} [params.troca]  true quando é troca de unidade (só p/ auditoria)
+ * @param {boolean} [params.troca]  true quando é troca de contexto (só p/ auditoria)
+ * @param {{resolverPerfil?: Function}} [deps]  injeção p/ teste
  */
-export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip = null, userAgent = null, troca = false }) {
+export async function selecionarContexto(
+  { usuario, perfilId, provaSelecao = null, organizacaoId, unidadeId, revogarSessionId = null, ip = null, userAgent = null, troca = false },
+  deps = {},
+) {
   const orgId = v.uuid(organizacaoId, "Empresa");
   const uniId = v.uuidOpcional(unidadeId, "Unidade");
+
+  // 1. CONTA -> PERFIL. Nunca confia em perfil vindo pronto: resolve/valida
+  //    aqui. Conta multi-perfil EXIGE `provaSelecao` (Profile Selection Token)
+  //    — o `perfilId` do corpo sozinho nunca basta (seria bypassável).
+  const resolver = deps.resolverPerfil ?? resolverPerfilParaContexto;
+  const buscarVinculoOrg = deps.buscarVinculoOrgDoPerfil ?? buscarVinculoOrgDoPerfil;
+  const checarUnidade = deps.acessoEfetivoDaUnidade ?? acessoEfetivoDaUnidade;
+  const perfil = await resolver({ contaId: usuario.id, perfilId, provaSelecao });
 
   const negarAcesso = async () => {
     await auditar({
@@ -330,14 +427,10 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
     throw ApiError.forbidden("Você não tem acesso a esta empresa.");
   };
 
-  // --- vínculo com a EMPRESA (buscado sempre — mesmo pra unidade via
-  //     vínculo direto, "empresa bloqueada" tem que valer igual)
-  const { data: vinculoOrg, error: eVinculo } = await supabase
-    .from("usuarios_organizacoes")
-    .select("papel, organizacoes(id, nome, logo_url, status)")
-    .eq("usuario_id", usuario.id).eq("organizacao_id", orgId).eq("ativo", true)
-    .maybeSingle();
-  if (eVinculo) throw ApiError.internal(eVinculo.message);
+  // --- vínculo com a EMPRESA — escopado pelo PERFIL (nunca pela conta nem por
+  //     outro perfil). "empresa bloqueada" tem que valer igual pro caminho de
+  //     unidade via vínculo direto, por isso é sempre buscado.
+  const vinculoOrg = await buscarVinculoOrg({ perfilId: perfil.id, organizacaoId: orgId });
   const papelDaEmpresa = vinculoOrg?.organizacoes ? vinculoOrg.papel : null;
 
   let empresa;
@@ -356,7 +449,7 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
     // é aqui que a herança Empresa -> Unidade passa a valer de verdade
     // (antes, chegar até aqui já exigia vínculo de empresa ATIVO, o que
     // quebrava o acesso de quem só tinha vínculo direto de unidade).
-    const acesso = await acessoEfetivoDaUnidade({ usuarioId: usuario.id, unidadeId: uniId, organizacaoId: orgId, papelDaEmpresa });
+    const acesso = await checarUnidade({ perfilId: perfil.id, unidadeId: uniId, organizacaoId: orgId, papelDaEmpresa });
     if (!acesso.autorizado) return negarAcesso();
     unidade = acesso.unidade;
     papel = acesso.papel;
@@ -393,21 +486,25 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
     : await modulosDaEmpresa(orgId);
 
   const sessao = await criarSessao({
-    usuarioId: usuario.id, organizacaoId: orgId, unidadeId: unidade?.id ?? null,
+    contaId: usuario.id, perfilId: perfil.id,
+    organizacaoId: orgId, unidadeId: unidade?.id ?? null,
     papel, permissoes, modulos, impersonadoPor: null, ip, userAgent,
+    revogarSessionId, // Model Y: só a sessão da própria aba (troca de unidade)
+    selecaoNonce: perfil.selecaoNonce ?? null, // uso único da prova de PIN (Fase H)
   });
 
   await auditar({
-    atorId: usuario.id, atorEmail: usuario.email,
+    atorId: usuario.id, atorEmail: usuario.email, perfilId: perfil.id,
     acao: troca ? ACOES.CONTEXTO_TROCADO : ACOES.CONTEXTO_SELECIONADO,
     entidade: "organizacao", entidadeId: orgId, organizacaoId: orgId, ip, userAgent,
-    detalhes: { papel, unidadeId: unidade?.id ?? null, empresa: empresa.nome },
+    detalhes: { papel, perfil: perfil.nome, unidadeId: unidade?.id ?? null, empresa: empresa.nome },
   });
 
   return {
     contextToken: sessao.token,
     expiraEm: sessao.expiraEm,
     sessionId: sessao.id,
+    perfil: { id: perfil.id, nome: perfil.nome },
     empresa: { id: empresa.id, nome: empresa.nome, logoUrl: empresa.logo_url ?? null, status: empresa.status },
     unidade,
     papel,
@@ -435,17 +532,29 @@ export async function selecionarContexto({ usuario, organizacaoId, unidadeId, ip
  *   * sessão normal -> delega para `selecionarContexto`, que já faz a
  *     checagem de vínculo de sempre (nada muda aqui pro caso comum).
  *
+ * MODEL Y (Fase D): a troca afeta SÓ a sessão atual (`sessionIdAtual`). As
+ * sessões irmãs (mesmo perfil em outro device, ou outro perfil da mesma conta)
+ * NUNCA são tocadas.
+ *
  * @param {object} params
- * @param {{id: string, email: string}} params.usuario
- * @param {string} params.organizacaoId  da sessão ATUAL (req.tenant), nunca do cliente
- * @param {unknown} params.unidadeId     candidato vindo do cliente
- * @param {boolean} params.impersonando  da sessão ATUAL (req.acesso), nunca do cliente
+ * @param {{id: string, email: string}} params.usuario  a CONTA (req.user)
+ * @param {string|null} params.perfilId       da sessão ATUAL (req.acesso.perfilId); null em impersonação
+ * @param {string} params.organizacaoId       da sessão ATUAL (req.tenant), nunca do cliente
+ * @param {unknown} params.unidadeId          candidato vindo do cliente
+ * @param {boolean} params.impersonando       da sessão ATUAL (req.acesso), nunca do cliente
+ * @param {string} params.sessionIdAtual      da sessão ATUAL (req.acesso.sessionId) — a ÚNICA revogada
  * @param {string|null} [params.ip]
  * @param {string|null} [params.userAgent]
  */
-export async function trocarUnidadeDoContexto({ usuario, organizacaoId, unidadeId, impersonando, ip = null, userAgent = null }) {
+export async function trocarUnidadeDoContexto({
+  usuario, perfilId, organizacaoId, unidadeId, impersonando, sessionIdAtual, ip = null, userAgent = null,
+}) {
   if (!impersonando) {
-    return selecionarContexto({ usuario, organizacaoId, unidadeId, ip, userAgent, troca: true });
+    return selecionarContexto({
+      usuario, perfilId, organizacaoId, unidadeId,
+      revogarSessionId: sessionIdAtual, // Model Y: substitui só ESTA sessão
+      ip, userAgent, troca: true,
+    });
   }
 
   const uniId = v.uuidOpcional(unidadeId, "Unidade");
@@ -473,15 +582,16 @@ export async function trocarUnidadeDoContexto({ usuario, organizacaoId, unidadeI
     : await modulosDaEmpresa(organizacaoId);
 
   const sessao = await criarSessao({
-    usuarioId: usuario.id, organizacaoId, unidadeId: unidade?.id ?? null,
+    contaId: usuario.id, perfilId: null, organizacaoId, unidadeId: unidade?.id ?? null,
     papel, permissoes, modulos, impersonadoPor: usuario.id, ip, userAgent,
     validadeS: 60 * 60,
+    revogarSessionId: sessionIdAtual, // Model Y: substitui só a sessão de suporte atual
   });
 
   await auditar({
     atorId: usuario.id, atorEmail: usuario.email, atorTipo: "superadmin",
     acao: ACOES.CONTEXTO_TROCADO, entidade: "organizacao", entidadeId: organizacaoId, organizacaoId,
-    impersonadoPor: usuario.id,
+    impersonadoPor: usuario.id, perfilId: null,
     detalhes: { unidadeId: unidade?.id ?? null, empresa: org.nome },
     ip, userAgent,
   });
@@ -508,8 +618,15 @@ export async function trocarUnidadeDoContexto({ usuario, organizacaoId, unidadeI
  * depois de um token já circulando, haveria token sem lastro; assim, o pior
  * caso é uma linha órfã que ninguém consegue usar.
  *
+ * MODEL Y (Fase D): NÃO revoga mais sessões irmãs. Uma nova sessão nasce sem
+ * derrubar nenhuma outra — da conta, do perfil, da empresa ou de outro device.
+ * A ÚNICA revogação que `criarSessao` faz é a da sessão que ela substitui
+ * explicitamente na MESMA aba (`revogarSessionId` — troca de unidade/empresa),
+ * e DEPOIS de criar a nova (uma falha aqui não deixa a aba sem sessão).
+ *
  * @param {object} params
- * @param {string} params.usuarioId
+ * @param {string} params.contaId       auth.users.id (a CONTA). `usuarioId` é aceito como alias.
+ * @param {string|null} [params.perfilId]  OBRIGATÓRIO em sessão normal; DEVE ser null em impersonação.
  * @param {string} params.organizacaoId
  * @param {string|null} params.unidadeId
  * @param {string} params.papel
@@ -519,64 +636,132 @@ export async function trocarUnidadeDoContexto({ usuario, organizacaoId, unidadeI
  * @param {string|null} [params.ip]
  * @param {string|null} [params.userAgent]
  * @param {number} [params.validadeS]
+ * @param {string|null} [params.revogarSessionId]  sessão que esta substitui (troca de unidade/empresa)
  */
 export async function criarSessao({
-  usuarioId, organizacaoId, unidadeId, papel, permissoes, modulos = [],
+  contaId, usuarioId, perfilId = null, organizacaoId, unidadeId, papel, permissoes, modulos = [],
   impersonadoPor = null, ip = null, userAgent = null, validadeS = VALIDADE_PADRAO_S,
+  revogarSessionId = null, selecaoNonce = null,
 }) {
-  await revogarSessoes({ usuarioId, motivo: impersonadoPor ? "impersonacao" : "novo_contexto" });
+  const conta = contaId ?? usuarioId;
+  if (!conta) throw ApiError.internal("criarSessao exige contaId.");
+  // Invariante da APLICAÇÃO — mais estrito que a migration 060 (que ainda
+  // permite perfil_id NULL por compatibilidade): sessão normal SEMPRE tem
+  // perfil; impersonação NUNCA tem.
+  if (impersonadoPor && perfilId) throw ApiError.internal("Sessão de impersonação não carrega perfil operacional.");
+  if (!impersonadoPor && !perfilId) throw ApiError.internal("Sessão normal exige perfilId (Fase D).");
 
   const expiraEm = new Date(Date.now() + validadeS * 1000);
-  const { data: linha, error } = await supabase
-    .from("sessoes_contexto")
-    .insert({
-      usuario_id: usuarioId,
-      organizacao_id: organizacaoId,
-      unidade_id: unidadeId,
-      papel,
-      permissoes,
-      modulos,
-      impersonado_por: impersonadoPor,
-      ip, user_agent: userAgent,
-      expira_em: expiraEm.toISOString(),
-    })
-    .select("id")
-    .single();
+  const base = {
+    usuario_id: conta,     // LEGACY — a CONTA (coluna mantida na transição)
+    organizacao_id: organizacaoId,
+    unidade_id: unidadeId,
+    papel,
+    permissoes,
+    modulos,
+    impersonado_por: impersonadoPor,
+    ip, user_agent: userAgent,
+    expira_em: expiraEm.toISOString(),
+  };
+  const abrir = (linha) => supabase.from("sessoes_contexto").insert(linha).select("id").single();
+  // `perfil_id` (Fase D) + `selecao_nonce` (Fase H — consome a prova de PIN de
+  // forma ÚNICA: a UNIQUE parcial da 064 rejeita a segunda sessão com o mesmo
+  // nonce). Degrada coluna a coluna se 060/064 ainda não rodaram.
+  const linhaNova = { ...base, perfil_id: perfilId };
+  if (selecaoNonce) linhaNova.selecao_nonce = selecaoNonce;
+  let { data: linha, error } = await abrir(linhaNova);
+  if (error && /selecao_nonce|schema cache|could not find/i.test(error.message || "") && selecaoNonce) {
+    ({ data: linha, error } = await abrir({ ...base, perfil_id: perfilId })); // pré-064
+  }
+  if (colunaPerfilAusente(error)) ({ data: linha, error } = await abrir(base)); // pré-060
+  if (error && /duplicate key|already exists|23505|uq_sessoes_selecao_nonce/i.test(error.message || "")) {
+    throw ApiError.badRequest("Esta prova de seleção já foi utilizada. Informe o PIN novamente.", { codigo: "PROVA_PERFIL_CONSUMIDA" });
+  }
   if (error || !linha) throw ApiError.internal("Não foi possível abrir a sessão de contexto.");
 
   // Módulos não entram no payload assinado do token (diferente de `permissoes`,
   // que entra por hoje, cosmeticamente): `requireContexto` sempre relê
   // `sessoes_contexto.modulos`, então carregar no token não teria uso.
   const { token } = emitirContextToken({
-    usuarioId, sessionId: linha.id, organizacaoId, unidadeId,
+    usuarioId: conta, sessionId: linha.id, organizacaoId, unidadeId, perfilId,
     papel, permissoes, impersonadoPor, validadeS,
   });
+
+  // Model Y: só a sessão que ESTA substitui (mesma aba). Nunca as irmãs.
+  if (revogarSessionId) {
+    await revogarSessoes({ sessionId: revogarSessionId, motivo: "contexto_substituido" });
+  }
 
   return { id: linha.id, token, expiraEm: expiraEm.toISOString() };
 }
 
 /**
- * Revoga as sessões vivas de um usuário (ou uma específica).
- * É o mecanismo por trás de: trocar unidade, sair, forçar logout, bloquear
- * usuário, trocar o papel de um vínculo e alterar módulos/status de uma
- * unidade (`unidadeId` — revoga só as sessões PRESAS àquela unidade, sem
- * derrubar o resto da empresa).
- * @param {{usuarioId?: string, sessionId?: string, organizacaoId?: string, unidadeId?: string, motivo?: string}} filtro
+ * Revoga sessões vivas por ESCOPO EXPLÍCITO (Model Y — Fase D). Os filtros são
+ * combinados com AND. Escopos suportados:
+ *
+ *   A) `{ sessionId }`               — 1 sessão. Logout normal, troca de
+ *                                      unidade/empresa da PRÓPRIA aba.
+ *   B) `{ perfilId }`                — todas as sessões de um perfil (em todos
+ *                                      os devices). Ação admin "derrubar este
+ *                                      perfil".
+ *   C) `{ perfilId, organizacaoId }` — sessões daquele perfil naquela empresa.
+ *                                      Mudança de cargo/vínculo do perfil.
+ *   D) `{ contaId }` (ou `usuarioId`, alias) — TODAS as sessões da conta (todos
+ *                                      os perfis). Bloquear conta / logout
+ *                                      global administrativo / redefinir senha.
+ *   +  `{ organizacaoId }` / `{ unidadeId }` isolados — bloqueio/mudança da
+ *      empresa/unidade inteira (atinge todos os perfis daquela empresa/unidade).
+ *
+ * NUNCA infere "revogar tudo": chamada sem nenhum escopo LANÇA (evita um bug de
+ * caller derrubar a plataforma toda). `contaId` e `usuarioId` são o MESMO
+ * escopo (a coluna `usuario_id` = a conta) — aceitos os dois nomes para não
+ * quebrar os callers administrativos existentes.
+ *
+ * @param {{sessionId?: string, perfilId?: string, contaId?: string, usuarioId?: string, organizacaoId?: string, unidadeId?: string, motivo?: string}} filtro
  * @returns {Promise<number>} quantas sessões foram revogadas
  */
-export async function revogarSessoes({ usuarioId, sessionId, organizacaoId, unidadeId, motivo = "revogada" }) {
-  if (!usuarioId && !sessionId && !organizacaoId && !unidadeId) return 0;
+/**
+ * Traduz um objeto de escopo em filtros `[coluna, valor]` — PURO, testável sem
+ * banco. TODOS os filtros combinam com AND. Lança se o escopo é vazio (nunca
+ * "revoga tudo por engano"). `contaId` e `usuarioId` são o MESMO escopo (a
+ * coluna `usuario_id` = a conta).
+ * @param {{sessionId?: string, perfilId?: string, contaId?: string, usuarioId?: string, organizacaoId?: string, unidadeId?: string}} escopo
+ * @returns {Array<[string, string]>}
+ */
+export function filtrosDeRevogacao({ sessionId, perfilId, contaId, usuarioId, organizacaoId, unidadeId } = {}) {
+  const conta = contaId ?? usuarioId;
+  const filtros = [];
+  if (sessionId) filtros.push(["id", sessionId]);
+  if (perfilId) filtros.push(["perfil_id", perfilId]);
+  if (conta) filtros.push(["usuario_id", conta]);
+  if (organizacaoId) filtros.push(["organizacao_id", organizacaoId]);
+  if (unidadeId) filtros.push(["unidade_id", unidadeId]);
+  if (!filtros.length) {
+    throw ApiError.internal(
+      "revogarSessoes exige ao menos um escopo (sessionId | perfilId | contaId | organizacaoId | unidadeId).",
+    );
+  }
+  return filtros;
+}
 
-  let q = supabase.from("sessoes_contexto")
-    .update({ revogada_em: new Date().toISOString(), motivo_revogacao: motivo })
-    .is("revogada_em", null);
+export async function revogarSessoes({
+  sessionId, perfilId, contaId, usuarioId, organizacaoId, unidadeId, motivo = "revogada",
+}) {
+  const filtros = filtrosDeRevogacao({ sessionId, perfilId, contaId, usuarioId, organizacaoId, unidadeId });
 
-  if (sessionId) q = q.eq("id", sessionId);
-  if (usuarioId) q = q.eq("usuario_id", usuarioId);
-  if (organizacaoId) q = q.eq("organizacao_id", organizacaoId);
-  if (unidadeId) q = q.eq("unidade_id", unidadeId);
+  const rodar = (mapPerfilParaConta) => {
+    let q = supabase.from("sessoes_contexto")
+      .update({ revogada_em: new Date().toISOString(), motivo_revogacao: motivo })
+      .is("revogada_em", null);
+    for (const [coluna, valor] of filtros) {
+      q = q.eq(mapPerfilParaConta && coluna === "perfil_id" ? "usuario_id" : coluna, valor); // AND
+    }
+    return q.select("id");
+  };
 
-  const { data, error } = await q.select("id");
+  let { data, error } = await rodar(false);
+  // Pré-060: `perfil_id` não existe -> escopa por `usuario_id` (== perfilId legado).
+  if (colunaPerfilAusente(error) && filtros.some(([c]) => c === "perfil_id")) ({ data, error } = await rodar(true));
   if (error) throw ApiError.internal(error.message);
   return (data ?? []).length;
 }
@@ -585,10 +770,16 @@ export async function revogarSessoes({ usuarioId, sessionId, organizacaoId, unid
  * Encerra o contexto atual. Se era uma impersonação, a auditoria registra o
  * fim dela — o par "iniciada/encerrada" é o que dá a duração do acesso de
  * suporte a um ambiente de cliente.
+ * MODEL Y (Fase D): revoga APENAS a sessão atual (`acesso.sessionId`) — nunca
+ * `usuarioId` (isso derrubaria os outros devices e os outros perfis da conta).
+ * Se não há `acesso` (token já expirado/revogado), não há o que revogar.
+ * "Sair de todos os dispositivos" é uma ação SEPARADA (não reusar este fluxo).
  * @param {{usuario: {id: string, email: string}, acesso?: any, ip?: string|null, userAgent?: string|null}} params
  */
 export async function encerrarContexto({ usuario, acesso = null, ip = null, userAgent = null }) {
-  const revogadas = await revogarSessoes({ usuarioId: usuario.id, motivo: "encerrada_pelo_usuario" });
+  const revogadas = acesso?.sessionId
+    ? await revogarSessoes({ sessionId: acesso.sessionId, motivo: "logout" })
+    : 0;
 
   if (acesso?.impersonando) {
     await auditar({
@@ -599,7 +790,8 @@ export async function encerrarContexto({ usuario, acesso = null, ip = null, user
     });
   } else {
     await auditar({
-      atorId: usuario.id, atorEmail: usuario.email, acao: ACOES.LOGOUT,
+      atorId: usuario.id, atorEmail: usuario.email, perfilId: acesso?.perfilId ?? null,
+      acao: ACOES.LOGOUT,
       organizacaoId: acesso?.empresa?.id ?? null, ip, userAgent,
       detalhes: { sessoes_revogadas: revogadas },
     });
@@ -706,10 +898,21 @@ export async function listarUnidadesContexto(
 /**
  * Contexto atual, já resolvido pelo middleware. Serve para o frontend
  * reconstruir a UI após um recarregamento de página sem perguntar de novo.
- * @param {{acesso: any, tenant: any}} req
+ *
+ * Fase I — a resposta separa explicitamente as duas identidades:
+ *   `conta`  = a CREDENCIAL (req.user / Supabase Auth). É o que `/me` também
+ *              representa. Compartilhada por todos os perfis.
+ *   `perfil` = a PESSOA operacional desta sessão (null em impersonação).
+ * O frontend modela isso como `state.sessao.identidade` (conta) e
+ * `state.sessao.perfil` — nunca um como substituto do outro.
+ * @param {{user?: any, acesso: any, tenant: any, perfil?: any}} req
  */
 export function contextoAtual(req) {
   return {
+    conta: req.user
+      ? { id: req.user.id, nome: req.user.nome ?? null, email: req.user.email ?? null, superadmin: !!req.user.superadmin }
+      : null,
+    perfil: req.perfil ?? null,   // { id, nome } | null (null = impersonação)
     empresa: req.acesso.empresa,
     unidade: req.acesso.unidade,
     papel: req.acesso.papel,

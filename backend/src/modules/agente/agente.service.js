@@ -55,6 +55,7 @@ export const MAX_ACOES_SUGERIDAS = 3;
  *   organizacaoId: string, unidadeId: string|null,
  *   acesso: import('../../middlewares/auth.js').AcessoContexto,
  *   usuario: import('../../middlewares/auth.js').UsuarioAutenticado,
+ *   perfil?: {id: string, nome: string|null}|null,
  *   mensagem: unknown,
  *   conversationId?: unknown,
  *   pageContext?: unknown,
@@ -65,12 +66,17 @@ export const MAX_ACOES_SUGERIDAS = 3;
  * }} params
  */
 export async function processarMensagem({
-  organizacaoId, unidadeId, acesso, usuario, mensagem, conversationId, pageContext,
+  organizacaoId, unidadeId, acesso, usuario, perfil = null, mensagem, conversationId, pageContext,
   provider = providerPadrao,
   executarFerramentaFn = executarFerramenta,
   conversas = conversasPadrao,
   uso = usoPadrao,
 }) {
+  // ISOLAMENTO da conversa (Fase D) = PERFIL. Sem isto, dois perfis da MESMA
+  // conta compartilhada leriam as conversas um do outro. Fallback para
+  // `usuario.id` quando não há perfil resolvido (impersonação -> o próprio
+  // superadmin; assim superadmins também ficam isolados entre si).
+  const perfilId = perfil?.id ?? usuario?.id ?? null;
   const textoMensagem = v.texto(mensagem, "Mensagem", { min: 1, max: TAMANHO_MAX_MENSAGEM });
   const conversaIdInformado = v.uuidOpcional(conversationId, "conversationId");
   // PAGE CONTEXT: puramente informativo pro prompt (ver agente.pageContext.js)
@@ -100,14 +106,16 @@ export async function processarMensagem({
     // conversa já apagada) é tratada exatamente como "não existe": cria uma
     // conversa nova, sem revelar ao cliente a diferença entre os dois casos.
     const existente = await conversas.buscarConversa({
-      conversaId: conversaIdInformado, usuarioId: usuario?.id ?? null, organizacaoId, unidadeId,
+      conversaId: conversaIdInformado, perfilId, contaId: usuario?.id ?? null, organizacaoId, unidadeId,
     });
-    conversaId = existente?.id ?? await conversas.criarConversa({ usuarioId: usuario?.id ?? null, organizacaoId, unidadeId });
+    conversaId = existente?.id ?? await conversas.criarConversa({ perfilId, contaId: usuario?.id ?? null, organizacaoId, unidadeId });
 
     const historico = await conversas.buscarMensagens(conversaId, conversas.HISTORICO_MAX_MENSAGENS);
     mensagensDeContexto = historico.length;
 
-    const system = construirSystemPrompt({ usuario, acesso, pageContext: contextoPagina });
+    // Fase I — o Agente fala com a PESSOA (perfil), não com a credencial.
+    const identidade = { ...usuario, nome: perfil?.nome ?? usuario?.nome ?? null };
+    const system = construirSystemPrompt({ usuario: identidade, acesso, pageContext: contextoPagina });
     const messages = [
       ...historico.map((m) => ({ role: m.papel, content: m.conteudo })),
       { role: "user", content: textoMensagem },
@@ -192,6 +200,8 @@ export async function processarMensagem({
     await auditar({
       atorId: usuario?.id ?? null,
       atorEmail: usuario?.email ?? null,
+      perfilId,
+      perfilNome: perfil?.nome ?? null, // Fase I
       atorTipo: "usuario",
       acao: ACOES.AGENTE_MENSAGEM_ENVIADA,
       entidade: "agente_mensagem",
@@ -215,11 +225,12 @@ export async function processarMensagem({
  * Histórico de uma conversa para reidratar a tela (ex.: após F5). Mesma
  * validação de tenant de `processarMensagem` — um conversationId de outro
  * usuário/organização/unidade nunca é encontrado.
- * @param {{organizacaoId: string, unidadeId: string|null, usuario: {id?: string}, conversationId: unknown, conversas?: typeof conversasPadrao}} params
+ * @param {{organizacaoId: string, unidadeId: string|null, usuario: {id?: string}, perfil?: {id: string}|null, conversationId: unknown, conversas?: typeof conversasPadrao}} params
  */
-export async function obterHistoricoConversa({ organizacaoId, unidadeId, usuario, conversationId, conversas = conversasPadrao }) {
+export async function obterHistoricoConversa({ organizacaoId, unidadeId, usuario, perfil = null, conversationId, conversas = conversasPadrao }) {
   const conversaId = v.uuid(conversationId, "conversationId");
-  const existente = await conversas.buscarConversa({ conversaId, usuarioId: usuario?.id ?? null, organizacaoId, unidadeId });
+  const perfilId = perfil?.id ?? usuario?.id ?? null; // mesma regra de processarMensagem
+  const existente = await conversas.buscarConversa({ conversaId, perfilId, contaId: usuario?.id ?? null, organizacaoId, unidadeId });
   if (!existente) throw ApiError.notFound("Conversa não encontrada.");
 
   const mensagens = await conversas.buscarMensagens(existente.id);

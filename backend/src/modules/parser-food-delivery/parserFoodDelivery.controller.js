@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
+import { identidadeOperacional } from "../../shared/identidade.js";
 import * as service from "./parserFoodDelivery.service.js";
 
 const tenant = (req) => ({ organizacaoId: req.tenant.organizacaoId, unidadeId: req.tenant.unidadeId });
@@ -38,7 +39,7 @@ export const conciliarPreview = asyncHandler(async (req, res) => {
 export const conciliarConfirmar = asyncHandler(async (req, res) => {
   const body = req.body ?? {};
   const data = await service.confirmarImportacao({
-    ...tenant(req), usuario: req.user, arquivo: body.arquivo, codigosSemTaxa: body.codigosSemTaxa,
+    ...tenant(req), usuario: identidadeOperacional(req), arquivo: body.arquivo, codigosSemTaxa: body.codigosSemTaxa,
     periodoInicioManual: body.periodoInicio, periodoFimManual: body.periodoFim,
   });
   res.status(201).json({ data });
@@ -46,7 +47,7 @@ export const conciliarConfirmar = asyncHandler(async (req, res) => {
 
 export const editarCodigos = asyncHandler(async (req, res) => {
   const data = await service.editarCodigosSemTaxa({
-    ...tenant(req), importacaoId: req.params.id, novosCodigos: req.body?.codigosSemTaxa, usuario: req.user,
+    ...tenant(req), importacaoId: req.params.id, novosCodigos: req.body?.codigosSemTaxa, usuario: identidadeOperacional(req),
   });
   res.json({ data });
 });
@@ -56,14 +57,14 @@ export const alterarClassificacao = asyncHandler(async (req, res) => {
   const body = req.body ?? {};
   const data = await service.alterarClassificacaoCancelamento({
     ...tenant(req), importacaoId: req.params.id, pedidoId: req.params.pedidoId,
-    classificacaoFinal: body.classificacaoFinal, motivo: body.motivo, usuario: req.user,
+    classificacaoFinal: body.classificacaoFinal, motivo: body.motivo, usuario: identidadeOperacional(req),
   });
   res.json({ data });
 });
 
 export const excluirImportacao = asyncHandler(async (req, res) => {
   const data = await service.excluirImportacao({
-    ...tenant(req), importacaoId: req.params.id, motivo: req.body?.motivo, usuario: req.user,
+    ...tenant(req), importacaoId: req.params.id, motivo: req.body?.motivo, usuario: identidadeOperacional(req),
   });
   res.json({ data });
 });

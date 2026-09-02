@@ -6,6 +6,7 @@ import { registrarResetDeContexto } from "./contextoEscopo.js";
  * @typedef {object} Sessao
  * @property {{id: string, nome: string, email: string, superadmin: boolean}|null} usuario
  * @property {boolean} superadmin
+ * @property {boolean} painelAdministrativo   pode entrar no ambiente Painel Administrativo
  * @property {Array<object>} acessos           empresas/unidades disponíveis
  * @property {Array<{id: string, nome: string, cidade: string|null}>} unidadesDaEmpresa  unidades da empresa do contexto ATUAL, escolhíveis no seletor global (ver sessao.js#listarUnidadesContexto)
  * @property {{id: string, nome: string, logoUrl: string|null, status: string}|null} empresa
@@ -18,13 +19,24 @@ import { registrarResetDeContexto } from "./contextoEscopo.js";
  */
 
 export const state = {
-  // Sessão e contexto. O `usuario` é a identidade (login); `empresa`/`unidade`
-  // são o contexto escolhido depois. Antes, `usuario` era um e-mail solto e
-  // `unidade` era a string fixa "Matriz" — as duas coisas viraram estado real.
+  // Sessão e contexto. O `usuario` é a CONTA / credencial (login, GET /me);
+  // `perfil` é a PESSOA operacional do contexto atual (Fase I — null enquanto
+  // não há contexto ou em impersonação); `empresa`/`unidade` são o contexto
+  // escolhido depois. Antes, `usuario` era um e-mail solto e `unidade` era a
+  // string fixa "Matriz" — as duas coisas viraram estado real.
   /** @type {Sessao} */
   sessao: {
-    usuario: null,
+    usuario: null,   // a CONTA (credencial compartilhada)
+    perfil: null,    // a PESSOA operacional deste contexto (Fase I)
+    // Fase F — só durante o fluxo de seleção. NUNCA persistidos.
+    perfisDisponiveis: [],       // perfis ativos da conta (GET /sessao/perfis)
+    profileSelectionToken: null, // prova de PIN, em memória, apagada ao criar o Context Token
     superadmin: false,
+    // Pode ENTRAR no ambiente Painel Administrativo (monitoramento gerencial
+    // cross-tenant). Vem de GET /sessao/acessos — associação explícita OU
+    // SuperAdmin por bypass. Só decide se o botão de entrada aparece; a
+    // autorização real é sempre do backend (/administrativo/ping).
+    painelAdministrativo: false,
     acessos: [],
     unidadesDaEmpresa: [],
     empresa: null,

@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
+import { identidadeOperacional } from "../../shared/identidade.js";
 import * as service from "./bonificacaoMensal.service.js";
 
 const tenant = (req) => ({ organizacaoId: req.tenant.organizacaoId, unidadeId: req.tenant.unidadeId });
@@ -14,12 +15,12 @@ export const lancamentoPorData = asyncHandler(async (req, res) => {
 });
 
 export const excluirLancamento = asyncHandler(async (req, res) => {
-  const data = await service.excluirLancamento({ ...tenant(req), usuario: req.user, data: req.params.data, motivo: req.body?.motivo });
+  const data = await service.excluirLancamento({ ...tenant(req), usuario: identidadeOperacional(req), data: req.params.data, motivo: req.body?.motivo });
   res.json({ data });
 });
 
 export const salvarLancamento = asyncHandler(async (req, res) => {
-  const data = await service.upsertLancamentoManual({ ...tenant(req), usuario: req.user, dados: req.body ?? {} });
+  const data = await service.upsertLancamentoManual({ ...tenant(req), usuario: identidadeOperacional(req), dados: req.body ?? {} });
   res.status(201).json({ data });
 });
 
@@ -31,7 +32,7 @@ export const metas = asyncHandler(async (req, res) => {
 export const salvarMeta = asyncHandler(async (req, res) => {
   // `indicador` vem SEMPRE da rota, nunca do corpo — evita que um campo
   // `indicador` divergente no body altere silenciosamente qual meta é salva.
-  const data = await service.salvarMeta({ ...tenant(req), usuario: req.user, ...(req.body ?? {}), indicador: req.params.indicador });
+  const data = await service.salvarMeta({ ...tenant(req), usuario: identidadeOperacional(req), ...(req.body ?? {}), indicador: req.params.indicador });
   res.status(201).json({ data });
 });
 
@@ -49,14 +50,14 @@ export const historicoMensalIndicador = asyncHandler(async (req, res) => {
 });
 
 export const salvarValorDiaIndicador = asyncHandler(async (req, res) => {
-  const data = await service.salvarValorDiaIndicador({ ...tenant(req), usuario: req.user, ...(req.body ?? {}), indicador: req.params.indicador });
+  const data = await service.salvarValorDiaIndicador({ ...tenant(req), usuario: identidadeOperacional(req), ...(req.body ?? {}), indicador: req.params.indicador });
   res.status(201).json({ data });
 });
 
 // REV (migration 052): 1 valor por unidade+mês, nunca por dia. O valor de
 // LEITURA já vem embutido em `mes.revMensal`; esta rota é só a de ESCRITA.
 export const salvarRevMensal = asyncHandler(async (req, res) => {
-  const data = await service.salvarRevMensal({ ...tenant(req), usuario: req.user, ...(req.body ?? {}) });
+  const data = await service.salvarRevMensal({ ...tenant(req), usuario: identidadeOperacional(req), ...(req.body ?? {}) });
   res.status(201).json({ data });
 });
 
@@ -77,11 +78,11 @@ export const arquivoImportacao = asyncHandler(async (req, res) => {
 
 // prévia (dry-run) da importação dos 2 PDFs da Visio
 export const importarPreview = asyncHandler(async (req, res) => {
-  const data = await service.processarImportacaoVisio({ ...tenant(req), usuario: req.user, payload: req.body ?? {}, confirmar: false });
+  const data = await service.processarImportacaoVisio({ ...tenant(req), usuario: identidadeOperacional(req), payload: req.body ?? {}, confirmar: false });
   res.json({ data });
 });
 // confirma e persiste
 export const importarConfirmar = asyncHandler(async (req, res) => {
-  const data = await service.processarImportacaoVisio({ ...tenant(req), usuario: req.user, payload: req.body ?? {}, confirmar: true });
+  const data = await service.processarImportacaoVisio({ ...tenant(req), usuario: identidadeOperacional(req), payload: req.body ?? {}, confirmar: true });
   res.status(201).json({ data });
 });

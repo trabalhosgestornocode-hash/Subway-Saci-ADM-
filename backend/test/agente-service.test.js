@@ -52,26 +52,27 @@ function providerDeRespostas(respostas) {
  * de isolamento (usuario+organizacao+unidade juntos) da versão real em SQL.
  */
 function conversasFake({ historicoMax = 12 } = {}) {
-  const conversas = new Map(); // id -> {usuarioId, organizacaoId, unidadeId}
+  const conversas = new Map(); // id -> {perfilId, organizacaoId, unidadeId}
   const mensagens = new Map(); // id -> [{papel, conteudo, toolsUtilizadas}]
   let seq = 0;
   return {
     HISTORICO_MAX_MENSAGENS: historicoMax,
     _conversas: conversas,
     _mensagens: mensagens,
-    async buscarConversa({ conversaId, usuarioId, organizacaoId, unidadeId }) {
+    // Fase D: isolamento por PERFIL (era usuario_id/conta).
+    async buscarConversa({ conversaId, perfilId, organizacaoId, unidadeId }) {
       if (!conversaId) return null;
       const c = conversas.get(conversaId);
       if (!c) return null;
-      if (c.usuarioId !== usuarioId || c.organizacaoId !== organizacaoId || c.unidadeId !== (unidadeId ?? null)) return null;
+      if (c.perfilId !== (perfilId ?? null) || c.organizacaoId !== organizacaoId || c.unidadeId !== (unidadeId ?? null)) return null;
       return { id: conversaId };
     },
-    async criarConversa({ usuarioId, organizacaoId, unidadeId }) {
+    async criarConversa({ perfilId, organizacaoId, unidadeId }) {
       // Formato UUID de verdade (não "conv-1") — processarMensagem/
       // obterHistoricoConversa validam o formato via shared/validar.js#uuid,
       // igual fariam com um id real vindo do Supabase.
       const id = `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
-      conversas.set(id, { usuarioId, organizacaoId, unidadeId: unidadeId ?? null });
+      conversas.set(id, { perfilId: perfilId ?? null, organizacaoId, unidadeId: unidadeId ?? null });
       mensagens.set(id, []);
       return id;
     },
@@ -495,7 +496,7 @@ describe("processarMensagem — contexto conversacional (Fase 1.5)", () => {
   test("histórico respeita o limite configurado (HISTORICO_MAX_MENSAGENS)", async () => {
     const conversas = conversasFake({ historicoMax: 2 }); // só a última pergunta+resposta
     // Semeia 3 turnos completos direto no fake (6 mensagens).
-    const conversaId = await conversas.criarConversa({ usuarioId: USUARIO.id, organizacaoId: ORG_ID, unidadeId: UNIDADE_ID });
+    const conversaId = await conversas.criarConversa({ perfilId: USUARIO.id, organizacaoId: ORG_ID, unidadeId: UNIDADE_ID });
     for (let i = 1; i <= 3; i++) {
       await conversas.salvarMensagem({ conversaId, papel: "user", conteudo: `pergunta ${i}` });
       await conversas.salvarMensagem({ conversaId, papel: "assistant", conteudo: `resposta ${i}` });

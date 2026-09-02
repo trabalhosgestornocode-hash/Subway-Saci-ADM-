@@ -618,8 +618,13 @@ export async function entrarComoEmpresa(req, idBruto) {
   const modulos = await modulosDaEmpresa(id);
   const { ip, userAgent } = origemDe(req);
 
+  // Impersonação (Fase D): sessão SEM perfil operacional — o superadmin age
+  // como ele mesmo num contexto de cliente. `perfil_id`/`pid` = null; a linha
+  // é atestada pelo `impersonado_por`. Model Y: NÃO revoga sessões irmãs (um
+  // superadmin pode dar suporte a 2 empresas em 2 abas ao mesmo tempo).
   const sessao = await criarSessao({
-    usuarioId: req.user.id,
+    contaId: req.user.id,
+    perfilId: null,
     organizacaoId: id,
     unidadeId: null,
     papel,
@@ -631,7 +636,7 @@ export async function entrarComoEmpresa(req, idBruto) {
   });
 
   await auditar({
-    atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin",
+    atorId: req.user.id, atorEmail: req.user.email, atorTipo: "superadmin", perfilId: null,
     acao: ACOES.IMPERSONAR_INICIO, entidade: "organizacao", entidadeId: id, organizacaoId: id,
     impersonadoPor: req.user.id,
     detalhes: { empresa: empresa.nome, status: empresa.status, sessionId: sessao.id },

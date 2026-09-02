@@ -27,19 +27,31 @@
 import crypto from "node:crypto";
 import { config } from "../config/env.js";
 
-/** Versão do formato do payload. Muda se o conteúdo do token mudar. */
-const VERSAO = 1;
+/**
+ * Versão do formato do payload. Muda se o conteúdo do token mudar.
+ *
+ * v1 -> v2 (Fase D do multi-perfil): payload ganha `pid` (perfil operacional).
+ * Tokens v1 são REJEITADOS por `verificarContextToken` ("desatualizado" -> 409)
+ * — a migration 060 revoga todas as sessões vivas, então não há v1 legítimo
+ * circulando depois dela. Não há aceitação simultânea de v1 e v2.
+ */
+const VERSAO = 2;
 
 /** Validade padrão do token, em segundos (8 h — uma jornada de trabalho). */
 export const VALIDADE_PADRAO_S = 8 * 60 * 60;
 
 /**
  * @typedef {object} ContextTokenPayload
- * @property {number} v    versão do formato
- * @property {string} sub  auth.users.id do usuário
- * @property {string} sid  sessoes_contexto.id — a chave para revogação
+ * @property {number} v    versão do formato (2)
+ * @property {string} sub  auth.users.id — a CONTA autenticada
+ * @property {string} sid  sessoes_contexto.id — a chave para revogação e a AUTORIDADE FINAL
  * @property {string} cid  organizacao_id (company_id)
  * @property {string|null} uid unidade_id, quando o acesso é de uma unidade
+ * @property {string|null} pid perfil_id — a PESSOA operacional da sessão.
+ *   `null` SOMENTE em impersonação (a linha de `sessoes_contexto` tem
+ *   `impersonado_por` setado). Um token normal com `pid` nulo é REJEITADO —
+ *   mas essa checagem é feita em `requireContexto` CONTRA A LINHA, não aqui
+ *   (structural), porque `null` é estruturalmente legítimo para impersonação.
  * @property {string} role papel_acesso na empresa
  * @property {string[]} perms permissões efetivas
  * @property {string|null} imp superadmin que está "entrando como empresa"
@@ -54,12 +66,13 @@ function assinar(corpo) {
 }
 
 /**
- * Emite um Context Token assinado.
+ * Emite um Context Token assinado (v2).
  * @param {object} dados
- * @param {string} dados.usuarioId
+ * @param {string} dados.usuarioId  auth.users.id — a CONTA
  * @param {string} dados.sessionId
  * @param {string} dados.organizacaoId
  * @param {string|null} [dados.unidadeId]
+ * @param {string|null} [dados.perfilId]  perfil operacional; `null` só em impersonação
  * @param {string} dados.papel
  * @param {string[]} [dados.permissoes]
  * @param {string|null} [dados.impersonadoPor]
@@ -67,7 +80,7 @@ function assinar(corpo) {
  * @returns {{ token: string, expiraEm: Date }}
  */
 export function emitirContextToken({
-  usuarioId, sessionId, organizacaoId, unidadeId = null,
+  usuarioId, sessionId, organizacaoId, unidadeId = null, perfilId = null,
   papel, permissoes = [], impersonadoPor = null, validadeS = VALIDADE_PADRAO_S,
 }) {
   const agora = Math.floor(Date.now() / 1000);
@@ -78,6 +91,7 @@ export function emitirContextToken({
     sid: sessionId,
     cid: organizacaoId,
     uid: unidadeId,
+    pid: perfilId,
     role: papel,
     perms: permissoes,
     imp: impersonadoPor,
@@ -133,9 +147,51 @@ export function verificarContextToken(token) {
   if (!payload.sub || !payload.sid || !payload.cid) {
     return { ok: false, motivo: "Token de contexto incompleto." };
   }
+  // `pid` NÃO entra no check estrutural: `null` é legítimo para impersonação.
+  // A validação forte de `pid` (== `sessoes_contexto.perfil_id`, e `null` só se
+  // `impersonado_por` setado) é feita em `requireContexto`, CONTRA A LINHA.
   if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
     return { ok: false, motivo: "Contexto expirado. Selecione a unidade novamente." };
   }
 
   return { ok: true, payload };
+}
+
+/**
+ * Regra do `pid` (Fase D) — DECISÃO PURA, testável sem banco. Chamada por
+ * `requireContexto` depois de localizar a linha de `sessoes_contexto` pelo `sid`.
+ *
+ * Três verificações, nesta ordem:
+ *   1. CRUZAMENTO (igual a `cid`/`uid`): `token.pid` tem de ser EXATAMENTE
+ *      `sessoes_contexto.perfil_id` — incluindo `null == null`. Um token com
+ *      `pid` forjado (ex.: outro perfil da mesma conta) NÃO passa: o `sid`
+ *      (a linha) é a autoridade final.
+ *   2. INVARIANTE: `perfil_id` NULL só é legítimo em sessão de IMPERSONAÇÃO
+ *      (`impersonado_por` setado). Token normal com `pid` nulo -> rejeitado.
+ *   3. PERFIL ATIVO: sessão normal exige que o perfil AINDA esteja ativo
+ *      (não confia em snapshot eterno — o perfil pode ter sido desativado
+ *      depois da emissão do token).
+ *
+ * @param {{ tokenPid: string|null|undefined, sessaoPerfilId: string|null, impersonadoPor: string|null, perfilAtivo: boolean|null }} p
+ *   `perfilAtivo`: `perfis_operacionais.ativo` da linha (ou `null` quando a
+ *   sessão é de impersonação / o perfil não foi encontrado).
+ * @returns {{ ok: true, modo: 'normal'|'impersonacao' } | { ok: false, motivo: string }}
+ */
+export function validarPidContraSessao({ tokenPid, sessaoPerfilId, impersonadoPor, perfilAtivo }) {
+  const tPid = tokenPid ?? null;
+  const sPid = sessaoPerfilId ?? null;
+
+  if (tPid !== sPid) {
+    return { ok: false, motivo: "Contexto divergente. Selecione a unidade novamente." };
+  }
+  if (sPid === null) {
+    if (!impersonadoPor) {
+      return { ok: false, motivo: "Contexto inválido. Selecione a unidade novamente." };
+    }
+    return { ok: true, modo: "impersonacao" };
+  }
+  if (perfilAtivo !== true) {
+    return { ok: false, motivo: "Perfil desativado. Selecione a unidade novamente." };
+  }
+  return { ok: true, modo: "normal" };
 }

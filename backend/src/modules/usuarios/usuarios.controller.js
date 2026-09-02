@@ -22,7 +22,9 @@ export const atualizar = asyncHandler(async (req, res) => {
   const { papel, ativo } = req.body ?? {};
   const data = await service.atualizarUsuario({
     organizacaoId: req.tenant.organizacaoId, id: req.params.id,
-    papel, ativo, solicitanteId: req.user.id,
+    papel, ativo,
+    solicitanteId: req.user.id,             // conta
+    solicitantePerfilId: req.perfil?.id,    // PESSOA que agiu (Fase E — guarda de auto-rebaixamento)
   });
   res.json({ data });
 });
@@ -31,7 +33,9 @@ export const atualizar = asyncHandler(async (req, res) => {
 // exclui contas.
 export const excluir = asyncHandler(async (req, res) => {
   const data = await service.excluirUsuario({
-    organizacaoId: req.tenant.organizacaoId, id: req.params.id, solicitanteId: req.user.id,
+    organizacaoId: req.tenant.organizacaoId, id: req.params.id,
+    solicitanteId: req.user.id,
+    solicitantePerfilId: req.perfil?.id,
   });
   res.json({ data });
 });

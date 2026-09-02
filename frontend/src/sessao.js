@@ -42,6 +42,9 @@ export function limparContexto() {
   state.sessao.modulos = [];
   state.sessao.impersonando = false;
   state.sessao.unidadesDaEmpresa = [];
+  state.sessao.perfil = null; // Fase I — a PESSOA do contexto (a CONTA fica em state.sessao.usuario)
+  // Fase F — a prova de PIN nunca sobrevive à queda do contexto.
+  state.sessao.profileSelectionToken = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +91,13 @@ async function chamar(url, opcoes = {}) {
     }
     throw new Error(corpo.error || "Contexto encerrado.");
   }
-  if (!r.ok) throw new Error(corpo.error || `${r.status} ${r.statusText}`);
+  if (!r.ok) {
+    const erro = new Error(corpo.error || `${r.status} ${r.statusText}`);
+    erro.status = r.status;
+    erro.codigo = corpo.codigo || corpo.details?.codigo || null; // Fase F/H — ex.: CONFIGURACAO_PIN_INCOMPLETA
+    erro.details = corpo.details ?? null;
+    throw erro;
+  }
   return corpo;
 }
 
@@ -166,20 +175,71 @@ export async function logout() {
   limparContexto();
   try {
     const sb = await getSupabase();
-    await sb.auth.signOut();
+    // `scope: "local"` — encerra SÓ a credencial DESTE dispositivo. O default
+    // do supabase-js é `"global"`, que revoga os refresh tokens da conta em
+    // TODOS os dispositivos — inaceitável para a conta compartilhada
+    // multi-perfil: Fulana 1 clicando "Sair" derrubaria a Fulana 2 no outro
+    // computador (ver docs/multi-perfil-fase-a1-revisao.md §1). "Sair de todos
+    // os dispositivos" é uma ação SEPARADA (não implementada nesta fase).
+    await sb.auth.signOut({ scope: "local" });
   } catch { /* ignora */ }
   state.sessao.usuario = null;
+  state.sessao.perfil = null;
+  state.sessao.perfisDisponiveis = [];
+  state.sessao.profileSelectionToken = null;
+}
+
+// ---------------------------------------------------------------------------
+// Perfil operacional (Fase F) — a PESSOA, entre a CONTA e o CONTEXTO
+// ---------------------------------------------------------------------------
+
+/** Perfis operacionais ATIVOS da conta autenticada (nunca o hash do PIN). */
+export async function carregarPerfis() {
+  const { data } = await get("/api/v1/sessao/perfis");
+  state.sessao.perfisDisponiveis = Array.isArray(data) ? data : [];
+  return state.sessao.perfisDisponiveis;
+}
+
+/**
+ * Valida (ou dispensa) o PIN de um perfil e guarda a PROVA (Profile Selection
+ * Token) em memória para `selecionarContexto` usar. `pin` só transita aqui —
+ * nunca é gravado em lugar nenhum. A resposta pode pedir `precisaPin`.
+ * @param {{ perfilId: string, pin?: string }} p
+ */
+export async function selecionarPerfil({ perfilId, pin }) {
+  const { data } = await post("/api/v1/sessao/selecionar-perfil", { perfilId, ...(pin ? { pin } : {}) });
+  if (data.profileSelectionToken) {
+    state.sessao.profileSelectionToken = data.profileSelectionToken; // memória, nunca localStorage
+    state.sessao.perfil = data.perfil ?? null;
+  }
+  return data; // { perfil, precisaPin, profileSelectionToken?, proximoPasso }
+}
+
+/** Descarta a prova de PIN e o perfil pendente (voltar / trocar de perfil). */
+export function limparPerfilPendente() {
+  state.sessao.profileSelectionToken = null;
+  state.sessao.perfil = null;
 }
 
 // ---------------------------------------------------------------------------
 // Contexto de empresa
 // ---------------------------------------------------------------------------
 
-/** Empresas/unidades que o usuário pode acessar. */
-export async function listarAcessos() {
-  const { data } = await get("/api/v1/sessao/acessos");
+/**
+ * Empresas/unidades que o usuário pode acessar. Com `perfilId` (Fase F) só os
+ * acessos DAQUELE perfil; sem ele, o caminho legado (acessos da conta).
+ * @param {string|null} [perfilId]
+ */
+export async function listarAcessos(perfilId = null) {
+  const rota = perfilId ? `/api/v1/sessao/acessos?perfilId=${encodeURIComponent(perfilId)}` : "/api/v1/sessao/acessos";
+  const { data } = await get(rota);
   state.sessao.acessos = data.opcoes ?? [];
   state.sessao.superadmin = !!data.superadmin;
+  // "Pode entrar no ambiente Painel Administrativo?" — vem PRONTO do backend
+  // (associação explícita OU SuperAdmin por bypass). Nunca é fonte de
+  // autorização: só decide se o botão de entrada aparece; o backend revalida
+  // em /administrativo/ping ao abrir.
+  state.sessao.painelAdministrativo = !!data.painelAdministrativo;
   return data;
 }
 
@@ -188,8 +248,16 @@ export async function listarAcessos() {
  * @param {{organizacaoId: string, unidadeId?: string|null, troca?: boolean}} escolha
  */
 export async function selecionarContexto({ organizacaoId, unidadeId = null, troca = false }) {
-  const { data } = await post("/api/v1/sessao/selecionar", { organizacaoId, unidadeId, troca });
+  // Fase F/H — para conta multi-perfil o backend EXIGE a prova de PIN. Conta de
+  // 1 perfil resolve o perfil sozinho e ignora o campo.
+  const prova = state.sessao.profileSelectionToken || undefined;
+  const { data } = await post("/api/v1/sessao/selecionar", {
+    organizacaoId, unidadeId, troca,
+    ...(prova ? { profileSelectionToken: prova } : {}),
+  });
   aplicarContexto(data);
+  // A prova é de uso único — consumida na criação do Context Token.
+  state.sessao.profileSelectionToken = null;
   return data;
 }
 
@@ -206,6 +274,9 @@ export function aplicarContexto(data) {
   state.sessao.permissoes = data.permissoes ?? [];
   state.sessao.modulos = data.modulos ?? [];
   state.sessao.impersonando = !!data.impersonando;
+  // Fase I — a PESSOA operacional deste contexto (null em impersonação).
+  // `state.sessao.usuario` continua sendo a CONTA (/me). Sem UI ainda (Fase F).
+  state.sessao.perfil = data.perfil ?? null;
 }
 
 /**
@@ -223,6 +294,7 @@ export async function restaurarContexto() {
     state.sessao.permissoes = data.permissoes ?? [];
     state.sessao.modulos = data.modulos ?? [];
     state.sessao.impersonando = !!data.impersonando;
+    state.sessao.perfil = data.perfil ?? null; // Fase I — a PESSOA (null em impersonação)
     return true;
   } catch {
     limparContexto();

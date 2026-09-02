@@ -14,7 +14,7 @@
 // vazia sem contexto.
 
 import { state, tabelaAtiva, emComparacao } from "./state.js";
-import { MENU, SECOES, INTEGRACOES } from "./config.js";
+import { MENU, SECOES, SECAO_MODULO, INTEGRACOES_LOGOS } from "./config.js";
 import { el, els, toast } from "./utils.js";
 import { carregarCmv, obterTabelasComerciaisUnidade, obterMetasCmvUnidade } from "./api.js";
 import { definirLimitesCmv } from "./cmvConfig.js";
@@ -24,7 +24,12 @@ import {
   restaurarContexto, encerrarContexto, aplicarContexto,
   precisaDefinirSenha, definirNovaSenha, temModulo,
   listarUnidadesContexto, trocarUnidadeDoContexto,
+  carregarPerfis, selecionarPerfil, limparPerfilPendente,
 } from "./sessao.js";
+import {
+  montarSelecaoPerfil, abrirPinDoPerfil, setErroPin, setPinCarregando,
+  fecharPinDoPerfil, mostrarSemPerfil,
+} from "./selecaoPerfil.js";
 import { irPara, renderRotaAtual, primeiraRotaAcessivel } from "./router.js";
 import { resetarEscopoDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
 import { acoes } from "./actions.js";
@@ -35,6 +40,8 @@ import { abrirParserCancelamentos, abrirParserPedidoPorNumero, aguardarCarregame
 import { registrarResolverAcao } from "./agenteAcoesResolvedores.js";
 import { aplicarTemaSalvo } from "./configuracoes.js";
 import { abrirPainelAdmin, fecharPainelAdmin } from "./admin.js";
+import { abrirPainelAdministrativo } from "./painelAdm.js";
+import { rotaPosAcessos, botaoPainelAdmVisivel } from "./encaminhamento.js";
 import { initTooltips } from "./tooltip.js";
 import { icon } from "./icons.js";
 import { montarPainelGlobal, alternarPainel } from "./agentePainel.js";
@@ -72,13 +79,17 @@ function registrarAcoesDoAgente() {
 // ---------- sidebar ----------
 function montarMenu() {
   el("#menu").innerHTML = SECOES.map((secao) => {
+    // Gate-pai da seção: sem o módulo dela (ex.: `inteligencia`), a seção
+    // inteira some — título e todos os itens — sem deixar divisor órfão.
+    const gateSecao = SECAO_MODULO[secao];
+    if (gateSecao && !temModulo(gateSecao)) return "";
     // Um item sem `modulo` é sempre visível; com `modulo`, só se a empresa do
     // contexto atual contratou (ver sessao.js#temModulo — bloqueio real está
     // na API, isto aqui é só não oferecer o que já sabemos que vai dar 403).
     const itens = MENU.filter((m) => m.secao === secao && (!m.modulo || temModulo(m.modulo)));
     if (!itens.length) return "";
     return `<li class="menu-secao">${secao}</li>` + itens.map((m) => {
-      const logo = (m.integ && INTEGRACOES[m.integ]?.logo) || m.logo;
+      const logo = (m.integ && INTEGRACOES_LOGOS[m.integ]) || m.logo;
       const icone = logo ? `<img src="${logo}" alt="" class="m-logo" />` : icon(m.icon, { size: 18 });
       return `
       <li data-rota="${m.id}">
@@ -89,6 +100,12 @@ function montarMenu() {
     }).join("");
   }).join("");
   els("#menu li[data-rota]").forEach((li) => li.addEventListener("click", () => irPara(li.dataset.rota)));
+
+  // Entradas do Agente Crescer FORA do menu (botão da topbar; o painel global e
+  // os botões "✦ Analisar" das telas são cobertos em agentePainel.js) — mesmo
+  // gate DUPLO do item "ia": seção `inteligencia` + módulo `agente_ia`.
+  const btnAgente = el("#btn-agente");
+  if (btnAgente) btnAgente.hidden = !(temModulo("inteligencia") && temModulo("agente_ia"));
 }
 
 // Relógio em tempo real (topbar)
@@ -207,7 +224,7 @@ async function carregar() {
 }
 
 // ---------- troca de telas ----------
-const TELAS = { login: "#login-screen", senha: "#senha-screen", selecao: "#selecao-screen", app: "#app", admin: "#admin" };
+const TELAS = { login: "#login-screen", senha: "#senha-screen", selecaoPerfil: "#selecao-perfil-screen", selecao: "#selecao-screen", app: "#app", admin: "#admin", painelAdm: "#painel-adm-screen" };
 
 /** Mostra uma tela e esconde as outras. Estado de tela é exclusivo por design. */
 function mostrarTela(qual) {
@@ -329,7 +346,10 @@ async function mostrarApp() {
   montarMenu();
   iniciarRelogio();
   popularTabelas();
-  montarPainelGlobal(); // idempotente — o Agente Crescer sobrevive a trocas de unidade/empresa, só reseta a conversa (ver agentePainel.js)
+  // Painel global do Agente Crescer só é montado com o gate DUPLO satisfeito
+  // (seção `inteligencia` + módulo `agente_ia`). Idempotente — sobrevive a
+  // trocas de unidade/empresa, só reseta a conversa (ver agentePainel.js).
+  if (temModulo("inteligencia") && temModulo("agente_ia")) montarPainelGlobal();
   irPara(primeiraRotaAcessivel());
   carregar();
 }
@@ -342,21 +362,29 @@ function mostrarSelecao(dados) {
   el("#sel-nome").textContent = nome;
   el("#sel-erro").hidden = true;
   el("#sel-admin").hidden = !dados.superadmin;
+  // Botão do 3º ambiente (Painel Administrativo) — visível só para acesso
+  // efetivo. Fica ANTES do early-return de "0 empresas": um usuário
+  // administrativo pode ter 0 vínculos e ainda assim precisa deste botão.
+  el("#sel-painel-adm").hidden = !botaoPainelAdmVisivel(dados);
 
   if (!dados.opcoes.length) {
-    // Depois da virada de acessos, este é o estado normal de uma conta nova:
-    // existe, autentica, e ainda não foi associada a nenhuma empresa. Dizer
-    // isso é melhor que mostrar uma lista vazia sem explicação.
+    // Conta sem NENHUM vínculo de empresa. Se tem o Painel Administrativo, isso
+    // é esperado (acesso global, não por empresa) — a mensagem muda e a tela
+    // NÃO é um beco sem saída: o botão acima leva ao ambiente dele.
     el("#sel-busca-wrap").hidden = true;
     el("#sel-recentes").hidden = true;
     el("#sel-contagem").hidden = true;
     el("#sel-lista").innerHTML = `
       <div class="sel-vazio">
-        <span class="sel-vazio-ic">🔒</span>
-        <h3>Nenhuma empresa vinculada à sua conta</h3>
-        <p>${dados.superadmin
-          ? "Como SuperAdmin, você administra a plataforma pelo painel — e pode associar acessos por lá."
-          : "Seu acesso precisa ser liberado pelo administrador da plataforma. Fale com o responsável para ser associado a uma empresa."}</p>
+        <span class="sel-vazio-ic">${dados.painelAdministrativo ? "📊" : "🔒"}</span>
+        <h3>${dados.painelAdministrativo
+          ? "Sua conta não está vinculada a nenhuma empresa"
+          : "Nenhuma empresa vinculada à sua conta"}</h3>
+        <p>${dados.painelAdministrativo
+          ? "Seu acesso é ao Painel Administrativo da Crescer — use o botão acima. Para acompanhar uma empresa específica pelo ambiente operacional, peça ao administrador da plataforma para associá-la à sua conta."
+          : dados.superadmin
+            ? "Como SuperAdmin, você administra a plataforma pelo painel — e pode associar acessos por lá."
+            : "Seu acesso precisa ser liberado pelo administrador da plataforma. Fale com o responsável para ser associado a uma empresa."}</p>
       </div>`;
     return;
   }
@@ -395,6 +423,15 @@ async function entrarNoContexto(opcao, botao) {
     registrarAcessoRecente(state.sessao.usuario?.id, opcao);
     mostrarApp();
   } catch (e) {
+    // Fase F/H — prova de PIN expirada / consumida / obrigatória: a seleção de
+    // empresa não tem como resolver isso. Volta para a resolução de perfil
+    // (que mostra a tela "Selecione seu usuário" de novo se a conta for multi).
+    if (/^PROVA_PERFIL_|^PERFIL_OBRIGATORIO/.test(e?.codigo || "") || e?.details?.perfilObrigatorio) {
+      limparPerfilPendente();
+      toast(e.message || "Informe o PIN do seu usuário novamente.");
+      try { await encaminhar(); } catch { mostrarLogin(); }
+      return;
+    }
     erroBox.textContent = e.message;
     erroBox.hidden = false;
     if (botao) { botao.disabled = false; botao.textContent = "Acessar"; }
@@ -459,15 +496,49 @@ async function encaminhar({ preferirAdmin = false } = {}) {
   }
 
   // Contexto ainda válido (recarregou a página) — volta direto para o trabalho.
+  // NUNCA pede perfil/PIN aqui: o Context Token já é a autoridade da sessão.
   if (!preferirAdmin && await restaurarContexto()) {
     mostrarApp();
     return;
   }
 
-  const dados = await listarAcessos();
+  // ---- Fase F: resolução de PERFIL, entre a CONTA e o CONTEXTO ----
+  // Pré-060 / erro em /sessao/perfis -> `perfis === null` -> fluxo LEGADO
+  // (idêntico ao de antes desta fase). Nenhuma conta atual tem 2+ perfis.
+  let perfis = null;
+  try {
+    perfis = await carregarPerfis();
+  } catch { perfis = null; }
 
-  // SuperAdmin sem vínculo nenhum é o caso esperado: o painel é a casa dele.
-  if (dados.superadmin && (preferirAdmin || !dados.opcoes.length)) {
+  if (perfis && perfis.length === 0) {
+    mostrarSelecaoDePerfil({ perfis: [], semPerfil: true });
+    return;
+  }
+  if (perfis && perfis.length >= 2) {
+    // 2+ perfis ativos -> tela "Selecione seu usuário" (a única que pede PIN).
+    mostrarSelecaoDePerfil({ perfis, preferirAdmin });
+    return;
+  }
+
+  // 1 perfil (ou legado): fluxo automático — sem tela extra, sem PIN.
+  const perfilUnicoId = perfis && perfis.length === 1 ? perfis[0].id : null;
+  await entrarComAcessosDoPerfil({ perfilId: perfilUnicoId, preferirAdmin });
+}
+
+/**
+ * Lista os acessos (do perfil ou legado) e decide o destino — o final do
+ * `encaminhar` a partir do momento em que já sabemos QUEM é a pessoa.
+ * @param {{ perfilId?: string|null, preferirAdmin?: boolean }} p
+ */
+async function entrarComAcessosDoPerfil({ perfilId = null, preferirAdmin = false } = {}) {
+  const dados = await listarAcessos(perfilId);
+
+  // Decisão de destino — pura e testável (ver encaminhamento.js#rotaPosAcessos):
+  // cobre a matriz de casos A–F (1 empresa, N empresas, 0 empresas, com/sem
+  // Painel Administrativo, com/sem SuperAdmin).
+  const rota = rotaPosAcessos(dados, { preferirAdmin });
+
+  if (rota.destino === "superadmin") {
     abrirPainelAdmin({
       mostrarTela,
       aoEntrarEmEmpresa: entrarPorImpersonacao,
@@ -477,13 +548,11 @@ async function encaminhar({ preferirAdmin = false } = {}) {
     return;
   }
 
-  // Um único acesso: entra direto, sem pedir para escolher entre uma opção.
-  const acessiveis = dados.opcoes.filter((o) => o.acessivel);
-  if (acessiveis.length === 1 && !dados.superadmin) {
+  if (rota.destino === "auto-tenant") {
     try {
       await selecionarContexto({
-        organizacaoId: acessiveis[0].organizacaoId,
-        unidadeId: acessiveis[0].unidadeId ?? null,
+        organizacaoId: rota.opcao.organizacaoId,
+        unidadeId: rota.opcao.unidadeId ?? null,
       });
       mostrarApp();
       return;
@@ -493,6 +562,79 @@ async function encaminhar({ preferirAdmin = false } = {}) {
   }
 
   mostrarSelecao(dados);
+}
+
+// ---------- tela: Selecione seu usuário (Fase F) ----------
+function contaLabel() {
+  return state.sessao.usuario?.email || state.sessao.usuario?.nome || "—";
+}
+
+/**
+ * Mostra a tela "Selecione seu usuário". Só chamada quando a conta tem 2+
+ * perfis ativos (ou 0, para o estado tratado).
+ * @param {{ perfis: Array, semPerfil?: boolean, preferirAdmin?: boolean }} p
+ */
+function mostrarSelecaoDePerfil({ perfis, semPerfil = false, preferirAdmin = false }) {
+  mostrarTela("selecaoPerfil");
+  limparPerfilPendente();
+  if (semPerfil) { mostrarSemPerfil(contaLabel()); return; }
+
+  const configIncompleta = perfis.some((p) => p.temPin === false);
+  montarSelecaoPerfil({
+    perfis,
+    contaLabel: contaLabel(),
+    configIncompleta,
+    onEscolher: (perfil) => iniciarPinDoPerfil(perfil, { preferirAdmin }),
+  });
+}
+
+/** Abre o painel de PIN de um perfil e liga o fluxo de validação. */
+function iniciarPinDoPerfil(perfil, { preferirAdmin = false } = {}) {
+  abrirPinDoPerfil({
+    perfil,
+    onVoltar: () => limparPerfilPendente(), // some com a prova/perfil pendente; a lista já reaparece
+    onConfirmar: async (pin) => {
+      setErroPin(null);
+      setPinCarregando(true);
+      try {
+        const r = await selecionarPerfil({ perfilId: perfil.id, pin });
+        if (r?.precisaPin || !r?.profileSelectionToken) {
+          setErroPin("PIN inválido.");
+          setPinCarregando(false);
+          return;
+        }
+        // PIN ok — a prova está em state.sessao.profileSelectionToken.
+        fecharPinDoPerfil();
+        await entrarComAcessosDoPerfil({ perfilId: perfil.id, preferirAdmin });
+      } catch (e) {
+        setPinCarregando(false);
+        const cod = e?.codigo;
+        if (cod === "CONFIGURACAO_PIN_INCOMPLETA") {
+          limparPerfilPendente();
+          fecharPinDoPerfil();
+          mostrarSelecaoDePerfil({ perfis: state.sessao.perfisDisponiveis, preferirAdmin });
+          el("#selp-aviso").textContent = "Esta conta precisa ter os PINs dos usuários configurados pelo administrador.";
+          el("#selp-aviso").hidden = false;
+          return;
+        }
+        if (cod === "PIN_TEMPORARIAMENTE_BLOQUEADO") {
+          setErroPin(e.message || "Muitas tentativas. Tente novamente mais tarde.");
+          return;
+        }
+        if (e?.status === 404 || e?.status === 403) {
+          // perfil sumiu/foi desativado no meio do fluxo -> recarrega a lista
+          setErroPin(e.message || "Este usuário não está mais disponível.");
+          try {
+            const novos = await carregarPerfis();
+            if (novos.length < 2) { await encaminhar({ preferirAdmin }); return; }
+            mostrarSelecaoDePerfil({ perfis: novos, preferirAdmin });
+          } catch { /* mantém o painel com o erro */ }
+          return;
+        }
+        setErroPin(e?.message || "PIN inválido.");
+      }
+    },
+  });
 }
 
 /** Recebe o contexto de impersonação vindo do painel e entra no shell tenant. */
@@ -505,6 +647,45 @@ function entrarPorImpersonacao(contexto) {
 async function sairDeTudo() {
   await logout();
   mostrarLogin();
+}
+
+// ---------- ambiente: Painel Administrativo (monitoramento gerencial) ----------
+/**
+ * Entrada no Painel Administrativo a partir da tela de seleção. O
+ * `abrirPainelAdministrativo` valida o acesso REAL em /administrativo/ping
+ * antes de trocar de shell — se o acesso foi revogado, cai em
+ * `aoAcessoRevogado`. Nenhum Context Token é criado; nenhuma empresa é
+ * selecionada.
+ */
+async function abrirAmbienteAdministrativo() {
+  await abrirPainelAdministrativo({
+    mostrarTela,
+    usuario: state.sessao.usuario,
+    aoTrocarAmbiente: voltarParaSelecao,
+    aoAcessoRevogado: (msg) => {
+      state.sessao.painelAdministrativo = false;
+      el("#sel-painel-adm").hidden = true;
+      toast(msg);
+      voltarParaSelecao();
+    },
+  });
+}
+
+/**
+ * "Trocar ambiente" — volta para a seleção SEM entrar automaticamente em
+ * nenhum contexto tenant salvo (por isso não passa por `encaminhar`, que
+ * restauraria o contexto). Login e acessos permanecem intactos.
+ */
+async function voltarParaSelecao() {
+  try {
+    const dados = await listarAcessos();
+    mostrarSelecao(dados);
+  } catch (e) {
+    // Sessão caiu de verdade -> login. Contexto/seleção nunca expulsam do sistema.
+    if (/sess/i.test(e.message)) { mostrarLogin(); return; }
+    toast("Não foi possível carregar seus ambientes: " + e.message);
+    mostrarLogin();
+  }
 }
 
 // ---------- menus de usuário ----------
@@ -556,6 +737,7 @@ function wireEventos() {
   el("#btn-logout").addEventListener("click", sairDeTudo);
   el("#adm-logout").addEventListener("click", sairDeTudo);
   el("#sel-sair").addEventListener("click", sairDeTudo);
+  el("#selp-sair")?.addEventListener("click", sairDeTudo);
   el("#senha-sair").addEventListener("click", sairDeTudo);
 
   // Definir senha (primeiro acesso): valida, envia, e segue o fluxo normal.
@@ -620,6 +802,7 @@ function wireEventos() {
   });
 
   el("#sel-admin").addEventListener("click", () => encaminhar({ preferirAdmin: true }));
+  el("#sel-painel-adm").addEventListener("click", abrirAmbienteAdministrativo);
 
   el("#adm-um-empresas").addEventListener("click", async () => {
     fecharMenusUsuario();

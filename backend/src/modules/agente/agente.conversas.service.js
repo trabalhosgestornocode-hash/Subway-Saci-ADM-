@@ -4,11 +4,17 @@
 // resumo semântico/memória entre empresas. É literalmente "as últimas N
 // mensagens desta conversa" (ver HISTORICO_MAX_MENSAGENS).
 //
-// ISOLAMENTO: `buscarConversa` NUNCA busca só pelo id — sempre usuario_id +
-// organizacao_id + unidade_id juntos (ver migration 048). Um conversationId
-// de outro tenant simplesmente não é encontrado; o chamador (agente.service.js)
-// trata "não encontrado" e "não pertence a este tenant" exatamente da mesma
-// forma (cria uma conversa nova), sem revelar a diferença ao cliente.
+// ISOLAMENTO: `buscarConversa` NUNCA busca só pelo id — sempre PERFIL +
+// organizacao_id + unidade_id juntos (Fase D — antes era usuario_id/conta, o
+// que vazaria conversas entre perfis da mesma conta compartilhada; ver
+// migration 048/060). Um conversationId de outro tenant/perfil simplesmente
+// não é encontrado; o chamador (agente.service.js) trata "não encontrado" e
+// "não pertence a este perfil" exatamente da mesma forma (cria uma conversa
+// nova), sem revelar a diferença ao cliente.
+//
+// `perfil_id` é da migration 060. Se ainda não rodou no ambiente (não deveria —
+// a Fase D exige 060), degrada para `usuario_id` (= a conta) — para uma conta
+// legada de 1 perfil o resultado é o mesmo (perfil_id foi backfillado = usuario_id).
 import { supabase } from "../../config/supabase.js";
 import { ApiError } from "../../shared/ApiError.js";
 
@@ -24,28 +30,39 @@ export const HISTORICO_MAX_MENSAGENS = Number(process.env.AGENTE_HISTORICO_MAX_M
 const HISTORICO_MAX_EXIBICAO = 100;
 
 /**
- * @param {{conversaId: string|null|undefined, usuarioId: string|null, organizacaoId: string, unidadeId: string|null}} params
+ * @param {{conversaId: string|null|undefined, perfilId: string|null, contaId?: string|null, organizacaoId: string, unidadeId: string|null}} params
  * @returns {Promise<{id: string}|null>}
  */
-export async function buscarConversa({ conversaId, usuarioId, organizacaoId, unidadeId }) {
+export async function buscarConversa({ conversaId, perfilId, contaId = null, organizacaoId, unidadeId }) {
   if (!conversaId) return null;
-  let query = supabase.from("agente_conversas").select("id")
-    .eq("id", conversaId).eq("organizacao_id", organizacaoId);
-  query = usuarioId ? query.eq("usuario_id", usuarioId) : query.is("usuario_id", null);
-  query = unidadeId ? query.eq("unidade_id", unidadeId) : query.is("unidade_id", null);
-  const { data, error } = await query.maybeSingle();
+
+  const montar = (coluna, valor) => {
+    let q = supabase.from("agente_conversas").select("id")
+      .eq("id", conversaId).eq("organizacao_id", organizacaoId);
+    q = valor ? q.eq(coluna, valor) : q.is(coluna, null);
+    q = unidadeId ? q.eq("unidade_id", unidadeId) : q.is("unidade_id", null);
+    return q.maybeSingle();
+  };
+
+  let { data, error } = await montar("perfil_id", perfilId);
+  if (error && RE_COLUNA_AUSENTE.test(error.message)) {
+    ({ data, error } = await montar("usuario_id", contaId)); // pré-060 / cache lag
+  }
   if (error) throw ApiError.internal(error.message);
   return data ?? null;
 }
 
 /**
- * @param {{usuarioId: string|null, organizacaoId: string, unidadeId: string|null}} params
+ * @param {{perfilId: string|null, contaId?: string|null, organizacaoId: string, unidadeId: string|null}} params
  * @returns {Promise<string>} id da conversa criada
  */
-export async function criarConversa({ usuarioId, organizacaoId, unidadeId }) {
-  const { data, error } = await supabase.from("agente_conversas")
-    .insert({ usuario_id: usuarioId ?? null, organizacao_id: organizacaoId, unidade_id: unidadeId ?? null })
-    .select("id").single();
+export async function criarConversa({ perfilId, contaId = null, organizacaoId, unidadeId }) {
+  const base = { usuario_id: contaId ?? null, organizacao_id: organizacaoId, unidade_id: unidadeId ?? null };
+  let { data, error } = await supabase.from("agente_conversas")
+    .insert({ ...base, perfil_id: perfilId ?? null }).select("id").single();
+  if (error && RE_COLUNA_AUSENTE.test(error.message)) {
+    ({ data, error } = await supabase.from("agente_conversas").insert(base).select("id").single()); // pré-060
+  }
   if (error) throw ApiError.internal(error.message);
   return data.id;
 }

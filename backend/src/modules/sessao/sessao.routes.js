@@ -20,6 +20,14 @@ sessaoRouter.post("/senha", controller.novaSenha);
 sessaoRouter.get("/acessos", exigirSenhaDefinitiva, controller.acessos);
 sessaoRouter.post("/selecionar", exigirSenhaDefinitiva, controller.selecionar);
 
+// Perfil operacional (Fase C do multi-perfil) — o passo "Selecione seu
+// usuário", ENTRE o login e a seleção de contexto. Como `/acessos`, exigem
+// autenticação + senha definitiva, mas NÃO contexto (é aqui que a identidade
+// operacional é escolhida, antes de ter empresa). A conta vem sempre de
+// req.user.id; nenhum handler lê conta_id do cliente.
+sessaoRouter.get("/perfis", exigirSenhaDefinitiva, controller.perfis);
+sessaoRouter.post("/selecionar-perfil", exigirSenhaDefinitiva, controller.selecionarPerfil);
+
 // `atual` exige contexto (é o que ele descreve).
 sessaoRouter.get("/atual", exigirSenhaDefinitiva, requireContexto, controller.atual);
 

@@ -92,6 +92,21 @@ export const adminApi = {
   forcarLogout: (id) => post(`/usuarios/${id}/logout`),
   definirSuperadmin: (id, superadmin, observacao) => post(`/usuarios/${id}/superadmin`, { superadmin, observacao }),
 
+  // Painel Administrativo da Crescer — acesso GLOBAL de monitoramento. NÃO é
+  // SuperAdmin (não concede nada técnico) e não mexe em vínculos de empresa.
+  definirPainelAdministrativo: (id, conceder, observacao) =>
+    post(`/usuarios/${id}/painel-administrativo`, { conceder, observacao }),
+  usuariosPainelAdministrativo: (status) => get(`/painel-administrativo/usuarios${qs({ status })}`),
+
+  // Perfis operacionais da conta (Fase G) — "Usuários desta conta". Uma conta
+  // (e-mail+senha) tem N perfis; cada perfil tem PIN + vínculos próprios.
+  perfisDaConta: (contaId) => get(`/usuarios/${contaId}/perfis`),
+  criarPerfil: (contaId, dados) => post(`/usuarios/${contaId}/perfis`, dados),
+  renomearPerfil: (contaId, perfilId, nome) => patch(`/usuarios/${contaId}/perfis/${perfilId}`, { nome }),
+  alternarAtivoPerfil: (contaId, perfilId, ativo) => patch(`/usuarios/${contaId}/perfis/${perfilId}/ativo`, { ativo }),
+  definirPinPerfil: (contaId, perfilId, pin) => put(`/usuarios/${contaId}/perfis/${perfilId}/pin`, { pin }),
+  removerPinPerfil: (contaId, perfilId) => del(`/usuarios/${contaId}/perfis/${perfilId}/pin`),
+
   // Associações
   associarEmpresa: (id, organizacaoId, papel) => post(`/usuarios/${id}/empresas`, { organizacaoId, papel }),
   // Em massa — só NOVAS associações. `itens`: [{ organizacaoId, papel }].

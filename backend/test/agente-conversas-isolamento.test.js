@@ -14,23 +14,25 @@ import assert from "node:assert/strict";
 import { supabase } from "../src/config/supabase.js";
 import * as conversas from "../src/modules/agente/agente.conversas.service.js";
 
-// agente_conversas.usuario_id tem FK real para perfis(id) — usa 2 perfis JÁ
-// EXISTENTES (leitura, nunca cria/altera usuário) em vez de UUIDs inventados.
-let USUARIO_A = null;
-let USUARIO_B = null;
+// Fase D: o isolamento passou a ser por `agente_conversas.perfil_id`
+// (perfis_operacionais). No backfill da migration 060, `perfis_operacionais.id
+// == perfis.id`, então usar 2 `perfis` JÁ EXISTENTES como perfil_id continua
+// válido (leitura, nunca cria/altera nada).
+let PERFIL_A = null;
+let PERFIL_B = null;
 
-let tabelasExistem = true;
+let tabelasExistem = true;   // agente_conversas (048) + agente_conversas.perfil_id (060)
 let orgA = null;
 let orgB = null;
 
 before(async () => {
-  const probe = await supabase.from("agente_conversas").select("id").limit(0);
-  if (probe.error) { tabelasExistem = false; return; }
+  const probe = await supabase.from("agente_conversas").select("id, perfil_id").limit(0);
+  if (probe.error) { tabelasExistem = false; return; } // 048 ou 060 ainda não aplicada
 
   const { data: perfis, error: eP } = await supabase.from("perfis").select("id").limit(2);
   if (eP) throw new Error(`Falha ao buscar perfis existentes: ${eP.message}`);
   if (!perfis || perfis.length < 2) { tabelasExistem = false; return; } // sem 2 perfis no banco: pula (ambiente vazio)
-  USUARIO_A = perfis[0].id; USUARIO_B = perfis[1].id;
+  PERFIL_A = perfis[0].id; PERFIL_B = perfis[1].id;
 
   const { data: a, error: eA } = await supabase.from("organizacoes")
     .insert({ nome: "TESTE agente-conversas — descartável A" }).select("id").single();
@@ -47,30 +49,30 @@ after(async () => {
 });
 
 describe("agente.conversas.service.js — isolamento real (Supabase)", () => {
-  test("uma conversa criada na organização A não é encontrada pela organização B (mesmo usuário)", async (t) => {
+  test("uma conversa criada na organização A não é encontrada pela organização B (mesmo perfil)", async (t) => {
     if (!tabelasExistem) return t.skip("migration 048 (agente_conversas/agente_mensagens) ainda não aplicada — pulando.");
 
-    const conversaId = await conversas.criarConversa({ usuarioId: USUARIO_A, organizacaoId: orgA, unidadeId: null });
+    const conversaId = await conversas.criarConversa({ perfilId: PERFIL_A, organizacaoId: orgA, unidadeId: null });
 
-    const comOrgCerta = await conversas.buscarConversa({ conversaId, usuarioId: USUARIO_A, organizacaoId: orgA, unidadeId: null });
+    const comOrgCerta = await conversas.buscarConversa({ conversaId, perfilId: PERFIL_A, organizacaoId: orgA, unidadeId: null });
     assert.equal(comOrgCerta?.id, conversaId);
 
-    const comOrgErrada = await conversas.buscarConversa({ conversaId, usuarioId: USUARIO_A, organizacaoId: orgB, unidadeId: null });
+    const comOrgErrada = await conversas.buscarConversa({ conversaId, perfilId: PERFIL_A, organizacaoId: orgB, unidadeId: null });
     assert.equal(comOrgErrada, null);
   });
 
-  test("uma conversa não é encontrada por outro usuário, mesma organização", async (t) => {
+  test("uma conversa não é encontrada por outro perfil, mesma organização", async (t) => {
     if (!tabelasExistem) return t.skip("migration 048 ainda não aplicada — pulando.");
 
-    const conversaId = await conversas.criarConversa({ usuarioId: USUARIO_A, organizacaoId: orgA, unidadeId: null });
-    const comOutroUsuario = await conversas.buscarConversa({ conversaId, usuarioId: USUARIO_B, organizacaoId: orgA, unidadeId: null });
-    assert.equal(comOutroUsuario, null);
+    const conversaId = await conversas.criarConversa({ perfilId: PERFIL_A, organizacaoId: orgA, unidadeId: null });
+    const comOutroPerfil = await conversas.buscarConversa({ conversaId, perfilId: PERFIL_B, organizacaoId: orgA, unidadeId: null });
+    assert.equal(comOutroPerfil, null);
   });
 
   test("mensagens gravadas e lidas em ordem cronológica", async (t) => {
     if (!tabelasExistem) return t.skip("migration 048 ainda não aplicada — pulando.");
 
-    const conversaId = await conversas.criarConversa({ usuarioId: USUARIO_A, organizacaoId: orgA, unidadeId: null });
+    const conversaId = await conversas.criarConversa({ perfilId: PERFIL_A, organizacaoId: orgA, unidadeId: null });
     await conversas.salvarMensagem({ conversaId, papel: "user", conteudo: "pergunta 1" });
     await conversas.salvarMensagem({ conversaId, papel: "assistant", conteudo: "resposta 1", toolsUtilizadas: ["consultar_dashboard_executivo"] });
 

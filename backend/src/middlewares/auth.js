@@ -22,7 +22,7 @@
 import { supabase } from "../config/supabase.js";
 import { config } from "../config/env.js";
 import { ApiError } from "../shared/ApiError.js";
-import { verificarContextToken } from "../shared/contextToken.js";
+import { verificarContextToken, validarPidContraSessao } from "../shared/contextToken.js";
 import { temPermissao } from "../shared/permissoes.js";
 import { rotuloModulo } from "../shared/modulos.js";
 
@@ -38,6 +38,7 @@ const STATUS_BLOQUEANTES = new Set(["bloqueada", "suspensa", "cancelada"]);
  * @property {string} email
  * @property {string} nome
  * @property {boolean} superadmin
+ * @property {boolean} painelAdministrativo
  * @property {boolean} ativo
  * @property {boolean} senhaProvisoria
  */
@@ -45,6 +46,7 @@ const STATUS_BLOQUEANTES = new Set(["bloqueada", "suspensa", "cancelada"]);
 /**
  * @typedef {object} AcessoContexto
  * @property {string} sessionId
+ * @property {string|null} perfilId  perfil operacional da sessão; null em impersonação
  * @property {string} papel
  * @property {string[]} permissoes
  * @property {string[]} modulos
@@ -76,10 +78,16 @@ export async function requireAuth(req, _res, next) {
 
     const usuarioId = data.user.id;
 
-    // Identidade + papel global de plataforma, em paralelo.
-    const [perfilRes, superRes] = await Promise.all([
+    // Identidade + papéis GLOBAIS de plataforma, em paralelo. Os dois papéis
+    // globais são independentes entre si e dos vínculos de empresa/unidade:
+    //   - `plataforma_admins`               -> SuperAdmin (técnico)
+    //   - `painel_administrativo_usuarios`  -> Painel Administrativo (gerencial)
+    // Ambos são relidos a cada request — revogar qualquer um vale na hora.
+    const [perfilRes, superRes, painelAdmRes] = await Promise.all([
       supabase.from("perfis").select("id, nome, email, ativo, senha_provisoria").eq("id", usuarioId).maybeSingle(),
       supabase.from("plataforma_admins").select("usuario_id")
+        .eq("usuario_id", usuarioId).eq("ativo", true).maybeSingle(),
+      supabase.from("painel_administrativo_usuarios").select("usuario_id")
         .eq("usuario_id", usuarioId).eq("ativo", true).maybeSingle(),
     ]);
 
@@ -98,6 +106,9 @@ export async function requireAuth(req, _res, next) {
       email: data.user.email ?? perfil?.email ?? "",
       nome: perfil?.nome || data.user.user_metadata?.nome || (data.user.email ?? "").split("@")[0],
       superadmin: !!superRes.data,
+      // Acesso GLOBAL ao Painel Administrativo (monitoramento gerencial
+      // cross-tenant). NÃO implica SuperAdmin — ver requirePainelAdministrativo.
+      painelAdministrativo: !!painelAdmRes.data,
       ativo: perfil?.ativo ?? true,
       // Senha definida por um administrador: o usuário precisa trocá-la antes de
       // usar o sistema. O gate `exigirSenhaDefinitiva` faz valer isso.
@@ -134,11 +145,22 @@ export async function requireContexto(req, _res, next) {
     }
 
     // A sessão ainda vale? Esta é a leitura que torna a revogação instantânea.
-    const { data: sessao, error } = await supabase
+    const COLS_SESSAO = "id, usuario_id, organizacao_id, unidade_id, papel, permissoes, modulos, impersonado_por, expira_em, revogada_em";
+    let { data: sessao, error } = await supabase
       .from("sessoes_contexto")
-      .select("id, usuario_id, organizacao_id, unidade_id, papel, permissoes, modulos, impersonado_por, expira_em, revogada_em")
+      .select(`${COLS_SESSAO}, perfil_id`)
       .eq("id", p.sid)
       .maybeSingle();
+    // Pré-060: coluna `perfil_id` ainda não existe. Relê sem ela e trata a
+    // requisição como LEGADA (sem camada de perfil) — comportamento idêntico
+    // ao de antes da Fase D. A regra do `pid` não se aplica: não há perfil
+    // para forjar. Some assim que 060 rodar (1 reseleção na janela).
+    let semColunaPerfil = false;
+    if (error && /perfil_id|does not exist|schema cache|could not find/i.test(error.message || "")) {
+      semColunaPerfil = true;
+      ({ data: sessao, error } = await supabase.from("sessoes_contexto").select(COLS_SESSAO).eq("id", p.sid).maybeSingle());
+      if (sessao) sessao.perfil_id = null;
+    }
 
     if (error) return next(ApiError.internal("Falha ao validar o contexto."));
     if (!sessao) return next(erroContexto("Contexto não encontrado. Selecione a unidade novamente."));
@@ -154,11 +176,32 @@ export async function requireContexto(req, _res, next) {
       return next(erroContexto("Contexto divergente. Selecione a unidade novamente."));
     }
 
+    // PERFIL (Context Token v2) — buscado em paralelo com a empresa. Só quando a
+    // sessão é normal (perfil_id setado); em impersonação `perfil_id` é NULL.
+    const [{ data: empresa }, perfilRow] = await Promise.all([
+      supabase.from("organizacoes").select("id, nome, status, ativo").eq("id", sessao.organizacao_id).maybeSingle(),
+      sessao.perfil_id
+        ? supabase.from("perfis_operacionais").select("id, nome, ativo").eq("id", sessao.perfil_id).maybeSingle().then((r) => r.data ?? null)
+        : Promise.resolve(null),
+    ]);
+
+    // Regra do `pid` — cruzamento contra a linha + invariante de impersonação +
+    // perfil ainda ativo (ver contextToken.js#validarPidContraSessao). Um token
+    // com `pid` forjado (outro perfil da mesma conta) NÃO passa aqui. Pulada
+    // apenas na janela pré-060 (sem coluna = sem camada de perfil).
+    if (!semColunaPerfil) {
+      const pid = validarPidContraSessao({
+        tokenPid: p.pid,
+        sessaoPerfilId: sessao.perfil_id ?? null,
+        impersonadoPor: sessao.impersonado_por ?? null,
+        perfilAtivo: perfilRow ? perfilRow.ativo : null,
+      });
+      if (!pid.ok) return next(erroContexto(pid.motivo));
+    }
+
     // Empresa bloqueada/suspensa derruba o acesso na hora, sem esperar o token
     // vencer. O superadmin em impersonação passa — é justamente quando ele
     // precisa entrar para resolver o motivo do bloqueio.
-    const { data: empresa } = await supabase
-      .from("organizacoes").select("id, nome, status, ativo").eq("id", sessao.organizacao_id).maybeSingle();
     if (!empresa) return next(erroContexto("Empresa não encontrada."));
     if (STATUS_BLOQUEANTES.has(empresa.status) && !sessao.impersonado_por) {
       return next(ApiError.forbidden(`Acesso indisponível: empresa ${rotuloStatus(empresa.status)}.`));
@@ -174,9 +217,20 @@ export async function requireContexto(req, _res, next) {
     /** @type {{organizacaoId: string, unidadeId: string|null}} */
     req.tenant = { organizacaoId: sessao.organizacao_id, unidadeId: sessao.unidade_id ?? null };
 
+    /**
+     * Identidade OPERACIONAL da sessão. `null` em impersonação (o superadmin
+     * age como ele mesmo num contexto de cliente, sem perfil). Nunca confia no
+     * nome vindo do token — vem da linha real de `perfis_operacionais`.
+     * @type {{ id: string, nome: string|null }|null}
+     */
+    req.perfil = sessao.perfil_id
+      ? { id: sessao.perfil_id, nome: perfilRow?.nome ?? null }
+      : null;
+
     /** @type {AcessoContexto} */
     req.acesso = {
       sessionId: sessao.id,
+      perfilId: sessao.perfil_id ?? null,
       papel: sessao.papel,
       permissoes: Array.isArray(sessao.permissoes) ? sessao.permissoes : [],
       modulos: Array.isArray(sessao.modulos) ? sessao.modulos : [],
@@ -261,6 +315,22 @@ export function requireSuperadmin(req, _res, next) {
     return next(ApiError.forbidden("Ação restrita ao SuperAdmin da plataforma."));
   }
   next();
+}
+
+/**
+ * Restringe a rota ao PAINEL ADMINISTRATIVO da Crescer — o ambiente GERENCIAL
+ * de monitoramento cross-tenant. Não olha `req.tenant` (o painel não tem
+ * empresa), igual a `requireSuperadmin`.
+ *
+ * O SuperAdmin passa por BYPASS: ele já administra tudo, e o painel é uma
+ * visão a menos, não a mais. Quem não é SuperAdmin precisa do flag próprio em
+ * `painel_administrativo_usuarios` (carregado por requireAuth, relido a cada
+ * request — revogar surte efeito na hora). Ter esse flag NÃO concede nenhum
+ * poder de SuperAdmin (empresas/unidades/usuários/módulos/impersonação).
+ */
+export function requirePainelAdministrativo(req, _res, next) {
+  if (req.user?.superadmin || req.user?.painelAdministrativo) return next();
+  return next(ApiError.forbidden("Acesso restrito ao Painel Administrativo da Crescer."));
 }
 
 /**
