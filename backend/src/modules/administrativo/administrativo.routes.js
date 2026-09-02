@@ -1,0 +1,32 @@
+import { Router } from "express";
+import * as c from "./administrativo.controller.js";
+import { requirePainelAdministrativo } from "../../middlewares/auth.js";
+
+// API do PAINEL ADMINISTRATIVO da Crescer com Delivery.
+//
+// Um TERCEIRO "mundo" da API, ao lado de:
+//   1. SESSÃO      — sem contexto.
+//   2. PLATAFORMA  — SuperAdmin (técnico). Nunca tem req.tenant.
+//   3. TENANT      — exige Context Token; todo dado escopado por ele.
+//   4. ADMINISTRATIVO — GERENCIAL. Monitoramento cross-tenant. Nunca tem
+//      req.tenant. NÃO concede poder técnico de SuperAdmin.
+//
+// `requirePainelAdministrativo` no ROUTER INTEIRO — mesma escolha deliberada
+// do plataformaRouter: uma rota nova adicionada aqui já nasce protegida. O
+// SuperAdmin passa por bypass (ele já enxerga tudo); qualquer outro usuário
+// precisa do flag em `painel_administrativo_usuarios`, carregado por
+// requireAuth e relido a cada request (revogar surte efeito na hora).
+//
+// Nenhuma rota daqui passa por `requireContexto`: o Painel Administrativo não
+// tem empresa. As leituras cross-tenant (fases E/F) usam service_role dentro
+// deste módulo, exatamente como plataforma.* — nunca um bypass genérico dos
+// middlewares multi-tenant.
+
+export const administrativoRouter = Router();
+administrativoRouter.use(requirePainelAdministrativo);
+
+// ---- Fase B: sanidade da cadeia de autorização
+administrativoRouter.get("/ping", c.ping);
+
+// Qualquer outra coisa sob /administrativo é 404 em JSON.
+administrativoRouter.use(c.naoEncontrado);
