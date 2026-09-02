@@ -10,21 +10,29 @@
 // (o último aplicado ao router INTEIRO em administrativo.routes.js — mesma
 // disciplina do plataformaRouter). NENHUMA rota daqui usa requireContexto: o
 // Painel Administrativo não opera sob o contexto de nenhuma empresa. As
-// leituras cross-tenant (fases seguintes) vivem SOMENTE dentro deste módulo,
-// com service_role, exatamente como plataforma.*.
+// leituras cross-tenant vivem SOMENTE dentro deste módulo, com service_role,
+// exatamente como plataforma.*.
 //
-// FASE B: só o `ping` de sanidade da cadeia de autorização. Os endpoints de
-// monitoramento (resumo, AÇÃO NECESSÁRIA HOJE, dashboard-ifood/status,
-// dashboard-ifood/pendencias, calendário por unidade, histórico) entram nas
-// fases E/F, reaproveitando statusMes/RESOLVIDOS do Dashboard iFood.
+// FASE F: os endpoints de monitoramento cross-tenant. Camada fina —
+// validação e regra vivem no service (administrativo.service.js) e no motor
+// puro (administrativo.status.js / administrativo.monitores.js).
+
+import { asyncHandler } from "../../shared/asyncHandler.js";
+import * as service from "./administrativo.service.js";
+
+const ok = (res, data, status = 200) => res.status(status).json({ data });
+
+// Seam de TESTE apenas: `app.locals.adminDeps` injeta um Supabase fake nos
+// testes de integração do router. Em produção nunca é definido -> os services
+// caem no `deps = {}` padrão (Supabase real, service_role).
+const deps = (req) => req.app?.locals?.adminDeps ?? undefined;
+// `app.locals.adminHoje` fixa "hoje" nos testes (o fuso do negócio muda a
+// resposta). Produção nunca define -> os services usam `hojeIsoBrasil()`.
+const hoje = (req) => req.app?.locals?.adminHoje ?? undefined;
 
 /**
  * GET /api/v1/administrativo/ping
- *
- * Sanidade da autorização: responde 200 apenas para quem passou por
- * `requirePainelAdministrativo`. Um usuário sem acesso nunca chega até aqui
- * (o middleware devolve 403 antes). Serve para o frontend confirmar o acesso
- * ao abrir o painel e para os testes de ponta a ponta das próximas fases.
+ * Sanidade da autorização: 200 só para quem passou por `requirePainelAdministrativo`.
  */
 export function ping(req, res) {
   const viaSuperadmin = !!req.user?.superadmin && !req.user?.painelAdministrativo;
@@ -37,6 +45,38 @@ export function ping(req, res) {
     },
   });
 }
+
+// --------------------------------------------------------- Monitoramento (Fase F)
+
+// GET /administrativo/visao-geral
+export const visaoGeral = asyncHandler(async (req, res) =>
+  ok(res, await service.visaoGeral({ hojeIso: hoje(req) }, deps(req))));
+
+// GET /administrativo/monitoramento-diario?data=&organizacaoId=&status=&criticidade=
+export const monitoramentoDiario = asyncHandler(async (req, res) =>
+  ok(res, await service.monitoramentoDiario({
+    data: req.query.data,
+    organizacaoId: req.query.organizacaoId,
+    status: req.query.status,
+    criticidade: req.query.criticidade,
+    hojeIso: hoje(req),
+  }, deps(req))));
+
+// GET /administrativo/pendencias
+export const pendencias = asyncHandler(async (req, res) =>
+  ok(res, await service.pendencias({ hojeIso: hoje(req) }, deps(req))));
+
+// GET /administrativo/empresas
+export const empresas = asyncHandler(async (req, res) =>
+  ok(res, await service.empresas({ hojeIso: hoje(req) }, deps(req))));
+
+// GET /administrativo/empresas/:organizacaoId
+export const detalheEmpresa = asyncHandler(async (req, res) =>
+  ok(res, await service.detalheEmpresa({ organizacaoId: req.params.organizacaoId, hojeIso: hoje(req) }, deps(req))));
+
+// GET /administrativo/unidades/:unidadeId/calendario?mes=YYYY-MM
+export const calendarioUnidade = asyncHandler(async (req, res) =>
+  ok(res, await service.calendarioUnidade({ unidadeId: req.params.unidadeId, mes: req.query.mes, hojeIso: hoje(req) }, deps(req))));
 
 /** Qualquer rota não mapeada sob /administrativo é 404 em JSON (nunca cai no app). */
 export function naoEncontrado(req, res) {

@@ -71,9 +71,126 @@ export function acaoNecessariaHoje(unidades) {
     });
   }
 
+  // Ordem DENTRO de cada grupo (item 8 do pedido): pendência mais antiga
+  // primeiro, depois empresa, depois unidade. A ordem ENTRE grupos é
+  // `ORDEM_ACAO_HOJE` (sequência bloqueada -> não realizado -> em preenchimento
+  // -> concluído). NUNCA por percentual.
+  const chaveOrdem = (it) => [
+    it.pendencia?.desde ?? referencia ?? "9999-99-99",
+    (it.empresaNome ?? "").toLowerCase(),
+    (it.unidadeNome ?? "").toLowerCase(),
+  ];
+  for (const cat of Object.keys(grupos)) {
+    grupos[cat].sort((a, b) => {
+      const ka = chaveOrdem(a), kb = chaveOrdem(b);
+      for (let i = 0; i < ka.length; i++) { if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1; }
+      return 0;
+    });
+  }
+
+  // Lista achatada na ordem final (entre grupos + dentro do grupo), pronta pro
+  // frontend ("Ação Necessária Hoje" mostra tudo menos os concluídos).
+  const ordenada = ORDEM_ACAO_HOJE.flatMap((cat) => grupos[cat] ?? []);
+  const pendentes = ordenada.filter((it) => it.categoria !== D1_CATEGORIA.CONCLUIDO);
+
   const contadores = Object.fromEntries(ORDEM_ACAO_HOJE.map((c) => [c, grupos[c]?.length ?? 0]));
   const total = Object.values(contadores).reduce((s, n) => s + n, 0);
-  return { referencia, grupos, contadores, total };
+  return { referencia, grupos, ordenada, pendentes, contadores, total };
+}
+
+// ---------------------------------------------------------------------------
+// PENDÊNCIAS (aba própria) e EMPRESAS (rollup por organização)
+// ---------------------------------------------------------------------------
+
+/** Uma unidade tem pendência se NÃO está totalmente em dia no D-1. */
+export function temPendencia(u) {
+  return u.rollup?.status !== ROLLUP.EM_DIA
+    || (u.pendenciasAcum?.total ?? 0) > 0
+    || u.d1?.categoria === D1_CATEGORIA.EM_PREENCHIMENTO
+    || u.d1?.categoria === D1_CATEGORIA.NAO_REALIZADO
+    || u.d1?.categoria === D1_CATEGORIA.SEQUENCIA_BLOQUEADA;
+}
+
+const PESO_CRITICIDADE = { [ROLLUP.CRITICO]: 0, [ROLLUP.ATENCAO]: 1, [ROLLUP.EM_DIA]: 2 };
+
+/**
+ * Lista de pendências ordenada: CRÍTICO primeiro -> pendência mais antiga ->
+ * ATENÇÃO -> empresa -> unidade. (item 10 do pedido.)
+ * @param {Array<object>} unidades  saída do avaliador de frota
+ */
+export function listarPendencias(unidades) {
+  return (unidades ?? [])
+    .filter(temPendencia)
+    .map((u) => ({
+      organizacaoId: u.organizacaoId ?? null,
+      empresaNome: u.empresaNome ?? null,
+      unidadeId: u.unidadeId,
+      unidadeNome: u.unidadeNome ?? null,
+      criticidade: u.rollup?.status ?? null,
+      d1Status: u.d1?.categoria ?? null,
+      d1StatusDia: u.d1?.statusDia ?? null,
+      sequenciaBloqueada: u.pendenciasAcum?.sequenciaBloqueada ?? false,
+      pendenciaMaisAntiga: u.pendenciasAcum?.desde ?? (u.d1?.elegivel && u.d1?.categoria !== D1_CATEGORIA.CONCLUIDO ? u.d1?.data ?? null : null),
+      diasPendentes: u.pendenciasAcum?.total ?? 0,
+    }))
+    .sort((a, b) => {
+      const pc = (PESO_CRITICIDADE[a.criticidade] ?? 9) - (PESO_CRITICIDADE[b.criticidade] ?? 9);
+      if (pc !== 0) return pc;
+      const da = a.pendenciaMaisAntiga ?? "9999-99-99";
+      const db = b.pendenciaMaisAntiga ?? "9999-99-99";
+      if (da !== db) return da < db ? -1 : 1;
+      const ea = (a.empresaNome ?? "").toLowerCase(), eb = (b.empresaNome ?? "").toLowerCase();
+      if (ea !== eb) return ea < eb ? -1 : 1;
+      const ua = (a.unidadeNome ?? "").toLowerCase(), ub = (b.unidadeNome ?? "").toLowerCase();
+      return ua < ub ? -1 : ua > ub ? 1 : 0;
+    });
+}
+
+/**
+ * Rollup por EMPRESA. Conformidade da empresa = Σ completos / Σ esperados
+ * (mês) e Σ concluídas D-1 / Σ elegíveis D-1 — NUNCA média de percentuais.
+ * @param {Array<object>} unidades  saída do avaliador de frota
+ */
+export function consolidarEmpresas(unidades) {
+  const mapa = new Map();
+  for (const u of unidades ?? []) {
+    const chave = u.organizacaoId ?? "sem_empresa";
+    if (!mapa.has(chave)) {
+      mapa.set(chave, {
+        organizacaoId: u.organizacaoId ?? null,
+        empresaNome: u.empresaNome ?? null,
+        unidadesMonitoradas: 0, emDia: 0, atencao: 0, criticas: 0,
+        d1Elegiveis: 0, d1Concluidas: 0, d1EmPreenchimento: 0, d1NaoRealizadas: 0, d1Bloqueadas: 0,
+        mesCompleto: 0, mesEsperado: 0,
+      });
+    }
+    const g = mapa.get(chave);
+    g.unidadesMonitoradas += 1;
+    if (u.rollup?.status === ROLLUP.EM_DIA) g.emDia += 1;
+    else if (u.rollup?.status === ROLLUP.ATENCAO) g.atencao += 1;
+    else if (u.rollup?.status === ROLLUP.CRITICO) g.criticas += 1;
+    if (u.d1?.elegivel) {
+      g.d1Elegiveis += 1;
+      if (u.d1.categoria === D1_CATEGORIA.CONCLUIDO) g.d1Concluidas += 1;
+      else if (u.d1.categoria === D1_CATEGORIA.EM_PREENCHIMENTO) g.d1EmPreenchimento += 1;
+      else if (u.d1.categoria === D1_CATEGORIA.NAO_REALIZADO) g.d1NaoRealizadas += 1;
+      else if (u.d1.categoria === D1_CATEGORIA.SEQUENCIA_BLOQUEADA) g.d1Bloqueadas += 1;
+    }
+    g.mesCompleto += u.conformidade?.completos ?? 0;
+    g.mesEsperado += u.conformidade?.esperados ?? 0;
+  }
+  return [...mapa.values()]
+    .map((g) => ({
+      ...g,
+      conformidadeD1: g.d1Elegiveis ? g.d1Concluidas / g.d1Elegiveis : null,
+      conformidadeMes: g.mesEsperado ? g.mesCompleto / g.mesEsperado : null,
+    }))
+    .sort((a, b) => {
+      // empresas com problema no topo: mais críticas -> mais em atenção -> nome
+      if (b.criticas !== a.criticas) return b.criticas - a.criticas;
+      if (b.atencao !== a.atencao) return b.atencao - a.atencao;
+      return (a.empresaNome ?? "").toLowerCase() < (b.empresaNome ?? "").toLowerCase() ? -1 : 1;
+    });
 }
 
 /**

@@ -107,19 +107,21 @@ export function projetarMes({ dias, hojeIso, unidadeCriadaEm = null }) {
 }
 
 /**
- * O fechamento de ONTEM foi feito? Olha SÓ o dia `diaAnterior(hojeIso)`.
- * @param {Array<ReturnType<typeof projetarDia>>} diasProjetados  precisa CONTER o dia D-1
- * @param {string} hojeIso
+ * Categoriza UM dia da lista já projetada (`dataAlvo` tem de estar contido).
+ * É a lógica que `avaliarD1` sempre usou — extraída para servir a qualquer
+ * data (o Monitoramento Diário consulta um dia passado). Mesma projeção,
+ * mesma fonte (`statusMes`); só o dia de referência muda.
+ * @param {Array<ReturnType<typeof projetarDia>>} diasProjetados
+ * @param {string} dataAlvo  ISO AAAA-MM-DD
  * @returns {{data: string, elegivel: boolean, categoria: string, statusDia?: string, bloqueada?: boolean}}
  */
-export function avaliarD1(diasProjetados, hojeIso) {
-  const dataD1 = diaAnterior(hojeIso);
-  const dia = (diasProjetados ?? []).find((d) => d.data === dataD1);
+export function avaliarDia(diasProjetados, dataAlvo) {
+  const dia = (diasProjetados ?? []).find((d) => d.data === dataAlvo);
 
   if (!dia || dia.painel === STATUS_PAINEL.NAO_APLICAVEL) {
-    // Unidade criada hoje/ontem, ou D-1 fora do período carregado -> sem
-    // obrigação de D-1 (nunca conta contra a unidade).
-    return { data: dataD1, elegivel: false, categoria: D1_CATEGORIA.NAO_APLICAVEL };
+    // Unidade criada depois, dia futuro/hoje, ou fora do período carregado ->
+    // sem obrigação (nunca conta contra a unidade).
+    return { data: dataAlvo, elegivel: false, categoria: D1_CATEGORIA.NAO_APLICAVEL };
   }
 
   let categoria;
@@ -128,7 +130,17 @@ export function avaliarD1(diasProjetados, hojeIso) {
   else if (dia.painel === STATUS_PAINEL.INCOMPLETO) categoria = D1_CATEGORIA.EM_PREENCHIMENTO;
   else categoria = D1_CATEGORIA.NAO_REALIZADO; // PENDENTE isolado
 
-  return { data: dataD1, elegivel: true, categoria, statusDia: dia.statusDia, bloqueada: dia.bloqueada };
+  return { data: dataAlvo, elegivel: true, categoria, statusDia: dia.statusDia, bloqueada: dia.bloqueada };
+}
+
+/**
+ * O fechamento de ONTEM foi feito? Olha SÓ o dia `diaAnterior(hojeIso)`.
+ * @param {Array<ReturnType<typeof projetarDia>>} diasProjetados  precisa CONTER o dia D-1
+ * @param {string} hojeIso
+ * @returns {{data: string, elegivel: boolean, categoria: string, statusDia?: string, bloqueada?: boolean}}
+ */
+export function avaliarD1(diasProjetados, hojeIso) {
+  return avaliarDia(diasProjetados, diaAnterior(hojeIso));
 }
 
 /**
@@ -158,10 +170,9 @@ export function conformidadeMes(diasProjetados) {
  * @param {string} hojeIso
  * @returns {{dias: string[], total: number, desde: string|null, sequenciaBloqueada: boolean}}
  */
-export function pendenciasAcumuladas(diasProjetados, hojeIso) {
-  const dataD1 = diaAnterior(hojeIso);
+export function pendenciasAntesDe(diasProjetados, dataLimite) {
   const anteriores = (diasProjetados ?? [])
-    .filter((d) => d.data < dataD1 && d.painel === STATUS_PAINEL.NAO_LANCADO)
+    .filter((d) => d.data < dataLimite && d.painel === STATUS_PAINEL.NAO_LANCADO)
     .map((d) => d.data)
     .sort();
   return {
@@ -171,6 +182,29 @@ export function pendenciasAcumuladas(diasProjetados, hojeIso) {
     // "Sequência bloqueada" = há pendência acumulada, OU o próprio statusMes
     // marcou algum dia como BLOQUEADO (dia posterior a um não resolvido).
     sequenciaBloqueada: anteriores.length > 0 || (diasProjetados ?? []).some((d) => d.bloqueada),
+  };
+}
+
+export function pendenciasAcumuladas(diasProjetados, hojeIso) {
+  return pendenciasAntesDe(diasProjetados, diaAnterior(hojeIso));
+}
+
+/**
+ * Data do último dia CONCLUÍDO (painel COMPLETO) e do último dia COM QUALQUER
+ * registro (COMPLETO ou INCOMPLETO) na lista projetada. Puro — para os cards
+ * de "última atualização" do painel. NÃO é regra de sequência.
+ * @param {Array<ReturnType<typeof projetarDia>>} diasProjetados
+ * @returns {{ultimoCompleto: string|null, ultimoRegistro: string|null}}
+ */
+export function ultimosLancamentos(diasProjetados) {
+  const lista = diasProjetados ?? [];
+  const ult = (pred) => {
+    const datas = lista.filter(pred).map((d) => d.data).sort();
+    return datas.length ? datas[datas.length - 1] : null;
+  };
+  return {
+    ultimoCompleto: ult((d) => d.painel === STATUS_PAINEL.COMPLETO),
+    ultimoRegistro: ult((d) => d.painel === STATUS_PAINEL.COMPLETO || d.painel === STATUS_PAINEL.INCOMPLETO),
   };
 }
 
@@ -219,17 +253,22 @@ export function rollupUnidade({ d1, pendenciasAcum }) {
  *   unidadeCriadaEm?: string|null,
  * }} p
  */
-export function avaliarUnidade({ diasCorrente, diasAnteriores = [], hojeIso, unidadeCriadaEm = null }) {
+export function avaliarUnidade({ diasCorrente, diasAnteriores = [], hojeIso, unidadeCriadaEm = null, dataAlvo = null }) {
+  // `dataAlvo` ausente = D-1 de hoje (a Visão Geral). Presente = um dia passado
+  // (o Monitoramento Diário) — a conformidade continua sendo a do MÊS de
+  // `diasCorrente`, só o dia de referência e o corte de pendência mudam.
+  const alvo = dataAlvo ?? diaAnterior(hojeIso);
   const projCorrente = projetarMes({ dias: diasCorrente, hojeIso, unidadeCriadaEm });
   const projAnteriores = diasAnteriores.length
     ? projetarMes({ dias: diasAnteriores, hojeIso, unidadeCriadaEm })
     : [];
   const todos = [...projAnteriores, ...projCorrente];
 
-  const d1 = avaliarD1(todos, hojeIso);
-  const conformidade = conformidadeMes(projCorrente);          // conformidade do MÊS corrente
-  const pendenciasAcum = pendenciasAcumuladas(todos, hojeIso); // olha todos os dias < D-1
+  const d1 = avaliarDia(todos, alvo);
+  const conformidade = conformidadeMes(projCorrente);       // conformidade do MÊS de diasCorrente
+  const pendenciasAcum = pendenciasAntesDe(todos, alvo);    // dias NÃO LANÇADO antes de `alvo`
   const rollup = rollupUnidade({ d1, pendenciasAcum });
+  const ultimos = ultimosLancamentos(todos);
 
-  return { d1, conformidade, pendenciasAcum, rollup, diasProjetados: projCorrente };
+  return { d1, conformidade, pendenciasAcum, rollup, ultimos, diasProjetados: projCorrente };
 }

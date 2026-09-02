@@ -28,5 +28,15 @@ administrativoRouter.use(requirePainelAdministrativo);
 // ---- Fase B: sanidade da cadeia de autorização
 administrativoRouter.get("/ping", c.ping);
 
+// ---- Fase F: monitoramento cross-tenant (monitor "Dashboard iFood").
+// Tudo GET / somente leitura. O universo monitorado (unidades elegíveis) e os
+// lançamentos são carregados em lote no service — nunca `for unidade: SELECT`.
+administrativoRouter.get("/visao-geral", c.visaoGeral);
+administrativoRouter.get("/monitoramento-diario", c.monitoramentoDiario);
+administrativoRouter.get("/pendencias", c.pendencias);
+administrativoRouter.get("/empresas", c.empresas);            // antes de /empresas/:id
+administrativoRouter.get("/empresas/:organizacaoId", c.detalheEmpresa);
+administrativoRouter.get("/unidades/:unidadeId/calendario", c.calendarioUnidade);
+
 // Qualquer outra coisa sob /administrativo é 404 em JSON.
 administrativoRouter.use(c.naoEncontrado);
