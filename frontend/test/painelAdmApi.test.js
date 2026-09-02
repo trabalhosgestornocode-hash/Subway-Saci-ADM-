@@ -76,3 +76,70 @@ describe("painelAdmApi.ping", () => {
     });
   });
 });
+
+describe("painelAdmApi — endpoints de monitoramento (Fase F/G)", () => {
+  const rotaDe = (u) => new URL(u, "http://x").pathname + new URL(u, "http://x").search;
+
+  test("visaoGeral / pendencias / empresas -> GET simples, Bearer, sem x-context-token", async () => {
+    for (const [metodo, sufixo] of [["visaoGeral", "/visao-geral"], ["pendencias", "/pendencias"], ["empresas", "/empresas"]]) {
+      stubFetch();
+      await painelAdmApi[metodo]();
+      assert.equal(rotaDe(capturado.url), "/api/v1/administrativo" + sufixo);
+      const h = capturado.opcoes.headers ?? {};
+      assert.equal(h.Authorization, "Bearer jwt-identidade-fake");
+      assert.ok(!Object.keys(h).some((k) => k.toLowerCase() === "x-context-token"));
+    }
+  });
+
+  test("monitoramentoDiario monta a query string só com os filtros preenchidos", async () => {
+    stubFetch();
+    await painelAdmApi.monitoramentoDiario({ data: "2026-09-14", status: "nao_realizado", organizacaoId: "", criticidade: "critico" });
+    const r = rotaDe(capturado.url);
+    assert.match(r, /^\/api\/v1\/administrativo\/monitoramento-diario\?/);
+    assert.match(r, /data=2026-09-14/);
+    assert.match(r, /status=nao_realizado/);
+    assert.match(r, /criticidade=critico/);
+    assert.ok(!/organizacaoId=/.test(r), "filtro vazio não entra na query");
+  });
+
+  test("monitoramentoDiario() sem filtros -> rota sem query string", async () => {
+    stubFetch();
+    await painelAdmApi.monitoramentoDiario();
+    assert.equal(rotaDe(capturado.url), "/api/v1/administrativo/monitoramento-diario");
+  });
+
+  test("detalheEmpresa / calendarioUnidade usam o id na rota; calendário aceita ?mes", async () => {
+    stubFetch();
+    await painelAdmApi.detalheEmpresa("org-123");
+    assert.equal(rotaDe(capturado.url), "/api/v1/administrativo/empresas/org-123");
+
+    stubFetch();
+    await painelAdmApi.calendarioUnidade("uni-9", "2026-08");
+    assert.equal(rotaDe(capturado.url), "/api/v1/administrativo/unidades/uni-9/calendario?mes=2026-08");
+
+    stubFetch();
+    await painelAdmApi.calendarioUnidade("uni-9");
+    assert.equal(rotaDe(capturado.url), "/api/v1/administrativo/unidades/uni-9/calendario");
+  });
+
+  test("nenhum endpoint envia x-context-token, mesmo com um no sessionStorage", async () => {
+    globalThis.sessionStorage.getItem = (k) => (k === "cd.contextToken" ? "token-tenant-fake" : null);
+    for (const chamar of [
+      () => painelAdmApi.visaoGeral(),
+      () => painelAdmApi.monitoramentoDiario({ status: "critico" }),
+      () => painelAdmApi.detalheEmpresa("o1"),
+      () => painelAdmApi.calendarioUnidade("u1", "2026-09"),
+    ]) {
+      stubFetch();
+      await chamar();
+      const h = capturado.opcoes.headers ?? {};
+      assert.ok(!Object.keys(h).some((k) => k.toLowerCase() === "x-context-token"));
+    }
+    globalThis.sessionStorage.getItem = () => null;
+  });
+
+  test("403 em qualquer endpoint -> erro com .status = 403", async () => {
+    stubFetch({ status: 403, body: { error: "Acesso restrito ao Painel Administrativo." } });
+    await assert.rejects(() => painelAdmApi.visaoGeral(), (e) => e.status === 403);
+  });
+});

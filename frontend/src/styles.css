@@ -2131,6 +2131,196 @@ body {
 }
 
 /* =========================================================================
+   PAINEL ADMINISTRATIVO — telas de monitoramento (Fase G)
+   Central de acompanhamento: poucas cores (3 tons: crítico / atenção /
+   positivo), leitura rápida, prioridade operacional. Herda os tokens do :root
+   (tema claro/escuro automático).
+   ========================================================================= */
+.padm-refdata { font-size: 12.5px; color: var(--cinza); margin-bottom: 14px; }
+.padm-refdata b { color: var(--texto); }
+.padm-refdata-sep { margin: 0 4px; opacity: .5; }
+
+/* --- cartões de indicador --- */
+.padm-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px; margin-bottom: 22px;
+}
+.padm-card {
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio-sm);
+  padding: 13px 14px; display: flex; flex-direction: column; gap: 3px; box-shadow: var(--sombra-sm);
+  border-left: 3px solid var(--linha);
+}
+.padm-card--critico { border-left-color: var(--bad); }
+.padm-card--atencao { border-left-color: var(--warn); }
+.padm-card--ok { border-left-color: var(--ok); }
+.padm-card-label { font-size: 11px; letter-spacing: .3px; text-transform: uppercase; color: var(--cinza); font-weight: 700; }
+.padm-card-valor { font-size: 23px; font-weight: 760; letter-spacing: -.5px; line-height: 1.15; }
+.padm-card-nota { font-size: 11.5px; color: var(--cinza); }
+
+/* --- seção --- */
+.padm-secao { margin-bottom: 24px; }
+.padm-secao-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.padm-secao-head h2 { font-size: 15px; font-weight: 730; }
+.padm-secao-sub { font-size: 12px; color: var(--cinza); margin-top: 2px; }
+.padm-secao-acoes { display: flex; gap: 8px; flex: 0 0 auto; }
+
+/* --- chips de status (3 tons) --- */
+.padm-chip {
+  display: inline-flex; align-items: center; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap; line-height: 1.5;
+}
+.padm-chip--critico { background: var(--bad-bg); color: var(--bad); }
+.padm-chip--atencao { background: var(--warn-bg); color: var(--warn); }
+.padm-chip--ok { background: var(--ok-bg); color: var(--ok); }
+.padm-chip--muted { background: var(--muted-bg); color: var(--muted); }
+
+/* --- Ação necessária hoje --- */
+.padm-acao { display: flex; flex-direction: column; gap: 14px; }
+.padm-acao-grupo {
+  background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio-sm);
+  overflow: hidden; box-shadow: var(--sombra-sm);
+}
+.padm-acao-grupo--critico { border-color: var(--vermelho-tint-borda); }
+.padm-acao-grupo-head {
+  display: flex; align-items: center; gap: 10px; padding: 9px 13px;
+  background: var(--superficie-2); border-bottom: 1px solid var(--linha);
+}
+.padm-acao-grupo-cont { font-size: 12px; font-weight: 700; color: var(--cinza); margin-left: auto; }
+.padm-acao-lista { list-style: none; margin: 0; padding: 0; }
+.padm-acao-item, .padm-lista-item, .padm-emp-row {
+  display: flex; align-items: center; gap: 12px; padding: 11px 13px;
+  border-bottom: 1px solid var(--linha); cursor: pointer; transition: background var(--t);
+}
+.padm-acao-item:last-child, .padm-lista-item:last-child { border-bottom: 0; }
+.padm-acao-item:hover, .padm-lista-item:hover, .padm-emp-row:hover,
+.padm-acao-item:focus-visible, .padm-lista-item:focus-visible, .padm-emp-row:focus-visible {
+  background: var(--superficie-2); outline: none;
+}
+.padm-acao-item-txt, .padm-lista-princ { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.padm-acao-item-txt b, .padm-lista-princ b { font-size: 13.5px; font-weight: 650; }
+.padm-acao-item-txt small, .padm-lista-princ small { font-size: 11.5px; color: var(--cinza); }
+.padm-acao-pend, .padm-lista-pend {
+  font-size: 11px; color: var(--bad); font-weight: 650; white-space: nowrap;
+}
+
+/* --- listas genéricas (diário, pendências, unidades) --- */
+.padm-lista { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio-sm); overflow: hidden; box-shadow: var(--sombra-sm); }
+.padm-lista-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.padm-lista-conf { font-size: 11px; color: var(--cinza); white-space: nowrap; }
+.padm-tag-bloq { font-size: 10.5px; font-weight: 700; color: var(--bad); text-transform: uppercase; letter-spacing: .3px; }
+
+/* --- pendências: grupos --- */
+.padm-pend-grupo { margin-bottom: 18px; }
+.padm-pend-grupo-tit { font-size: 12.5px; font-weight: 750; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 7px; }
+.padm-pend-grupo-tit span { font-size: 11px; background: var(--superficie-2); border-radius: 999px; padding: 1px 7px; color: var(--cinza); }
+.padm-pend-grupo-tit--critico { color: var(--bad); }
+.padm-pend-grupo-tit--atencao { color: var(--warn); }
+.padm-pend-grupo-tit--muted { color: var(--cinza); }
+
+/* --- filtros do monitoramento diário --- */
+.padm-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+.padm-f-campo { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--cinza); font-weight: 700; }
+.padm-f-campo input, .padm-f-campo select {
+  font: inherit; font-size: 13px; font-weight: 400; color: var(--texto);
+  padding: 6px 9px; border: 1px solid var(--linha); border-radius: var(--raio-sm); background: var(--campo-bg);
+}
+.padm-busca { display: block; margin-bottom: 14px; }
+.padm-busca input {
+  width: 100%; font: inherit; font-size: 13.5px; padding: 9px 12px;
+  border: 1px solid var(--linha); border-radius: var(--raio-sm); background: var(--campo-bg); color: var(--texto);
+}
+
+/* --- resumo por empresa / cards de empresa --- */
+.padm-emp-lista { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio-sm); overflow: hidden; box-shadow: var(--sombra-sm); }
+.padm-emp-nome { font-weight: 650; font-size: 13.5px; flex: 0 0 auto; min-width: 130px; }
+.padm-emp-metricas { display: flex; flex-wrap: wrap; gap: 4px 12px; flex: 1; font-size: 11.5px; color: var(--cinza); }
+.padm-emp-m i { font-style: normal; font-weight: 700; color: var(--texto); }
+.padm-emp-m--critico i { color: var(--bad); }
+.padm-emp-m--atencao i { color: var(--warn); }
+.padm-emp-m--ok i { color: var(--ok); }
+.padm-emp-ir { color: var(--cinza-claro); font-size: 17px; flex: 0 0 auto; }
+
+.padm-emp-cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.padm-emp-card {
+  background: var(--card); border: 1px solid var(--linha); border-left: 3px solid var(--linha);
+  border-radius: var(--raio-sm); padding: 13px 14px; cursor: pointer; box-shadow: var(--sombra-sm);
+  transition: box-shadow var(--t), transform var(--t);
+}
+.padm-emp-card:hover, .padm-emp-card:focus-visible { box-shadow: var(--sombra-md); outline: none; transform: translateY(-1px); }
+.padm-emp-card--critico { border-left-color: var(--bad); }
+.padm-emp-card--atencao { border-left-color: var(--warn); }
+.padm-emp-card--ok { border-left-color: var(--ok); }
+.padm-emp-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.padm-emp-card-top b { font-size: 14px; font-weight: 680; }
+.padm-emp-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 10px; font-size: 11.5px; color: var(--cinza); }
+.padm-emp-card-grid i { font-style: normal; font-weight: 700; color: var(--texto); }
+.padm-emp-card-grid .padm-emp-m--critico i { color: var(--bad); }
+.padm-emp-card-grid .padm-emp-m--atencao i { color: var(--warn); }
+.padm-emp-card-grid .padm-emp-m--ok i { color: var(--ok); }
+
+/* --- detalhe --- */
+.padm-detalhe-head { margin-bottom: 18px; }
+.padm-detalhe-titulo { display: flex; align-items: center; gap: 10px; margin: 8px 0 3px; }
+.padm-detalhe-titulo h2 { font-size: 18px; font-weight: 740; }
+.padm-detalhe-sub { font-size: 12px; color: var(--cinza); }
+
+/* --- calendário --- */
+.padm-cal-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.padm-cal-mes { font-size: 14px; font-weight: 700; text-transform: capitalize; min-width: 150px; text-align: center; }
+.padm-cal-aviso { font-size: 12px; color: var(--bad); background: var(--bad-bg); border-radius: var(--raio-sm); padding: 8px 12px; margin-bottom: 12px; }
+.padm-cal { background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio-sm); padding: 14px; box-shadow: var(--sombra-sm); max-width: 460px; }
+.padm-cal-semana, .padm-cal-grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.padm-cal-semana { margin-bottom: 6px; }
+.padm-cal-semana span { text-align: center; font-size: 10.5px; font-weight: 700; color: var(--cinza-claro); }
+.padm-cal-dia {
+  aspect-ratio: 1; border-radius: 8px; display: grid; place-items: center;
+  font-size: 12px; font-weight: 650; background: var(--superficie-2); color: var(--texto);
+  border: 1px solid transparent;
+}
+.padm-cal-dia i { font-style: normal; }
+.padm-cal-dia--fora { background: transparent; }
+.padm-cal-dia--concluido { background: var(--ok-bg); color: var(--ok); }
+.padm-cal-dia--em-preenchimento { background: var(--warn-bg); color: var(--warn); }
+.padm-cal-dia--nao-realizado { background: var(--bad-bg); color: var(--bad); }
+.padm-cal-dia--bloqueado { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); border-style: dashed; }
+.padm-cal-dia--na { background: var(--superficie-2); color: var(--cinza-claro); }
+.padm-cal-dia--futuro, .padm-cal-dia--hoje { background: var(--campo-bg); color: var(--cinza-claro); }
+.padm-cal-dia--hoje { border-color: var(--info); }
+.padm-cal-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 11px; color: var(--cinza); }
+.padm-cal-leg { display: inline-flex; align-items: center; gap: 6px; }
+.padm-cal-leg i { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+
+/* --- estados --- */
+.padm-estado {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+  padding: 40px 20px; color: var(--cinza);
+}
+.padm-estado-ic {
+  width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center;
+  font-size: 18px; font-weight: 800; background: var(--muted-bg); color: var(--muted); margin-bottom: 4px;
+}
+.padm-estado--vazio .padm-estado-ic { background: var(--ok-bg); color: var(--ok); }
+.padm-estado--erro .padm-estado-ic { background: var(--bad-bg); color: var(--bad); }
+.padm-estado h3 { font-size: 15px; font-weight: 700; color: var(--texto); }
+.padm-estado p { font-size: 13px; max-width: 400px; }
+.padm-spinner {
+  width: 22px; height: 22px; border-radius: 999px; border: 2.5px solid var(--linha);
+  border-top-color: var(--verde); animation: spin .7s linear infinite;
+}
+
+@media (max-width: 720px) {
+  .padm-acao-item, .padm-lista-item, .padm-emp-row { flex-wrap: wrap; align-items: flex-start; }
+  .padm-lista-meta { justify-content: flex-start; width: 100%; }
+  .padm-emp-metricas { width: 100%; }
+  .padm-emp-nome { min-width: 0; width: 100%; }
+  .padm-filtros { gap: 8px; }
+  .padm-f-campo { flex: 1 1 46%; }
+  .padm-f-campo input, .padm-f-campo select { width: 100%; }
+  .padm-emp-card-grid { grid-template-columns: repeat(2, 1fr); }
+  .padm-cal { max-width: none; }
+}
+
+/* =========================================================================
    DEFINIR SENHA (primeiro acesso) — reaproveita a base .sel-* e os campos .lg-*
    ========================================================================= */
 .sel-wrap--estreito { max-width: 460px; }
