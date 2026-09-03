@@ -115,6 +115,80 @@ O que dá para afirmar a partir do repositório:
 
 ---
 
+## XSS — auditoria dirigida (P0.7)
+
+Foi feita uma auditoria **dirigida** (não linha a linha das ~290 chamadas a
+`innerHTML`) dos sinks que renderizam dado vindo do banco / de arquivo
+importado / do Agente:
+
+| Sink | Helper | Veredito |
+|---|---|---|
+| Painel Administrativo — nomes de empresa/unidade/usuário (cross-tenant) | `realce()` (`painelAdmUi.js:313`) | escapa cada segmento antes do `<mark>` — **OK** |
+| Painel Administrativo — PDF | `txt()` = `escapeHtml(limparTexto())` (`painelAdmPdf.js:81`) | **OK** |
+| Seleção de empresa/unidade — nome, logo, cidade, motivo | `escapeHtml` em todos (`selecaoAmbiente.js`) | **OK** |
+| Formulários do painel — value/placeholder/textarea | `campo`/`selecao`/`area` (`adminUi.js:197`) | escapam value/ph/rótulo — **OK** |
+| Resposta do Agente Crescer | `renderizarMarkdownSeguro` (`markdown.js`) | `escapeHtml` ANTES de qualquer transformação; tags fixas, nunca atributos — **OK** (com testes) |
+| Vendas — `nome_sw`/`codigo_sw`/`produto_nome` (vêm da planilha) | `escapeHtml` (`vendas.js:427,433,679,689`) | **OK** |
+| Martin Brower — `descricao`/`grupo_descricao` do catálogo | `escapar` (`martinbrower.js:238,285`) | **OK** |
+| Histórico de alterações de produto | `escapeHtml` em rótulo/valores/autor (`views.js:192`) | **OK** |
+
+**Corrigido:** o único handler inline de todo o frontend —
+`<a href="#" onclick="return false">` no rodapé "by atlaz.company"
+(`index.html`) — virou `<span>` (era um link que não navegava; zero mudança
+visual/comportamental). Era o único bloqueador de CSP em `script-src`.
+
+**Conclusão:** não foi encontrado XSS armazenado/refletido confirmado. A
+disciplina de `escapeHtml` é consistente (658 chamadas). O risco residual da
+auditoria (XSS-01) era a ausência da CSP como rede de defesa — tratado abaixo.
+
+Atributos estruturais (`id="${id}"`, `type="${tipo}"`, `data-produto="${uuid}"`)
+não são escapados, mas vêm sempre de literais do código ou de UUIDs do banco,
+nunca de texto livre — mesmo modelo de confiança do resto do código.
+
+---
+
+## CSP — pronta para enforce, virada pendente de staging (P0.8)
+
+### O que foi feito
+
+- Removido o único handler inline (acima) → `script-src` **já não precisa** de
+  `'unsafe-inline'` (e nunca teve `'unsafe-eval'`).
+- `img-src` já era `'self' data: blob: https:` — o `https:` é necessário para
+  logos de empresa (URL arbitrária salva por empresa); imagens não executam.
+- Recursos externos legítimos confirmados e todos já na CSP: `cdn.jsdelivr.net`
+  (Chart.js, supabase-js), `fonts.googleapis.com` + `fonts.gstatic.com`
+  (fontes), domínio do Supabase (`connect-src` https + wss),
+  `portal.martinbrower.com.br` (`frame-src`).
+
+### Por que NÃO foi ligada nesta fase
+
+1. **Exige smoke em staging, tela por tela**, com o DevTools aberto — não é
+   verificável sem um backend Supabase real e navegando o app inteiro.
+2. **`style-src 'unsafe-inline'` continua necessário** — o app escreve
+   `style="height:..."` / `width:...` / `background:...` em elementos gerados
+   (barras de gráfico e de progresso). Trocar por nonce/hash é reescrita da
+   camada de render — fora do escopo P0. Documentado como dívida consciente.
+3. **Exportação de PDF do Painel Administrativo** (`painelAdmPdf.js`) monta um
+   documento standalone com um `<script>` inline de paginação
+   (`SCRIPT_PAGINADOR`), servido via `iframe srcdoc` — que **herda a CSP da
+   página**. Com enforce, esse script é bloqueado e a paginação do PDF quebra
+   (o PDF ainda sai, mas com quebras de página piores).
+
+### Checklist para ligar `CSP_ENFORCE=true` (em staging primeiro)
+
+1. Resolver o `<script>` do PDF: calcular `sha256` de `SCRIPT_PAGINADOR` e
+   adicionar `'sha256-...'` a `script-src` **ou** mover a paginação para CSS
+   Paged Media / um `.js` servido.
+2. Deploy em staging com `CSP_ENFORCE=true`.
+3. Navegar TODAS as áreas (login, seleção, cada módulo de tenant, Agente,
+   Painel SuperAdmin, Painel Administrativo, exportar um PDF) com o DevTools →
+   Console aberto. Zero violação de `script-src`.
+4. Se aparecer violação legítima nova, adicionar a origem específica (nunca
+   `*` nem `'unsafe-inline'` em script).
+5. Só então `CSP_ENFORCE=true` em produção.
+
+---
+
 ## Outras mudanças da Fase P0 (referência rápida)
 
 | Item | Commit | Observação |

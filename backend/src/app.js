@@ -9,7 +9,7 @@ import { requireAuth } from "./middlewares/auth.js";
 import { notFound } from "./middlewares/notFound.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { router } from "./routes.js";
-import { corsOptions, helmetOptions, LIMITES_CORPO, emProducao, cspEmModoBloqueio } from "./config/seguranca.js";
+import { corsOptions, helmetOptions, headersComplementares, LIMITES_CORPO, emProducao, cspEmModoBloqueio } from "./config/seguranca.js";
 import { limiteDeTaxa } from "./shared/rateLimit.js";
 import { RATE_LIMIT } from "./config/limites.js";
 
@@ -25,6 +25,8 @@ export function createApp() {
   // CSP montada a partir do que o frontend realmente usa — inclusive o
   // frame-src do portal Martin Brower. Sobe em Report-Only até CSP_ENFORCE=true.
   app.use(helmet(helmetOptions));
+  // Headers que o helmet 7 não cobre (Permissions-Policy).
+  app.use(headersComplementares);
   // CORS restrito por allowlist. Sem CORS_ORIGINS = só mesma origem.
   app.use(cors(corsOptions));
 

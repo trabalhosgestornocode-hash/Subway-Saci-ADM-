@@ -47,10 +47,16 @@ export const PORTAL_MARTIN_BROWER = "https://portal.martinbrower.com.br";
 
 export const cspDirectives = {
   defaultSrc: ["'self'"],
+  // SEM 'unsafe-inline': o frontend não tem NENHUM <script> inline nem handler
+  // inline (o único, `onclick` no rodapé "by atlaz.company", virou <span> na
+  // Fase P0). Os únicos scripts são /src/*.js (self) e Chart.js/supabase-js
+  // (jsdelivr). 'unsafe-eval' também fica de fora.
   scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
-  // 'unsafe-inline' em estilo é aceito: o app usa style="" em elementos
-  // gerados (gráficos, barras de progresso). O risco de CSS inline é baixo
-  // e a alternativa exigiria reescrever a renderização inteira.
+  // 'unsafe-inline' em ESTILO permanece NECESSÁRIO e é aceito: o app escreve
+  // style="" em elementos gerados dinamicamente (altura de barras de gráfico,
+  // largura de barras de progresso, cor de badge). Trocar por nonce/hash
+  // exigiria reescrever toda a camada de render. Risco de CSS inline é baixo
+  // (não executa script). Documentado como dívida consciente.
   styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
   fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
   imgSrc: ["'self'", "data:", "blob:", "https:"],
@@ -64,9 +70,12 @@ export const cspDirectives = {
   upgradeInsecureRequests: producao ? [] : null,
 };
 
-// Report-Only por padrão: a CSP é publicada e VIOLAÇÕES SÃO REGISTRADAS no
-// console do navegador, mas nada é bloqueado. Depois de confirmar que o portal
-// da Martin Brower e o app carregam limpos, ligue CSP_ENFORCE=true.
+// Report-Only por padrão. Na Fase P0 a CSP foi deixada PRONTA para enforce
+// (removido o único handler inline; script-src já sem 'unsafe-inline'), mas a
+// virada NÃO foi feita porque exige um smoke em staging com o DevTools aberto,
+// tela por tela — inclusive a exportação de PDF do Painel Administrativo, que
+// gera um documento standalone com um <script> de paginação. Ver
+// docs/seguranca-fase-p0.md (seção CSP) antes de ligar CSP_ENFORCE=true.
 export const cspEmModoBloqueio = process.env.CSP_ENFORCE === "true";
 
 // --- MFA (verificação em duas etapas) para acessos críticos ---------------
@@ -97,6 +106,17 @@ export const helmetOptions = {
     ),
     reportOnly: !cspEmModoBloqueio,
   },
+  // HSTS explícito (o default do helmet já liga, mas deixamos legível): 180
+  // dias, subdomínios incluídos. `preload` fica DESLIGADO de propósito — só
+  // deve ser ligado junto com a submissão do domínio à lista de preload.
+  hsts: { maxAge: 15552000, includeSubDomains: true, preload: false },
+  // X-Content-Type-Options: nosniff (default do helmet — explícito aqui).
+  noSniff: true,
+  // X-Frame-Options: DENY — alinhado com `frame-ancestors 'none'` da CSP
+  // (o default do helmet é SAMEORIGIN, que seria mais frouxo que a CSP).
+  // O NOSSO app nunca é embutido; o iframe da Martin Brower é o portal DENTRO
+  // do nosso app, não o contrário.
+  frameguard: { action: "deny" },
   // COEP quebra iframe de terceiro (o portal não manda CORP) — precisa ficar
   // desligado, senão a aba Martin Brower volta a exibir a tela de bloqueio.
   crossOriginEmbedderPolicy: false,
@@ -106,6 +126,22 @@ export const helmetOptions = {
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 };
+
+// Permissions-Policy — o helmet 7 NÃO tem esta diretiva; setamos à mão.
+// Nega recursos que o app não usa. Um XSS num contexto do app não consegue
+// abrir câmera/microfone/geolocalização/pagamento, etc.
+export const PERMISSIONS_POLICY = [
+  "accelerometer=()", "autoplay=()", "camera=()", "display-capture=()",
+  "encrypted-media=()", "fullscreen=(self)", "geolocation=()", "gyroscope=()",
+  "magnetometer=()", "microphone=()", "midi=()", "payment=()",
+  "picture-in-picture=()", "usb=()", "screen-wake-lock=()",
+].join(", ");
+
+/** Middleware: adiciona os headers que o helmet não cobre. */
+export function headersComplementares(_req, res, next) {
+  res.setHeader("Permissions-Policy", PERMISSIONS_POLICY);
+  next();
+}
 
 // --- limites de corpo -----------------------------------------------------
 // 30 MB era o limite GLOBAL por causa dos relatórios do SW em base64. Agora
