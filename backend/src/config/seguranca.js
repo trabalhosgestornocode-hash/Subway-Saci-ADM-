@@ -69,6 +69,26 @@ export const cspDirectives = {
 // da Martin Brower e o app carregam limpos, ligue CSP_ENFORCE=true.
 export const cspEmModoBloqueio = process.env.CSP_ENFORCE === "true";
 
+// --- MFA (verificação em duas etapas) para acessos críticos ---------------
+// DORMENTE POR PADRÃO. O backend já sabe LER o nível de garantia (AAL) do JWT
+// do Supabase (ver middlewares/auth.js#requireAuth -> req.user.aal) e já tem o
+// gate `exigirMfaSeExigido` montado nos routers de SuperAdmin e Painel
+// Administrativo — mas ele é NO-OP enquanto a flag correspondente for false.
+//
+// ROLLOUT SEGURO (não ligar antes de cumprir todos os passos — ver
+// docs/seguranca-fase-p0.md):
+//   1. deploy deste código (flags = false, nada muda);
+//   2. cada SuperAdmin / usuário do Painel Administrativo cadastra o TOTP
+//      (fluxo de enrollment no frontend — supabase.auth.mfa.enroll/challenge/
+//      verify) e passa a logar com AAL2;
+//   3. confirmar que 100% dos privilegiados têm MFA ativo;
+//   4. só então: MFA_ENFORCE_SUPERADMIN=true / MFA_ENFORCE_PAINEL_ADM=true.
+// Sem o passo 3, ligar a flag TRANCA os administradores para fora.
+export const MFA = {
+  enforceSuperadmin: process.env.MFA_ENFORCE_SUPERADMIN === "true",
+  enforcePainelAdministrativo: process.env.MFA_ENFORCE_PAINEL_ADM === "true",
+};
+
 export const helmetOptions = {
   contentSecurityPolicy: {
     useDefaults: false,

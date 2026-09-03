@@ -1,6 +1,6 @@
 import { Router } from "express";
 import * as c from "./administrativo.controller.js";
-import { requirePainelAdministrativo } from "../../middlewares/auth.js";
+import { requirePainelAdministrativo, exigirMfaSeExigido } from "../../middlewares/auth.js";
 import { limiteDeTaxa } from "../../shared/rateLimit.js";
 import { RATE_LIMIT } from "../../config/limites.js";
 
@@ -26,6 +26,8 @@ import { RATE_LIMIT } from "../../config/limites.js";
 
 export const administrativoRouter = Router();
 administrativoRouter.use(requirePainelAdministrativo);
+// MFA — DORMENTE (no-op enquanto MFA_ENFORCE_PAINEL_ADM != "true").
+administrativoRouter.use(exigirMfaSeExigido("painelAdministrativo"));
 // Rede contra script descontrolado (só leitura, já restrito ao Painel Adm).
 administrativoRouter.use(limiteDeTaxa({ escopo: "administrativo", ...RATE_LIMIT.administrativo }));
 

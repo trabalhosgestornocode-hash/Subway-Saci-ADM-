@@ -1,6 +1,6 @@
 import { Router } from "express";
 import * as c from "./plataforma.controller.js";
-import { requireSuperadmin } from "../../middlewares/auth.js";
+import { requireSuperadmin, exigirMfaSeExigido } from "../../middlewares/auth.js";
 import { limiteDeTaxa } from "../../shared/rateLimit.js";
 import { RATE_LIMIT } from "../../config/limites.js";
 
@@ -18,6 +18,9 @@ import { RATE_LIMIT } from "../../config/limites.js";
 
 export const plataformaRouter = Router();
 plataformaRouter.use(requireSuperadmin);
+// MFA — DORMENTE (no-op enquanto MFA_ENFORCE_SUPERADMIN != "true"). Ver
+// config/seguranca.js#MFA e docs/seguranca-fase-p0.md antes de ligar.
+plataformaRouter.use(exigirMfaSeExigido("superadmin"));
 // Rede contra script descontrolado no painel (já restrito a SuperAdmin).
 // Folgado — operações em lote são legítimas aqui.
 plataformaRouter.use(limiteDeTaxa({ escopo: "plataforma", ...RATE_LIMIT.plataforma }));

@@ -25,6 +25,7 @@ import { ApiError } from "../shared/ApiError.js";
 import { verificarContextToken, validarPidContraSessao } from "../shared/contextToken.js";
 import { temPermissao } from "../shared/permissoes.js";
 import { rotuloModulo } from "../shared/modulos.js";
+import { MFA } from "../config/seguranca.js";
 
 /** Nome do header que transporta o Context Token. */
 export const HEADER_CONTEXTO = "x-context-token";
@@ -41,7 +42,31 @@ const STATUS_BLOQUEANTES = new Set(["bloqueada", "suspensa", "cancelada"]);
  * @property {boolean} painelAdministrativo
  * @property {boolean} ativo
  * @property {boolean} senhaProvisoria
+ * @property {'aal1'|'aal2'|null} aal  nível de garantia de autenticação do JWT (MFA)
+ * @property {string[]} amr  métodos usados no login (ex.: ["password","totp"])
+ * @property {boolean} mfaCadastrada  a conta tem ao menos um 2º fator verificado
  */
+
+/**
+ * Lê `aal`/`amr` do payload do JWT do Supabase. Só é chamado DEPOIS de
+ * `supabase.auth.getUser(token)` ter validado a assinatura — aqui apenas
+ * decodificamos o corpo já autenticado. Nunca lança.
+ * @param {string} token
+ * @returns {{ aal: 'aal1'|'aal2'|null, amr: string[] }}
+ */
+function lerNivelMfaDoJwt(token) {
+  try {
+    const corpo = token.split(".")[1];
+    const payload = JSON.parse(Buffer.from(corpo, "base64url").toString("utf8"));
+    const aal = payload?.aal === "aal2" || payload?.aal === "aal1" ? payload.aal : null;
+    const amr = Array.isArray(payload?.amr)
+      ? payload.amr.map((m) => (typeof m === "string" ? m : m?.method)).filter(Boolean)
+      : [];
+    return { aal, amr };
+  } catch {
+    return { aal: null, amr: [] };
+  }
+}
 
 /**
  * @typedef {object} AcessoContexto
@@ -100,11 +125,21 @@ export async function requireAuth(req, _res, next) {
       return next(ApiError.forbidden("Usuário inativo. Contate o administrador."));
     }
 
+    // Nível de MFA do JWT (dormente: só é EXIGIDO onde `exigirMfaSeExigido`
+    // estiver ligado por env — ver config/seguranca.js#MFA). Exposto sempre
+    // para o frontend saber se deve oferecer o cadastro do 2º fator.
+    const { aal, amr } = lerNivelMfaDoJwt(token);
+    const mfaCadastrada = Array.isArray(data.user.factors)
+      && data.user.factors.some((f) => f?.status === "verified");
+
     /** @type {UsuarioAutenticado} */
     req.user = {
       id: usuarioId,
       email: data.user.email ?? perfil?.email ?? "",
       nome: perfil?.nome || data.user.user_metadata?.nome || (data.user.email ?? "").split("@")[0],
+      aal,
+      amr,
+      mfaCadastrada,
       superadmin: !!superRes.data,
       // Acesso GLOBAL ao Painel Administrativo (monitoramento gerencial
       // cross-tenant). NÃO implica SuperAdmin — ver requirePainelAdministrativo.
@@ -315,6 +350,40 @@ export function requireSuperadmin(req, _res, next) {
     return next(ApiError.forbidden("Ação restrita ao SuperAdmin da plataforma."));
   }
   next();
+}
+
+// ---------------------------------------------------------------------------
+// MFA (verificação em duas etapas) para acessos críticos — DORMENTE por padrão.
+//
+// O JWT do Supabase carrega `aal` ("aal1" = só senha, "aal2" = senha + 2º
+// fator). `requireAuth` já expõe isso em `req.user.aal`. Estes gates só
+// EXIGEM AAL2 quando a flag correspondente (config/seguranca.js#MFA) está
+// ligada por env — enquanto false, são no-op e nada muda.
+//
+// NUNCA ligar a flag antes de garantir que os administradores atuais já têm
+// MFA cadastrado (ver docs/seguranca-fase-p0.md): ligar sem isso os tranca
+// para fora, e não há caminho de volta pela UI.
+// ---------------------------------------------------------------------------
+
+/** Exige AAL2 sempre (para rotas que já nascem MFA-only — nenhuma hoje). */
+export function requireAAL2(req, _res, next) {
+  if (req.user?.aal === "aal2") return next();
+  return next(new ApiError(401, "Esta ação exige verificação em duas etapas (MFA). Faça login novamente com o segundo fator.", { codigo: "MFA_REQUERIDA" }));
+}
+
+/**
+ * Gate condicional: exige AAL2 apenas se a política estiver ligada por env.
+ * @param {'superadmin'|'painelAdministrativo'} politica
+ */
+export function exigirMfaSeExigido(politica) {
+  return (req, _res, next) => {
+    const ligado = politica === "superadmin" ? MFA.enforceSuperadmin : MFA.enforcePainelAdministrativo;
+    if (!ligado) return next();                     // dormente
+    if (req.user?.aal === "aal2") return next();
+    return next(new ApiError(401,
+      "Este ambiente agora exige verificação em duas etapas (MFA). Cadastre o segundo fator e entre novamente.",
+      { codigo: "MFA_REQUERIDA" }));
+  };
 }
 
 /**
