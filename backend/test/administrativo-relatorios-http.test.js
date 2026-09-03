@@ -56,7 +56,7 @@ function acumulado(unidadeId, mes, ate, porDia, over = {}) {
       data_lancamento: `${mes}-${String(d).padStart(2, "0")}`,
       valor_vendas_ifood: d * porDia,
       status: "finalizado", situacao: "normal", origem_lancamento: "diario",
-      taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null,
+      taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_favor_loja: null, ajustes_contra_loja: null,
       ...over,
     });
   }
@@ -86,7 +86,7 @@ function cenario() {
   L.push({
     unidade_id: UUID("u3"), data_lancamento: "2026-09-15", valor_vendas_ifood: 4500,
     status: "rascunho", situacao: "normal", origem_lancamento: "diario",
-    taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null,
+    taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_favor_loja: null, ajustes_contra_loja: null,
   });
   return st;
 }

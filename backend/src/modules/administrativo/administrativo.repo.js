@@ -19,14 +19,15 @@ const TABELA_LANC = "lancamentos_financeiros_diarios";
 // Colunas que o painel lê de cada lançamento. As 5 primeiras são a projeção de
 // STATUS (motor de pendência); as demais são o FINANCEIRO — `valor_vendas_ifood`
 // é o faturamento (snapshot acumulado), `origem_lancamento` separa o diário da
-// distribuição mensal e as deduções fecham a receita líquida.
+// distribuição mensal, `ajustes_contra_loja` fecha o total de deduções e
+// `ajustes_favor_loja` (crédito) entra só na receita líquida.
 //
 // Vêm na MESMA query em lote que já existia: o ranking financeiro não custa
 // nenhuma consulta a mais, só colunas a mais.
 const COLUNAS_LANC = [
   "unidade_id", "data_lancamento", "status", "situacao", "valor_vendas_ifood",
   "origem_lancamento", "taxas_comissoes", "servicos_promocoes",
-  "taxas_entregadores", "outras_deducoes",
+  "taxas_entregadores", "ajustes_favor_loja", "ajustes_contra_loja",
 ].join(", ");
 
 // O Painel Administrativo mede OPERAÇÃO REAL: só organização `status='ativa'`

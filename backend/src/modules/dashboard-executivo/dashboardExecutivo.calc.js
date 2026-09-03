@@ -123,29 +123,34 @@ export function deltaFinanceiro(atual, anterior) {
 }
 
 /**
- * Soma as 4 deduções. Se NENHUMA foi informada, o total é indisponível
- * (null) — não um 0 que faria um card de meta parecer "dentro da meta" por
- * falta de dado. Se ALGUMAS foram informadas, soma só as conhecidas (melhor
- * esforço) — é o caso normal de um lançamento diário real, onde as 4 sempre
- * chegam preenchidas juntas.
- * @param {{taxasComissoes: number|null, servicosPromocoes: number|null, taxasEntregadores: number|null, outrasDeducoes: number|null}} p
+ * Soma as deduções que EFETIVAMENTE reduzem a receita: taxas e comissões,
+ * serviços e promoções, taxas de entregadores e AJUSTES CONTRA A LOJA
+ * (débitos/descontos). Ajuste A FAVOR da loja (crédito/reembolso) NUNCA entra
+ * aqui — ver `receitaLiquida`. Se NENHUMA parte foi informada, o total é
+ * indisponível (null) — não um 0 que faria um card de meta parecer "dentro
+ * da meta" por falta de dado. Se ALGUMAS foram informadas, soma só as
+ * conhecidas (melhor esforço) — é o caso normal de um lançamento diário
+ * real, onde taxas/serviços/entregadores sempre chegam juntas.
+ * @param {{taxasComissoes: number|null, servicosPromocoes: number|null, taxasEntregadores: number|null, ajustesContraLoja: number|null}} p
  * @returns {number|null}
  */
-export function totalDeducoes({ taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes }) {
-  const partes = [taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes];
+export function totalDeducoes({ taxasComissoes, servicosPromocoes, taxasEntregadores, ajustesContraLoja }) {
+  const partes = [taxasComissoes, servicosPromocoes, taxasEntregadores, ajustesContraLoja];
   if (partes.every((p) => p == null)) return null;
   return partes.reduce((s, p) => s + (p == null ? 0 : Number(p)), 0);
 }
 
 /**
- * Receita após deduções. Indisponível se o total de deduções não pôde ser
- * calculado — apresentar `valorVendas` sozinho aqui insinuaria "deduções
- * zero", o que não sabemos.
- * @param {number} valorVendas @param {number|null} totalDed @returns {number|null}
+ * Receita líquida = faturamento − total de deduções + ajustes A FAVOR da loja
+ * (créditos/reembolsos, que aumentam o valor efetivamente recebido).
+ * Indisponível se o total de deduções não pôde ser calculado — apresentar
+ * `valorVendas` sozinho aqui insinuaria "deduções zero", o que não sabemos.
+ * `ajustesFavor` ausente conta como 0 (um ajuste é a exceção, não a regra).
+ * @param {number} valorVendas @param {number|null} totalDed @param {number|null} [ajustesFavor] @returns {number|null}
  */
-export function receitaAposDeducoes(valorVendas, totalDed) {
+export function receitaLiquida(valorVendas, totalDed, ajustesFavor = null) {
   if (totalDed == null) return null;
-  return (Number(valorVendas) || 0) - Number(totalDed);
+  return (Number(valorVendas) || 0) - Number(totalDed) + (Number(ajustesFavor) || 0);
 }
 
 /** @param {number|null} percentualTotalDeducoes @returns {number|null} */
@@ -397,7 +402,7 @@ export function statusMes({ dias, hojeIso }) {
  * este seja mais antigo.
  * @param {Array<{data_lancamento: string, situacao: string, valor_vendas_ifood: number|null, origem_lancamento?: string|null}>} linhas — linhas CRUAS do banco
  * @param {string|null} [ateDataIso] — corte opcional (inclusive); sem ele, considera o mês inteiro
- * @returns {{data_lancamento: string, valor_vendas_ifood: number, taxas_comissoes: number|null, servicos_promocoes: number|null, taxas_entregadores: number|null, outras_deducoes: number|null}|null}
+ * @returns {{data_lancamento: string, valor_vendas_ifood: number, taxas_comissoes: number|null, servicos_promocoes: number|null, taxas_entregadores: number|null, ajustes_favor_loja: number|null, ajustes_contra_loja: number|null}|null}
  */
 export function snapshotFinanceiroMaisRecente(linhas, ateDataIso = null) {
   const candidatas = (linhas ?? []).filter((r) =>
@@ -422,7 +427,8 @@ export function snapshotFinanceiroMaisRecente(linhas, ateDataIso = null) {
     taxas_comissoes: somar("taxas_comissoes"),
     servicos_promocoes: somar("servicos_promocoes"),
     taxas_entregadores: somar("taxas_entregadores"),
-    outras_deducoes: somar("outras_deducoes"),
+    ajustes_favor_loja: somar("ajustes_favor_loja"),
+    ajustes_contra_loja: somar("ajustes_contra_loja"),
   };
 }
 
@@ -478,7 +484,7 @@ export function desempenhoParaTicketMedio(linhas) {
  * daquele snapshot — nunca a fonte oficial (`snapshotFinanceiroMaisRecente`
  * continua sendo), só a série pra visualizar a evolução.
  * @param {string[]} dias — ISO AAAA-MM-DD de todos os dias do mês (diasDoMes)
- * @param {Array<{data_lancamento: string, situacao: string, valor_vendas_ifood: number|null, origem_lancamento?: string|null, taxas_comissoes?: number|null, servicos_promocoes?: number|null, taxas_entregadores?: number|null, outras_deducoes?: number|null}>} linhas — linhas CRUAS do banco
+ * @param {Array<{data_lancamento: string, situacao: string, valor_vendas_ifood: number|null, origem_lancamento?: string|null, taxas_comissoes?: number|null, servicos_promocoes?: number|null, taxas_entregadores?: number|null, ajustes_contra_loja?: number|null}>} linhas — linhas CRUAS do banco
  * @returns {Array<{data: string, valor: number|null, delta: number|null, percentualTotalDeducoes: number|null}>}
  */
 export function listaSnapshotsFinanceiros(dias, linhas) {
@@ -494,7 +500,7 @@ export function listaSnapshotsFinanceiros(dias, linhas) {
     const valor = Number(r.valor_vendas_ifood);
     const totalDed = totalDeducoes({
       taxasComissoes: r.taxas_comissoes, servicosPromocoes: r.servicos_promocoes,
-      taxasEntregadores: r.taxas_entregadores, outrasDeducoes: r.outras_deducoes,
+      taxasEntregadores: r.taxas_entregadores, ajustesContraLoja: r.ajustes_contra_loja,
     });
     const delta = anterior != null ? valor - anterior : null;
     anterior = valor;
@@ -554,6 +560,19 @@ export function listaDesempenhoDiario(dias, linhas) {
     }
     return ponto;
   });
+}
+
+/**
+ * Último acumulado mensal conhecido de novos clientes. É a leitura canônica
+ * usada por Desempenho, cards e histórico; toda a seleção de linhas continua
+ * delegada a `listaDesempenhoDiario` (inclusive a exclusão de distribuições
+ * mensais estimadas).
+ * @returns {number|null}
+ */
+export function novosClientesAcumulados(dias, linhas) {
+  const ultimo = [...listaDesempenhoDiario(dias, linhas)]
+    .reverse().find((p) => p.novosClientes != null);
+  return ultimo?.novosClientes ?? null;
 }
 
 /**
@@ -652,22 +671,6 @@ export function agruparPendenciasPorMes(datasPendentesIso) {
 // ---------------------------------------------------------------------------
 
 /**
- * "Outras deduções": positivo é livre; negativo (ajuste a favor da unidade)
- * exige permissão de correção + justificativa preenchida.
- * @param {{valor: unknown, justificativa: unknown, podeAjustarNegativo: boolean}} p
- * @returns {string|null}
- */
-export function validarOutrasDeducoes({ valor, justificativa, podeAjustarNegativo }) {
-  const n = Number(valor);
-  if (!Number.isFinite(n)) return "Outras deduções deve ser um número.";
-  if (n < 0) {
-    if (!podeAjustarNegativo) return "Você não tem permissão para lançar um ajuste negativo em outras deduções.";
-    if (!justificativa || !String(justificativa).trim()) return "Informe a justificativa do ajuste negativo em outras deduções.";
-  }
-  return null;
-}
-
-/**
  * Avisos (não bloqueiam por si só) de inconsistência entre desempenho e
  * financeiro — devem ser exibidos na etapa de conferência do formulário.
  * @param {{qtdVendas: number, valorVendasBruto: number, valorVendasIfood: number, totalDed: number}} p
@@ -726,8 +729,8 @@ export function indicadorAplicavel(modelo, indicador) {
  * Margem estimada do iFood, descontando as DUAS deduções que o simulador
  * considera hoje: Taxas e Comissões (cobrança obrigatória do canal) e
  * Serviços e Promoções (investimento em campanhas do mês). NÃO inclui Taxas
- * de entregadores nem Outras Deduções — por isso nunca é lucro líquido (ver
- * NOTA_MARGEM_IFOOD em dashboardExecutivo.simulador.service.js).
+ * de entregadores nem ajustes contra a loja — por isso nunca é lucro líquido
+ * (ver NOTA_MARGEM_IFOOD em dashboardExecutivo.simulador.service.js).
  *
  * Nunca trata percentual ausente como 0: se Taxas e Comissões OU Serviços e
  * Promoções não foram apurados no mês, a margem inteira fica indisponível

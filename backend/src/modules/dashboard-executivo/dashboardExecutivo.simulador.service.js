@@ -15,8 +15,8 @@
 //               Comissões; Serviços e Promoções (investimento em campanhas)
 //               também é dedução real do mês e passou a entrar na conta —
 //               ver margemEstimadaIfood() em dashboardExecutivo.calc.js.
-//               Taxas de entregadores e Outras Deduções NÃO entram (por isso
-//               NOTA_MARGEM_IFOOD nunca chama isso de lucro líquido). Sem os
+//               Taxas de entregadores e ajustes contra a loja NÃO entram (por
+//               isso NOTA_MARGEM_IFOOD nunca chama isso de lucro líquido). Sem os
 //               dois indicadores disponíveis no mês -> não calcula margem,
 //               mostra só o que dá pra saber com confiança (preço, custo, CMV).
 //   * Meta/limite de cada dedução -> mesma `metas_indicadores` e mesma
@@ -42,7 +42,7 @@ import { obterModeloLogistico, resolverMetas } from "./dashboardExecutivo.metas.
 
 // Nota de rodapé — a mesma para qualquer unidade/mês, por isso fica fora do
 // resultado calculado (não é dado, é texto de interface).
-export const NOTA_MARGEM_IFOOD = "Margem estimada após o custo da ficha técnica, as Taxas e Comissões e os Serviços e Promoções do iFood — não é lucro líquido: ainda existem outros custos operacionais da loja (taxas de entregadores, outras deduções, aluguel, folha etc.) que não entram nesta conta.";
+export const NOTA_MARGEM_IFOOD = "Margem estimada após o custo da ficha técnica, as Taxas e Comissões e os Serviços e Promoções do iFood — não é lucro líquido: ainda existem outros custos operacionais da loja (taxas de entregadores, ajustes contra a loja, aluguel, folha etc.) que não entram nesta conta.";
 export const NOTA_MARGEM_BALCAO = "Margem estimada antes de demais despesas operacionais da loja.";
 
 const CANAIS_SIMULADOR = ["balcao", "ifood"];

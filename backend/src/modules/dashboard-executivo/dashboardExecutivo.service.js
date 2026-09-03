@@ -6,10 +6,10 @@ import { resolverMetas, obterModeloLogistico, definirModeloLogistico, historicoM
 import {
   hojeIsoBrasil, diasDoMes, mesAnterior, diaAnterior, statusMes, resumoPreenchimento,
   verificarDisponibilidade, agruparPendenciasPorMes, ticketMedio, percentual,
-  totalDeducoes, receitaAposDeducoes, saldoPercentual, projecaoMensal,
-  snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros, listaDesempenhoDiario, ultimoDesempenhoConhecido,
+  totalDeducoes, receitaLiquida, saldoPercentual, projecaoMensal,
+  snapshotFinanceiroMaisRecente, listaSnapshotsFinanceiros, listaDesempenhoDiario, novosClientesAcumulados, ultimoDesempenhoConhecido,
   desempenhoParaTicketMedio,
-  confiabilidadeProjecao, validarOutrasDeducoes,
+  confiabilidadeProjecao,
   inconsistencias, STATUS_DIA, indicadorAplicavel, statusIndicador, saldoMeta,
   distribuirValorMensal, distribuirQuantidadeMensal, recalcularDistribuicaoMensal,
 } from "./dashboardExecutivo.calc.js";
@@ -50,20 +50,23 @@ export async function resolverUnidadeAlvo({ organizacaoId, unidadeIdSessao, unid
 function calculadosDoLancamento(row) {
   const totalDed = totalDeducoes({
     taxasComissoes: row.taxas_comissoes, servicosPromocoes: row.servicos_promocoes,
-    taxasEntregadores: row.taxas_entregadores, outrasDeducoes: row.outras_deducoes,
+    taxasEntregadores: row.taxas_entregadores, ajustesContraLoja: row.ajustes_contra_loja,
   });
   const base = row.valor_vendas_ifood;
   const pctTotal = percentual(totalDed, base);
+  const receita = receitaLiquida(base, totalDed, row.ajustes_favor_loja);
   return {
     ticketMedio: ticketMedio(row.valor_vendas_bruto, row.qtd_vendas),
     totalDeducoes: totalDed,
-    receitaAposDeducoes: receitaAposDeducoes(base, totalDed),
+    receitaLiquida: receita,
     percentuais: {
       taxasComissoes: percentual(row.taxas_comissoes, base),
       servicosPromocoes: percentual(row.servicos_promocoes, base),
       taxasEntregadores: percentual(row.taxas_entregadores, base),
-      outrasDeducoes: percentual(row.outras_deducoes, base),
+      ajustesFavorLoja: percentual(row.ajustes_favor_loja, base),
+      ajustesContraLoja: percentual(row.ajustes_contra_loja, base),
       totalDeducoes: pctTotal,
+      receitaLiquida: percentual(receita, base),
     },
     saldoPercentual: saldoPercentual(pctTotal),
   };
@@ -88,7 +91,8 @@ function paraApi(row) {
     taxasComissoes: numOuNulo(row.taxas_comissoes),
     servicosPromocoes: numOuNulo(row.servicos_promocoes),
     taxasEntregadores: numOuNulo(row.taxas_entregadores),
-    outrasDeducoes: numOuNulo(row.outras_deducoes),
+    ajustesFavorLoja: numOuNulo(row.ajustes_favor_loja),
+    ajustesContraLoja: numOuNulo(row.ajustes_contra_loja),
     justificativaAjuste: row.justificativa_ajuste ?? null,
     status: row.status,
     usuarioNome: row.usuario_nome ?? null,
@@ -308,18 +312,22 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
   // Par (valor bruto, pedidos) pra Ticket Médio — mesma fonte única de
   // Lançamentos/Histórico (ver cards.ticketMedio, abaixo).
   const parTicketMedio = desempenhoParaTicketMedio(linhas);
+  const serieDesempenho = listaDesempenhoDiario(diasComStatus.map((d) => d.data), linhas);
+  const novosClientes = novosClientesAcumulados(diasComStatus.map((d) => d.data), linhas);
   const cardValores = {
     valorVendasIfood: snapshot ? Number(snapshot.valor_vendas_ifood) : null,
     taxasComissoes: snapshot?.taxas_comissoes != null ? Number(snapshot.taxas_comissoes) : null,
     servicosPromocoes: snapshot?.servicos_promocoes != null ? Number(snapshot.servicos_promocoes) : null,
     taxasEntregadores: snapshot?.taxas_entregadores != null ? Number(snapshot.taxas_entregadores) : null,
-    outrasDeducoes: snapshot?.outras_deducoes != null ? Number(snapshot.outras_deducoes) : null,
+    ajustesFavorLoja: snapshot?.ajustes_favor_loja != null ? Number(snapshot.ajustes_favor_loja) : null,
+    ajustesContraLoja: snapshot?.ajustes_contra_loja != null ? Number(snapshot.ajustes_contra_loja) : null,
   };
   const totalDed = totalDeducoes({
     taxasComissoes: cardValores.taxasComissoes, servicosPromocoes: cardValores.servicosPromocoes,
-    taxasEntregadores: cardValores.taxasEntregadores, outrasDeducoes: cardValores.outrasDeducoes,
+    taxasEntregadores: cardValores.taxasEntregadores, ajustesContraLoja: cardValores.ajustesContraLoja,
   });
   const base = cardValores.valorVendasIfood;
+  const receitaLiquidaValor = receitaLiquida(base, totalDed, cardValores.ajustesFavorLoja);
   const indicadoresRentabilidade = {
     taxas_comissoes: percentual(cardValores.taxasComissoes, base),
     servicos_promocoes: percentual(cardValores.servicosPromocoes, base),
@@ -353,18 +361,25 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     // próprios do iFood) — `naoAplicavel` some com o card inteiro nesse
     // caso (mesma regra de INDICADORES_POR_MODELO já usada no diagnóstico,
     // não "sem dados": o indicador não existe pra esse modelo, ponto).
-    // Outras Deduções é um ajuste livre sem meta — só valor e % das vendas,
-    // sem pill/barra (mesmo padrão do card Receita Após Deduções).
+    // Ajustes a favor / contra a loja são PURAMENTE INFORMATIVOS — só valor e
+    // % das vendas, sem meta/status/pill/barra. "Ajustes a favor" (crédito)
+    // não entra no Total de Deduções e aumenta a Receita líquida; "Ajustes
+    // contra" (débito) entra no Total de Deduções (ver calc.js#totalDeducoes /
+    // #receitaLiquida). Nenhum dos dois gera "dentro/fora da meta".
     taxasEntregadores: { valor: cardValores.taxasEntregadores, percentual: indicadoresRentabilidade.taxas_entregadores, meta: metas.taxas_entregadores ?? null, saldo: saldos.taxas_entregadores, status: statusIndicador(indicadoresRentabilidade.taxas_entregadores, metas.taxas_entregadores), naoAplicavel: !indicadorAplicavel(modelo.modeloLogistico, "taxas_entregadores") },
-    outrasDeducoes: { valor: cardValores.outrasDeducoes, percentual: percentual(cardValores.outrasDeducoes, base) },
+    ajustesFavor: { valor: cardValores.ajustesFavorLoja, percentual: percentual(cardValores.ajustesFavorLoja, base) },
+    ajustesContra: { valor: cardValores.ajustesContraLoja, percentual: percentual(cardValores.ajustesContraLoja, base) },
     totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, saldo: saldos.total_deducoes, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
-    receitaAposDeducoes: { valor: receitaAposDeducoes(base, totalDed), percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
+    receitaLiquida: { valor: receitaLiquidaValor, percentual: percentual(receitaLiquidaValor, base) },
     // Ticket médio (Desempenho) — indicador OPERACIONAL, nunca deriva do
     // Financeiro. Usa o par mais confiável do mês inteiro (diário real
     // acumulado, ou soma das fatias do Lançamento Mensal quando não há
     // nenhum lançamento diário real — ver dashboardExecutivo.calc.js#
     // desempenhoParaTicketMedio), nunca um dia isolado.
     ticketMedio: { valor: ticketMedio(parTicketMedio?.valorVendasBruto ?? null, parTicketMedio?.qtdVendas ?? null) },
+    // Mesmo acumulado exibido em Desempenho; indicador informativo, sem
+    // meta, status, saldo ou barra.
+    novosClientes: { valor: novosClientes },
   };
 
   // Projeção: o snapshot já É o acumulado de dia 1 até `data_lancamento` —
@@ -475,7 +490,8 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
         { indicador: "taxas_comissoes", valor: cardValores.taxasComissoes },
         { indicador: "servicos_promocoes", valor: cardValores.servicosPromocoes },
         { indicador: "taxas_entregadores", valor: cardValores.taxasEntregadores },
-        { indicador: "outras_deducoes", valor: cardValores.outrasDeducoes },
+        // Só o ajuste CONTRA a loja compõe as deduções — o ajuste a favor é crédito.
+        { indicador: "ajustes_contra_loja", valor: cardValores.ajustesContraLoja },
       ],
     },
     // Desempenho é acompanhamento OPERACIONAL — e agora ACUMULADO do mês,
@@ -485,7 +501,7 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
     // verdade financeira: nenhum card, meta, projeção ou diagnóstico usa
     // isto — só o Financeiro (`cards.faturamento`) faz isso.
     desempenhoOperacional: (() => {
-      const serie = listaDesempenhoDiario(diasComStatus.map((d) => d.data), linhas);
+      const serie = serieDesempenho;
       // "valor" é o que o gráfico "Evolução diária" plota — o delta (dia
       // sozinho), não o acumulado bruto (que sempre sobe e mentiria
       // visualmente sobre o dia ter vendido mais que o mês inteiro).
@@ -504,7 +520,7 @@ async function obterMesDeUmaUnidade({ organizacaoId, unidadeId, mes, ano, hojeIs
         // (somaria acumulado sobre acumulado — mesmo raciocínio do Financeiro).
         acumulado: ultimaComDado?.valorVendasBruto ?? null,
         acumuladoQtdVendas: ultimaComDado?.qtdVendas ?? null,
-        acumuladoNovosClientes: ultimaComDado?.novosClientes ?? null,
+        acumuladoNovosClientes: novosClientes,
         dataAtualizacao: ultimaComDado?.data ?? null,
         mediaDiaria: ultimaComDado != null && diasNoAcumulado > 0 ? ultimaComDado.valorVendasBruto / diasNoAcumulado : null,
         aviso: "Acompanhamento operacional — não representa o faturamento financeiro oficial.",
@@ -571,6 +587,15 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
   const somarPares = (campo) => (paresTicketPorUnidade.length
     ? paresTicketPorUnidade.reduce((s, p) => s + p[campo], 0) : null);
   const ticketMedioAgregado = ticketMedio(somarPares("valorVendasBruto"), somarPares("qtdVendas"));
+  // Preserva a semântica já usada por Desempenho: pega o último acumulado
+  // conhecido de cada unidade pela série central e só então soma entre
+  // unidades. Não tenta deduplicar clientes entre lojas.
+  const novosClientesPorUnidade = [...linhasPorUnidade.values()]
+    .map((linhasDaUnidade) => novosClientesAcumulados(dias, linhasDaUnidade))
+    .filter((valor) => valor != null);
+  const novosClientesAgregado = novosClientesPorUnidade.length
+    ? novosClientesPorUnidade.reduce((s, valor) => s + Number(valor), 0)
+    : null;
   const somaEntreUnidades = (campo) => {
     const valoresCampo = snapshotsPorUnidade.map((s) => s[campo]).filter((v) => v != null);
     return valoresCampo.length ? valoresCampo.reduce((s, v) => s + Number(v), 0) : null;
@@ -580,13 +605,15 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
     taxasComissoes: somaEntreUnidades("taxas_comissoes"),
     servicosPromocoes: somaEntreUnidades("servicos_promocoes"),
     taxasEntregadores: somaEntreUnidades("taxas_entregadores"),
-    outrasDeducoes: somaEntreUnidades("outras_deducoes"),
+    ajustesFavorLoja: somaEntreUnidades("ajustes_favor_loja"),
+    ajustesContraLoja: somaEntreUnidades("ajustes_contra_loja"),
   };
   const totalDed = totalDeducoes({
     taxasComissoes: valores.taxasComissoes, servicosPromocoes: valores.servicosPromocoes,
-    taxasEntregadores: valores.taxasEntregadores, outrasDeducoes: valores.outrasDeducoes,
+    taxasEntregadores: valores.taxasEntregadores, ajustesContraLoja: valores.ajustesContraLoja,
   });
   const base = valores.valorVendasIfood;
+  const receitaLiquidaValor = base != null ? receitaLiquida(base, totalDed, valores.ajustesFavorLoja) : null;
   const indicadoresRentabilidade = {
     taxas_comissoes: percentual(valores.taxasComissoes, base),
     servicos_promocoes: percentual(valores.servicosPromocoes, base),
@@ -639,10 +666,12 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
       taxasComissoes: { valor: valores.taxasComissoes, percentual: indicadoresRentabilidade.taxas_comissoes, meta: metas.taxas_comissoes ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_comissoes, metas.taxas_comissoes) },
       servicosPromocoes: { valor: valores.servicosPromocoes, percentual: indicadoresRentabilidade.servicos_promocoes, meta: metas.servicos_promocoes ?? null, status: statusIndicador(indicadoresRentabilidade.servicos_promocoes, metas.servicos_promocoes) },
       taxasEntregadores: { valor: valores.taxasEntregadores, percentual: indicadoresRentabilidade.taxas_entregadores, meta: metas.taxas_entregadores ?? null, status: statusIndicador(indicadoresRentabilidade.taxas_entregadores, metas.taxas_entregadores), naoAplicavel: taxasEntregadoresNaoAplicavel },
-      outrasDeducoes: { valor: valores.outrasDeducoes, percentual: percentual(valores.outrasDeducoes, base) },
+      ajustesFavor: { valor: valores.ajustesFavorLoja, percentual: percentual(valores.ajustesFavorLoja, base) },
+      ajustesContra: { valor: valores.ajustesContraLoja, percentual: percentual(valores.ajustesContraLoja, base) },
       totalDeducoes: { valor: totalDed, percentual: indicadoresRentabilidade.total_deducoes, meta: metas.total_deducoes ?? null, status: statusIndicador(indicadoresRentabilidade.total_deducoes, metas.total_deducoes) },
-      receitaAposDeducoes: { valor: base != null ? receitaAposDeducoes(base, totalDed) : null, percentual: saldoPercentual(indicadoresRentabilidade.total_deducoes) },
+      receitaLiquida: { valor: receitaLiquidaValor, percentual: percentual(receitaLiquidaValor, base) },
       ticketMedio: { valor: ticketMedioAgregado },
+      novosClientes: { valor: novosClientesAgregado },
     },
     indicadoresRentabilidade: Object.fromEntries(
       Object.entries(indicadoresRentabilidade).map(([k, atual]) => [k, {
@@ -658,7 +687,7 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
         { indicador: "taxas_comissoes", valor: valores.taxasComissoes },
         { indicador: "servicos_promocoes", valor: valores.servicosPromocoes },
         { indicador: "taxas_entregadores", valor: valores.taxasEntregadores },
-        { indicador: "outras_deducoes", valor: valores.outrasDeducoes },
+        { indicador: "ajustes_contra_loja", valor: valores.ajustesContraLoja },
       ],
     },
     // Mesma forma de obterMesDeUmaUnidade — ver comentário lá. Aqui, soma
@@ -669,6 +698,7 @@ async function obterMesAgregado({ organizacaoId, mes, ano, hojeIso, metas }) {
       return {
         evolucaoDiaria: evolucaoDiariaDesempenho,
         acumulado: ultimoComDado?.acumuladoValorVendasBruto ?? null,
+        acumuladoNovosClientes: novosClientesAgregado,
         dataAtualizacao: ultimoComDado?.data ?? null,
         mediaDiaria: ultimoComDado != null && diasNoAcumulado > 0 ? ultimoComDado.acumuladoValorVendasBruto / diasNoAcumulado : null,
         aviso: "Acompanhamento operacional — os valores financeiros oficiais são provenientes do Financeiro iFood.",
@@ -725,7 +755,7 @@ function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistent
 // ---------------------------------------------------------------------------
 // Exportada só pra teste unitário direto (função pura, sem I/O) — o resto
 // do módulo continua chamando-a internamente do mesmo jeito.
-export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior }) {
+export function normalizarDadosLancamento(body, { exigirFinanceiro, desempenhoAnterior }) {
   const b = v.corpo(body);
   const situacao = v.umDe(b.situacao, "Situação", ["normal", "parcial", "sem_operacao", "zero_vendas"]);
   const statusAlvo = v.umDeOpcional(b.status, "Status", ["rascunho", "finalizado"], "rascunho");
@@ -750,7 +780,7 @@ export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFin
     return {
       situacao, statusAlvo, motivoSemOperacao: motivo, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
       qtdVendas: anterior.qtdVendas, valorVendasBruto: anterior.valorVendasBruto, novosClientes: anterior.novosClientes, valorVendasIfood: 0,
-      taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, outrasDeducoes: 0, justificativaAjuste: null,
+      taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, ajustesFavorLoja: 0, ajustesContraLoja: 0, justificativaAjuste: null,
       avisos: [],
     };
   }
@@ -759,7 +789,7 @@ export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFin
     return {
       situacao, statusAlvo, motivoSemOperacao: null, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
       qtdVendas: anterior.qtdVendas, valorVendasBruto: anterior.valorVendasBruto, novosClientes: anterior.novosClientes,
-      valorVendasIfood: 0, taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, outrasDeducoes: 0, justificativaAjuste: null,
+      valorVendasIfood: 0, taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, ajustesFavorLoja: 0, ajustesContraLoja: 0, justificativaAjuste: null,
       avisos: [],
     };
   }
@@ -798,15 +828,15 @@ export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFin
   const taxasComissoes = numFinanceiro(b.taxasComissoes, "Taxas e comissões");
   const servicosPromocoes = numFinanceiro(b.servicosPromocoes, "Serviços e promoções");
   const taxasEntregadores = numFinanceiro(b.taxasEntregadores, "Taxas de entregadores");
-  const outrasDeducoes = exigirFinanceiroDeVerdade
-    ? v.numero(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 })
-    : v.numeroOpcionalNulo(b.outrasDeducoes, "Outras deduções", { min: -1e9, max: 1e9 });
+  // Ajustes a favor / contra da loja: SEMPRE positivos e SEMPRE opcionais —
+  // um ajuste financeiro é a exceção, não a regra, e não deve travar a
+  // finalização de um dia. `null` = "não houve ajuste" (tratado como 0 nas
+  // fórmulas). Ver dashboardExecutivo.calc.js#totalDeducoes / #receitaLiquida.
+  const ajustesFavorLoja = v.numeroOpcionalNulo(b.ajustesFavorLoja, "Ajustes a favor da loja", { min: 0, max: 1e9 });
+  const ajustesContraLoja = v.numeroOpcionalNulo(b.ajustesContraLoja, "Ajustes contra a loja", { min: 0, max: 1e9 });
   const justificativaAjuste = v.textoOpcional(b.justificativaAjuste, "Justificativa do ajuste", { max: 500 });
 
-  const erroAjuste = validarOutrasDeducoes({ valor: outrasDeducoes ?? 0, justificativa: justificativaAjuste, podeAjustarNegativo });
-  if (erroAjuste) throw ApiError.badRequest(erroAjuste);
-
-  const totalDed = totalDeducoes({ taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes });
+  const totalDed = totalDeducoes({ taxasComissoes, servicosPromocoes, taxasEntregadores, ajustesContraLoja });
   const avisos = inconsistencias({ qtdVendas, valorVendasBruto, valorVendasIfood, totalDed });
 
   if (statusAlvo === "finalizado" && avisos.length > 0 && !v.booleano(b.confirmarAvisos, false)) {
@@ -826,7 +856,7 @@ export function normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFin
   return {
     situacao, statusAlvo, motivoSemOperacao: null, observacao: v.textoOpcional(b.observacao, "Observação", { max: 1000 }),
     qtdVendas, valorVendasBruto, novosClientes, valorVendasIfood,
-    taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes, justificativaAjuste,
+    taxasComissoes, servicosPromocoes, taxasEntregadores, ajustesFavorLoja, ajustesContraLoja, justificativaAjuste,
     avisos,
   };
 }
@@ -851,14 +881,13 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
     throw new ApiError(409, "Já existe um lançamento para esta data. Utilize a edição.", { statusDia: disponibilidade.status });
   }
 
-  const podeAjustarNegativo = temPermissao(acesso.permissoes, PERMISSOES.DASHBOARD_EXECUTIVO_CORRIGIR);
   // Criação nunca tem snapshot anterior — exigirFinanceiro depende só da data ser ontem.
   const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: null });
   // `linhas` já veio de carregarCalendarioMes acima — nenhuma consulta extra
   // pra achar o acumulado de Desempenho do dia anterior (usado só se a
   // situação for Sem operação/Zero vendas, ver normalizarDadosLancamento).
   const desempenhoAnterior = ultimoDesempenhoConhecido(linhas, dataIso);
-  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo, exigirFinanceiro, desempenhoAnterior });
+  const dados = normalizarDadosLancamento(body, { exigirFinanceiro, desempenhoAnterior });
 
   const linha = {
     organizacao_id: organizacaoId,
@@ -874,7 +903,8 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
     taxas_comissoes: dados.taxasComissoes,
     servicos_promocoes: dados.servicosPromocoes,
     taxas_entregadores: dados.taxasEntregadores,
-    outras_deducoes: dados.outrasDeducoes,
+    ajustes_favor_loja: dados.ajustesFavorLoja,
+    ajustes_contra_loja: dados.ajustesContraLoja,
     justificativa_ajuste: dados.justificativaAjuste,
     status: dados.statusAlvo,
     usuario_id: usuario?.id ?? null,
@@ -902,13 +932,6 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
     motivo: dados.statusAlvo === "finalizado" ? "Lançamento criado já finalizado" : "Rascunho criado",
   });
 
-  if (dados.outrasDeducoes < 0) {
-    await registrarAuditoria({
-      lancamentoId: row.id, organizacaoId, unidadeId, campo: "outras_deducoes",
-      valorAnterior: null, valorNovo: String(dados.outrasDeducoes), usuario, motivo: dados.justificativaAjuste,
-    });
-  }
-
   return { lancamento: paraApi(row), avisos: dados.avisos };
 }
 
@@ -920,7 +943,7 @@ const CAMPOS_AUDITADOS = [
   ["qtd_vendas", "qtd_vendas"], ["valor_vendas_bruto", "valor_vendas_bruto"], ["novos_clientes", "novos_clientes"],
   ["valor_vendas_ifood", "valor_vendas_ifood"], ["taxas_comissoes", "taxas_comissoes"],
   ["servicos_promocoes", "servicos_promocoes"], ["taxas_entregadores", "taxas_entregadores"],
-  ["outras_deducoes", "outras_deducoes"],
+  ["ajustes_favor_loja", "ajustes_favor_loja"], ["ajustes_contra_loja", "ajustes_contra_loja"],
 ];
 
 /**
@@ -973,7 +996,7 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
   const [anoAntes, mesAntes] = antes.data_lancamento.split("-").map(Number);
   const { linhas: linhasDoMes } = await carregarCalendarioMes({ unidadeId: antes.unidade_id, ano: anoAntes, mes: mesAntes, hojeIso });
   const desempenhoAnterior = ultimoDesempenhoConhecido(linhasDoMes, antes.data_lancamento);
-  const dados = normalizarDadosLancamento(body, { podeAjustarNegativo: podeCorrigir, exigirFinanceiro, desempenhoAnterior });
+  const dados = normalizarDadosLancamento(body, { exigirFinanceiro, desempenhoAnterior });
 
   const patch = {
     situacao: dados.situacao,
@@ -986,7 +1009,8 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
     taxas_comissoes: dados.taxasComissoes,
     servicos_promocoes: dados.servicosPromocoes,
     taxas_entregadores: dados.taxasEntregadores,
-    outras_deducoes: dados.outrasDeducoes,
+    ajustes_favor_loja: dados.ajustesFavorLoja,
+    ajustes_contra_loja: dados.ajustesContraLoja,
     justificativa_ajuste: dados.justificativaAjuste,
   };
 
@@ -1038,14 +1062,6 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
       valorAnterior: "rascunho", valorNovo: patch.status,
       usuario, motivo: patch.status === "finalizado" ? "Lançamento finalizado" : "Rascunho atualizado",
     });
-    if (Number(dados.outrasDeducoes) < 0 && Number(antes.outras_deducoes) >= 0) {
-      // Rascunho ganhando um ajuste negativo pela primeira vez: audita mesmo sem "correção" formal.
-      await registrarAuditoria({
-        lancamentoId, organizacaoId, unidadeId: antes.unidade_id, campo: "outras_deducoes",
-        valorAnterior: String(antes.outras_deducoes), valorNovo: String(dados.outrasDeducoes),
-        usuario, motivo: dados.justificativaAjuste,
-      });
-    }
   }
 
   return { lancamento: paraApi(depois), avisos: dados.avisos };
@@ -1132,11 +1148,13 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     // nenhum snapshot ainda — nunca "R$ 0,00" fingindo que se sabe o valor.
     const snapshot = snapshotFinanceiroMaisRecente(linhasMes);
     const faturamento = snapshot ? Number(snapshot.valor_vendas_ifood) : null;
+    const ajustesFavorLoja = snapshot?.ajustes_favor_loja != null ? Number(snapshot.ajustes_favor_loja) : null;
+    const ajustesContraLoja = snapshot?.ajustes_contra_loja != null ? Number(snapshot.ajustes_contra_loja) : null;
     const totalDed = totalDeducoes({
       taxasComissoes: snapshot?.taxas_comissoes != null ? Number(snapshot.taxas_comissoes) : null,
       servicosPromocoes: snapshot?.servicos_promocoes != null ? Number(snapshot.servicos_promocoes) : null,
       taxasEntregadores: snapshot?.taxas_entregadores != null ? Number(snapshot.taxas_entregadores) : null,
-      outrasDeducoes: snapshot?.outras_deducoes != null ? Number(snapshot.outras_deducoes) : null,
+      ajustesContraLoja,
     });
     const diasFinalizados = linhasFinalizadas.length;
     const diasRascunho = linhasMes.filter((r) => r.status === "rascunho").length;
@@ -1152,6 +1170,17 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     // corretamente em `null`, não em "R$ 0,00".
     const parTicketMedio = desempenhoParaTicketMedio(linhasMes);
     const qtdVendas = parTicketMedio?.qtdVendas ?? null;
+    const linhasDesempenhoPorUnidade = new Map();
+    for (const linha of linhasMes) {
+      if (!linhasDesempenhoPorUnidade.has(linha.unidade_id)) linhasDesempenhoPorUnidade.set(linha.unidade_id, []);
+      linhasDesempenhoPorUnidade.get(linha.unidade_id).push(linha);
+    }
+    const novosClientesPorUnidade = [...linhasDesempenhoPorUnidade.values()]
+      .map((linhasDaUnidade) => novosClientesAcumulados(dias, linhasDaUnidade))
+      .filter((valor) => valor != null);
+    const novosClientes = novosClientesPorUnidade.length
+      ? novosClientesPorUnidade.reduce((s, valor) => s + Number(valor), 0)
+      : null;
 
     // Média diária: o snapshot já é o acumulado de dia 1 até `data_lancamento`
     // — divide por quantos dias ele cobre, nunca por "dias com dados" (ver
@@ -1168,11 +1197,12 @@ export async function obterHistorico({ organizacaoId, unidadeIdSessao, unidadeId
     meses.push({
       mes, ano, status: statusMesRotulo,
       diasPreenchidos: diasFinalizados, diasPendentes, diasRascunho,
-      faturamento, qtdVendas,
+      faturamento, qtdVendas, novosClientes,
       ticketMedio: ticketMedio(parTicketMedio?.valorVendasBruto ?? null, qtdVendas),
+      ajustesFavorLoja, ajustesContraLoja,
       totalDeducoes: totalDed,
       percentualDeducoes: percentual(totalDed, faturamento),
-      receitaAposDeducoes: faturamento != null ? receitaAposDeducoes(faturamento, totalDed) : null,
+      receitaLiquida: faturamento != null ? receitaLiquida(faturamento, totalDed, ajustesFavorLoja) : null,
       mediaDiaria: media,
       projecaoMensal: projecaoMensal(media, dias.length),
       comparativoMesAnteriorPct,
@@ -1223,7 +1253,8 @@ const CAMPOS_EXTRAS_MENSAL = [
   ["taxasComissoesTotal", "Taxas e comissões do mês"],
   ["servicosPromocoesTotal", "Serviços e promoções do mês"],
   ["taxasEntregadoresTotal", "Taxas de entregadores do mês"],
-  ["outrasDeducoesTotal", "Outras deduções do mês"],
+  ["ajustesFavorLojaTotal", "Ajustes a favor da loja no mês"],
+  ["ajustesContraLojaTotal", "Ajustes contra a loja no mês"],
 ];
 
 function validarEntradaLancamentoMensal({ mesRaw, anoRaw, valorRaw, extrasRaw }) {
@@ -1246,7 +1277,8 @@ const COLUNA_DIARIA_EXTRA = {
   taxasComissoesTotal: "taxas_comissoes",
   servicosPromocoesTotal: "servicos_promocoes",
   taxasEntregadoresTotal: "taxas_entregadores",
-  outrasDeducoesTotal: "outras_deducoes",
+  ajustesFavorLojaTotal: "ajustes_favor_loja",
+  ajustesContraLojaTotal: "ajustes_contra_loja",
 };
 
 /** `true` só quando a chave está de fato presente no corpo (distingue "não editou" de "editou para vazio/null"). */
@@ -1394,7 +1426,8 @@ export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidade
   const fatiasTaxasComissoes = extras.taxasComissoesTotal != null ? distribuirValorMensal(extras.taxasComissoesTotal, n) : null;
   const fatiasServicosPromocoes = extras.servicosPromocoesTotal != null ? distribuirValorMensal(extras.servicosPromocoesTotal, n) : null;
   const fatiasTaxasEntregadores = extras.taxasEntregadoresTotal != null ? distribuirValorMensal(extras.taxasEntregadoresTotal, n) : null;
-  const fatiasOutrasDeducoes = extras.outrasDeducoesTotal != null ? distribuirValorMensal(extras.outrasDeducoesTotal, n) : null;
+  const fatiasAjustesFavor = extras.ajustesFavorLojaTotal != null ? distribuirValorMensal(extras.ajustesFavorLojaTotal, n) : null;
+  const fatiasAjustesContra = extras.ajustesContraLojaTotal != null ? distribuirValorMensal(extras.ajustesContraLojaTotal, n) : null;
 
   const { data: lote, error: eLote } = await supabase.from("lancamentos_financeiros_distribuicao_mensal").insert({
     organizacao_id: organizacaoId, unidade_id: unidadeId, ano, mes,
@@ -1420,7 +1453,8 @@ export async function lancamentoMensal({ organizacaoId, unidadeIdSessao, unidade
     taxas_comissoes: fatiasTaxasComissoes ? fatiasTaxasComissoes[i] : null,
     servicos_promocoes: fatiasServicosPromocoes ? fatiasServicosPromocoes[i] : null,
     taxas_entregadores: fatiasTaxasEntregadores ? fatiasTaxasEntregadores[i] : null,
-    outras_deducoes: fatiasOutrasDeducoes ? fatiasOutrasDeducoes[i] : null,
+    ajustes_favor_loja: fatiasAjustesFavor ? fatiasAjustesFavor[i] : null,
+    ajustes_contra_loja: fatiasAjustesContra ? fatiasAjustesContra[i] : null,
     usuario_id: usuario?.id ?? null, usuario_nome: usuario?.nome ?? null, usuario_email: usuario?.email ?? null,
     finalizado_em: new Date().toISOString(),
   }));
@@ -1521,7 +1555,8 @@ export async function atualizarLancamentoMensal({ organizacaoId, unidadeIdSessao
       taxas_comissoes: fatiasPorCampo.taxasComissoesTotal ? fatiasPorCampo.taxasComissoesTotal[i] : null,
       servicos_promocoes: fatiasPorCampo.servicosPromocoesTotal ? fatiasPorCampo.servicosPromocoesTotal[i] : null,
       taxas_entregadores: fatiasPorCampo.taxasEntregadoresTotal ? fatiasPorCampo.taxasEntregadoresTotal[i] : null,
-      outras_deducoes: fatiasPorCampo.outrasDeducoesTotal ? fatiasPorCampo.outrasDeducoesTotal[i] : null,
+      ajustes_favor_loja: fatiasPorCampo.ajustesFavorLojaTotal ? fatiasPorCampo.ajustesFavorLojaTotal[i] : null,
+      ajustes_contra_loja: fatiasPorCampo.ajustesContraLojaTotal ? fatiasPorCampo.ajustesContraLojaTotal[i] : null,
     };
     return supabase.from(TABELA).update(patchLinha).eq("id", linha.id);
   }));

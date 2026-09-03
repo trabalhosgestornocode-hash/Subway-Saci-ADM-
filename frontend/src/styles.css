@@ -250,12 +250,17 @@ body {
 .cards .card:nth-child(5){animation-delay:.14s}.cards .card:nth-child(6){animation-delay:.17s}
 .cards .card:nth-child(7){animation-delay:.20s}.cards .card:nth-child(8){animation-delay:.23s}
 .cards .card:nth-child(9){animation-delay:.26s}
+.cards .card:nth-child(10){animation-delay:.29s}.cards .card:nth-child(11){animation-delay:.32s}
 .card.destaque {
   background: linear-gradient(180deg, var(--vermelho-tint) 0%, var(--card) 65%);
   border-color: var(--vermelho-tint-borda); border-top-color: var(--verde-vivo);
 }
 .card.destaque:hover { box-shadow: 0 16px 32px rgba(216,19,36,.16); }
 .card.alerta { border-color: rgba(196,138,18,.4); border-top-color: var(--amarelo-escuro); background: linear-gradient(180deg, #fffdf6, #fff); }
+/* "Ajustes a favor" — crédito da loja. Sinal visual positivo DISCRETO
+   (só um filete verde no topo + valor em verde), sem nova linguagem visual. */
+.card.ajuste-favor { border-top-color: var(--ok); }
+.card.ajuste-favor .dex-card-val { color: var(--ok); }
 .card-label { font-size: 11.5px; color: var(--cinza); text-transform: uppercase; letter-spacing: .6px; font-weight: 700; }
 .card-valor { font-size: 27px; font-weight: 800; margin-top: 8px; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
 .card-valor.pequeno { font-size: 18px; }
@@ -708,6 +713,7 @@ body {
   font-size: 14px; font-family: inherit; transition: border-color var(--t), box-shadow var(--t);
 }
 .cfg-campo input:focus, .cfg-campo select:focus { outline: none; border-color: var(--verde-vivo); box-shadow: 0 0 0 3px rgba(216,19,36,.13); }
+.cfg-campo-ajuda { font-size: 11.5px; font-weight: 400; color: var(--cinza); text-transform: none; letter-spacing: 0; line-height: 1.35; margin-top: -1px; }
 
 .cfg-toggle { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
 .cfg-toggle-txt { display: flex; flex-direction: column; gap: 2px; }

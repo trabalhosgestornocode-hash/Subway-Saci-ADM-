@@ -41,8 +41,8 @@ function camposPadrao() {
   return {
     situacao: "normal", motivoSemOperacao: "", observacao: "",
     qtdVendas: "", valorVendasBruto: "", novosClientes: "",
-    valorVendasIfood: "", taxasComissoes: "", servicosPromocoes: "", taxasEntregadores: "", outrasDeducoes: "",
-    justificativaAjuste: "",
+    valorVendasIfood: "", taxasComissoes: "", servicosPromocoes: "", taxasEntregadores: "",
+    ajustesFavorLoja: "", ajustesContraLoja: "",
   };
 }
 
@@ -55,7 +55,8 @@ function camposDoLancamento(l) {
     // Financeiro TAMBÉM pode vir null agora — um rascunho de dia ≠ ontem
     // ainda não tem esse dado (ver dashboardExecutivo.service.js#normalizarDadosLancamento).
     valorVendasIfood: l.valorVendasIfood ?? "", taxasComissoes: l.taxasComissoes ?? "", servicosPromocoes: l.servicosPromocoes ?? "",
-    taxasEntregadores: l.taxasEntregadores ?? "", outrasDeducoes: l.outrasDeducoes ?? "", justificativaAjuste: l.justificativaAjuste ?? "",
+    taxasEntregadores: l.taxasEntregadores ?? "",
+    ajustesFavorLoja: l.ajustesFavorLoja ?? "", ajustesContraLoja: l.ajustesContraLoja ?? "",
   };
 }
 
@@ -383,7 +384,6 @@ function ticketMedioPreview(c) {
 function passoFinanceiro() {
   const c = fm.campos;
   if (!situacaoOperou(c.situacao)) return `<p class="dex-form-info">Sem valores financeiros para esta situação.</p>`;
-  const podeNegativo = pode("dashboard_executivo.corrigir");
   const calc = calculoPreview(c);
   const mostrarEntreg = mostraEntregadores();
   return `
@@ -395,9 +395,12 @@ function passoFinanceiro() {
       ${mostrarEntreg
         ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="text" inputmode="decimal" data-moeda id="dex-entregadores" value="${valorMoedaInput(c.taxasEntregadores)}" placeholder="R$ 0,00"></label>`
         : `<p class="dex-form-info dex-form-na">${icon("truck", { size: 13 })} Este modelo (Full Service) não usa entregador próprio — a entrega é feita pelo parceiro do iFood, então não há "taxas de entregadores da loja" a lançar.</p>`}
-      <label class="cfg-campo"><span>Outras deduções/ajustes (R$)${podeNegativo ? " — negativo = ajuste a favor" : ""}</span>
-        <input type="text" inputmode="decimal" data-moeda id="dex-outras" value="${valorMoedaInput(c.outrasDeducoes)}" placeholder="R$ 0,00"></label>
-      ${podeNegativo ? `<label class="cfg-campo ed-campo-full"><span>Justificativa do ajuste (obrigatória se negativo)</span><input type="text" id="dex-justificativa" value="${escapeHtml(c.justificativaAjuste)}"></label>` : ""}
+      <label class="cfg-campo"><span>Ajustes a favor da loja (R$)</span>
+        <input type="text" inputmode="decimal" data-moeda id="dex-aj-favor" value="${valorMoedaInput(c.ajustesFavorLoja)}" placeholder="R$ 0,00">
+        <small class="cfg-campo-ajuda">Créditos, reembolsos ou correções que aumentam o valor recebido pela loja.</small></label>
+      <label class="cfg-campo"><span>Ajustes contra a loja (R$)</span>
+        <input type="text" inputmode="decimal" data-moeda id="dex-aj-contra" value="${valorMoedaInput(c.ajustesContraLoja)}" placeholder="R$ 0,00">
+        <small class="cfg-campo-ajuda">Débitos, descontos ou correções que reduzem o valor recebido pela loja.</small></label>
     </div>
     <div class="dex-calc-preview">
       <div><span>% Taxas e comissões</span><b data-prev="taxas">${fmtPct(calc.pctTaxas)}</b></div>
@@ -405,7 +408,7 @@ function passoFinanceiro() {
       ${mostrarEntreg ? `<div><span>% Taxas de entregadores</span><b data-prev="entregadores">${fmtPct(calc.pctEntregadores)}</b></div>` : ""}
       <div><span>Total de deduções</span><b data-prev="total">${fmtMoeda(calc.totalDed)}</b></div>
       <div><span>% Total de deduções</span><b data-prev="pctTotal">${fmtPct(calc.pctTotal)}</b></div>
-      <div class="destaque"><span>Receita após deduções</span><b data-prev="receita">${fmtMoeda(calc.receita)}</b></div>
+      <div class="destaque"><span>Receita líquida</span><b data-prev="receita">${fmtMoeda(calc.receita)}</b></div>
     </div>`;
 }
 
@@ -414,12 +417,14 @@ function calculoPreview(c) {
   const taxas = numeroDecimal(c.taxasComissoes) || 0;
   const servicos = numeroDecimal(c.servicosPromocoes) || 0;
   const entreg = numeroDecimal(c.taxasEntregadores) || 0;
-  const outras = numeroDecimal(c.outrasDeducoes) || 0;
-  const totalDed = taxas + servicos + entreg + outras;
+  const ajFavor = numeroDecimal(c.ajustesFavorLoja) || 0;
+  const ajContra = numeroDecimal(c.ajustesContraLoja) || 0;
+  // Só o ajuste CONTRA entra no total de deduções; o a favor soma de volta na receita.
+  const totalDed = taxas + servicos + entreg + ajContra;
   const pct = (v) => (base > 0 ? (v / base) * 100 : null);
   return {
     pctTaxas: pct(taxas), pctServicos: pct(servicos), pctEntregadores: pct(entreg),
-    totalDed, pctTotal: pct(totalDed), receita: base - totalDed,
+    totalDed, pctTotal: pct(totalDed), receita: base - totalDed + ajFavor,
   };
 }
 
@@ -473,9 +478,10 @@ function passoConferencia() {
       ${linha("Taxas e comissões", `${fmtMoeda(numeroDecimal(c.taxasComissoes))} (${fmtPct(calc.pctTaxas)})`)}
       ${linha("Serviços e promoções", `${fmtMoeda(numeroDecimal(c.servicosPromocoes))} (${fmtPct(calc.pctServicos)})`)}
       ${mostraEntregadores() ? linha("Taxas de entregadores", `${fmtMoeda(numeroDecimal(c.taxasEntregadores))} (${fmtPct(calc.pctEntregadores)})`) : ""}
-      ${linha("Outras deduções", fmtMoeda(numeroDecimal(c.outrasDeducoes)))}
+      ${linha("Ajustes a favor da loja", fmtMoeda(numeroDecimal(c.ajustesFavorLoja)))}
+      ${linha("Ajustes contra a loja", fmtMoeda(numeroDecimal(c.ajustesContraLoja)))}
       ${linha("Total de deduções", `${fmtMoeda(calc.totalDed)} (${fmtPct(calc.pctTotal)})`)}
-      ${linha("Receita após deduções", fmtMoeda(calc.receita))}
+      ${linha("Receita líquida", fmtMoeda(calc.receita))}
     </div>
     ${avisos.length ? `
       <div class="dex-avisos">
@@ -521,15 +527,16 @@ function wirePasso(m, chave) {
     aplicarMascaraMoeda(m.querySelector("#dex-valorbruto"), { aoAlterar: (valor) => { fm.campos.valorVendasBruto = valor; atualizarPreviewTicket(m); } });
   }
   if (chave === "financeiro" && situacaoOperou(fm.campos.situacao)) {
-    const campos = ["dex-vifood:valorVendasIfood", "dex-taxas:taxasComissoes", "dex-servicos:servicosPromocoes", "dex-entregadores:taxasEntregadores", "dex-outras:outrasDeducoes"];
+    const campos = [
+      "dex-vifood:valorVendasIfood", "dex-taxas:taxasComissoes", "dex-servicos:servicosPromocoes",
+      "dex-entregadores:taxasEntregadores", "dex-aj-favor:ajustesFavorLoja", "dex-aj-contra:ajustesContraLoja",
+    ];
     campos.forEach((par) => {
       const [id, campo] = par.split(":");
       aplicarMascaraMoeda(m.querySelector(`#${id}`), {
-        permiteNegativo: campo === "outrasDeducoes" && pode("dashboard_executivo.corrigir"),
         aoAlterar: (valor) => { fm.campos[campo] = valor; atualizarPreviewFinanceiro(m); },
       });
     });
-    m.querySelector("#dex-justificativa")?.addEventListener("input", (e) => { fm.campos.justificativaAjuste = e.target.value; });
   }
   if (chave === "conferencia") {
     m.querySelector("#dex-confirmar-avisos")?.addEventListener("change", (e) => { fm.confirmarAvisos = e.target.checked; });
@@ -587,18 +594,14 @@ function validarPassoAtual(m) {
     if (obrigatorios.some((v) => v === "")) {
       toast("Preencha todos os campos financeiros obrigatórios."); return false;
     }
+    const ajustes = [["ajustesFavorLoja", c.ajustesFavorLoja], ["ajustesContraLoja", c.ajustesContraLoja]];
     if (obrigatorios.some((valor) => !Number.isFinite(numeroDecimal(valor)))
-      || (c.outrasDeducoes !== "" && !Number.isFinite(numeroDecimal(c.outrasDeducoes)))) {
+      || ajustes.some(([, valor]) => valor !== "" && !Number.isFinite(numeroDecimal(valor)))) {
       toast("Informe valores financeiros válidos."); return false;
     }
-    if (obrigatorios.some((valor) => numeroDecimal(valor) < 0)) {
-      toast("Os valores financeiros obrigatórios não podem ser negativos."); return false;
-    }
-    if (numeroDecimal(c.outrasDeducoes) < 0 && !pode("dashboard_executivo.corrigir")) {
-      toast("Você não tem permissão para lançar um ajuste negativo."); return false;
-    }
-    if (numeroDecimal(c.outrasDeducoes) < 0 && !c.justificativaAjuste?.trim()) {
-      toast("Informe a justificativa do ajuste negativo."); return false;
+    if (obrigatorios.some((valor) => numeroDecimal(valor) < 0)
+      || ajustes.some(([, valor]) => valor !== "" && numeroDecimal(valor) < 0)) {
+      toast("Os valores financeiros não podem ser negativos."); return false;
     }
     return true;
   }
@@ -646,7 +649,7 @@ function payloadBase(status) {
     ...base, ...desempenho,
     valorVendasIfood: numeroDecimalOuIndefinido(c.valorVendasIfood), taxasComissoes: numeroDecimalOuIndefinido(c.taxasComissoes),
     servicosPromocoes: numeroDecimalOuIndefinido(c.servicosPromocoes), taxasEntregadores: numeroDecimalOuIndefinido(c.taxasEntregadores),
-    outrasDeducoes: numeroDecimalOuIndefinido(c.outrasDeducoes), justificativaAjuste: c.justificativaAjuste || undefined,
+    ajustesFavorLoja: numeroDecimalOuIndefinido(c.ajustesFavorLoja), ajustesContraLoja: numeroDecimalOuIndefinido(c.ajustesContraLoja),
     confirmarAvisos: fm.confirmarAvisos,
   };
 }

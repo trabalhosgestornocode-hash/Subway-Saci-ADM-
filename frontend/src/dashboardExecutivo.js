@@ -466,16 +466,15 @@ function metaBarraHtml(cardIndicador) {
 function cardsPrincipais(cards) {
   const s1 = cards.taxasComissoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   const s2 = cards.servicosPromocoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
-  // Taxas de Entregadores e Outras Deduções só entravam somadas dentro do
-  // Total de Deduções, sem card próprio — quem conferia a conta de cabeça
-  // via só Taxas e Comissões + Serviços e Promoções não batia com o Total.
   // Taxas de Entregadores some do TODO (não só "dados insuficientes") quando
   // `naoAplicavel` vem true do backend — Full Service não usa entregadores
   // próprios do iFood, então o card nem existe pra esse modelo (na visão
   // agregada, só some se NENHUMA unidade com dado no mês for Marketplace).
-  // Outras Deduções é um ajuste livre sem meta associada, então não tem
-  // pill de status nem barra — só valor e % das vendas, mesmo padrão do
-  // card Receita Após Deduções (que também não tem meta).
+  //
+  // "Ajustes a favor" e "Ajustes contra" são PURAMENTE INFORMATIVOS — sem
+  // meta, sem pill "dentro/fora da meta", sem barra. A favor (crédito) NÃO
+  // entra no Total de Deduções e soma de volta na Receita líquida; contra
+  // (débito) entra no Total de Deduções.
   const s4 = cards.taxasEntregadores?.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   const s3 = cards.totalDeducoes.status ?? { label: "Dados insuficientes", chave: "sem_dados" };
   return [
@@ -485,12 +484,16 @@ function cardsPrincipais(cards) {
     cardDef("Ticket Médio", fmtMoeda(cards.ticketMedio.valor),
       cards.ticketMedio.valor != null ? "Calculado a partir do Desempenho" : "Dados não informados",
       "Valor bruto de vendas ÷ quantidade de pedidos do mês (Desempenho — indicador operacional). Nunca deriva do Financeiro nem soma tickets médios diários."),
+    cardDef("Novos Clientes", cards.novosClientes?.valor ?? "—",
+      cards.novosClientes?.valor != null ? "Acumulado no período selecionado" : "Dados não informados",
+      "Quantidade acumulada de novos clientes identificados no período selecionado (Desempenho — indicador operacional)."),
     cardDef("Taxas e Comissões", fmtMoeda(cards.taxasComissoes.valor), `${fmtPct(cards.taxasComissoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s1.chave]}">${s1.label}</span>`, "Comissão iFood + taxa de transação de pagamento online.", "", metaBarraHtml(cards.taxasComissoes)),
     cardDef("Serviços e Promoções", fmtMoeda(cards.servicosPromocoes.valor), `${fmtPct(cards.servicosPromocoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s2.chave]}">${s2.label}</span>`, "Custo de campanhas e promoções ativas no iFood.", "", metaBarraHtml(cards.servicosPromocoes)),
     cards.taxasEntregadores?.naoAplicavel ? "" : cardDef("Taxas de Entregadores", fmtMoeda(cards.taxasEntregadores?.valor), `${fmtPct(cards.taxasEntregadores?.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s4.chave]}">${s4.label}</span>`, "Repasse aos entregadores parceiros — só se aplica ao modelo logístico Marketplace.", "", metaBarraHtml(cards.taxasEntregadores ?? {})),
-    cardDef("Outras Deduções", fmtMoeda(cards.outrasDeducoes?.valor), `${fmtPct(cards.outrasDeducoes?.percentual)} das vendas`, "Ajustes diversos lançados no Financeiro (positivos ou negativos) — não tem meta própria."),
-    cardDef("Total de Deduções", fmtMoeda(cards.totalDeducoes.valor), `${fmtPct(cards.totalDeducoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s3.chave]}">${s3.label}</span>`, "Taxas e comissões + serviços e promoções + taxas de entregadores + outras deduções.", "", metaBarraHtml(cards.totalDeducoes)),
-    cardDef("Receita Após Deduções", fmtMoeda(cards.receitaAposDeducoes.valor), `${fmtPct(cards.receitaAposDeducoes.percentual)} das vendas`, "Valor das vendas menos o total de deduções.", "destaque"),
+    cardDef("Ajustes a favor", fmtMoeda(cards.ajustesFavor?.valor), `${fmtPct(cards.ajustesFavor?.percentual)} das vendas`, "Créditos, reembolsos e correções financeiras a favor da loja.", "ajuste-favor"),
+    cardDef("Ajustes contra", fmtMoeda(cards.ajustesContra?.valor), `${fmtPct(cards.ajustesContra?.percentual)} das vendas`, "Débitos, descontos e correções financeiras contra a loja."),
+    cardDef("Total de Deduções", fmtMoeda(cards.totalDeducoes.valor), `${fmtPct(cards.totalDeducoes.percentual)} das vendas · <span class="pill ${CLASSE_STATUS[s3.chave]}">${s3.label}</span>`, "Taxas e comissões + serviços e promoções + taxas de entregadores + ajustes contra a loja.", "", metaBarraHtml(cards.totalDeducoes)),
+    cardDef("Receita líquida", fmtMoeda(cards.receitaLiquida.valor), `${fmtPct(cards.receitaLiquida.percentual)} das vendas`, "Faturamento menos o total de deduções, mais os ajustes a favor da loja.", "destaque"),
   ].join("");
 }
 
@@ -797,7 +800,7 @@ async function renderHistorico(box) {
     <td class="num">${fmtMoeda(m.ticketMedio)}</td>
     <td class="num">${fmtMoeda(m.totalDeducoes)}</td>
     <td class="num">${fmtPct(m.percentualDeducoes)}</td>
-    <td class="num">${fmtMoeda(m.receitaAposDeducoes)}</td>
+    <td class="num">${fmtMoeda(m.receitaLiquida)}</td>
     <td class="num">${m.comparativoMesAnteriorPct != null ? (m.comparativoMesAnteriorPct >= 0 ? "▲ " : "▼ ") + fmtPct(Math.abs(m.comparativoMesAnteriorPct)) : "—"}</td>
   </tr>`;
 

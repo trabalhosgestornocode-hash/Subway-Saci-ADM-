@@ -21,7 +21,7 @@ import { hojeIsoBrasil } from "../../dashboard-executivo/dashboardExecutivo.calc
 export const definicao = {
   name: "consultar_dashboard_executivo",
   description:
-    "Consulta os números REAIS já calculados do Dashboard Executivo (iFood) da unidade do usuário logado, para um mês específico: faturamento, taxas e comissões, serviços e promoções, taxas de entregadores, outras deduções, total de deduções, receita após deduções, ticket médio e projeção do mês. Use sempre que o usuário perguntar sobre faturamento, vendas, metas, deduções, ticket médio ou desempenho financeiro do mês. Nunca invente esses números — sempre consulte esta ferramenta antes de responder sobre eles.",
+    "Consulta os números REAIS já calculados do Dashboard Executivo (iFood) da unidade do usuário logado, para um mês específico: faturamento, taxas e comissões, serviços e promoções, taxas de entregadores, ajustes a favor da loja (crédito — aumenta a receita líquida, NÃO é despesa), ajustes contra a loja (débito — reduz a receita líquida, entra no total de deduções), total de deduções, receita líquida, ticket médio e projeção do mês. Use sempre que o usuário perguntar sobre faturamento, vendas, metas, deduções, ajustes, ticket médio ou desempenho financeiro do mês. Nunca invente esses números — sempre consulte esta ferramenta antes de responder sobre eles.",
   input_schema: {
     type: "object",
     properties: {

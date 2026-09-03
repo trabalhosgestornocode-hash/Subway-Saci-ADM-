@@ -71,7 +71,8 @@ const CAMPOS_EXTRAS = [
   { campo: "taxasComissoesTotal", label: "Taxas e comissões do mês (R$)", tipo: "money", grupo: "financeiro" },
   { campo: "servicosPromocoesTotal", label: "Serviços e promoções do mês (R$)", tipo: "money", grupo: "financeiro" },
   { campo: "taxasEntregadoresTotal", label: "Taxas de entregadores do mês (R$)", tipo: "money", grupo: "financeiro", ocultoSeFullService: true },
-  { campo: "outrasDeducoesTotal", label: "Outras deduções do mês (R$)", tipo: "money", grupo: "financeiro" },
+  { campo: "ajustesFavorLojaTotal", label: "Ajustes a favor da loja no mês (R$)", tipo: "money", grupo: "financeiro" },
+  { campo: "ajustesContraLojaTotal", label: "Ajustes contra a loja no mês (R$)", tipo: "money", grupo: "financeiro" },
 ];
 const ROTULO_EXTRA = Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, c.label.replace(" do mês", "").replace(" (R$)", "")]));
 const campoExtra = (campo) => CAMPOS_EXTRAS.find((c) => c.campo === campo);

@@ -36,7 +36,7 @@ import { STATUS_DIA, diaAnterior, deltaFinanceiro } from "../../dashboard-execut
 export const definicao = {
   name: "consultar_dashboard_dia",
   description:
-    "Consulta o lançamento de UM DIA específico do Dashboard Executivo (iFood) da unidade do usuário logado. Use quando a pergunta for sobre um dia específico (ex.: \"dia 4\", \"ontem\", \"22/08\") — consultar_dashboard_executivo só traz o total do MÊS. IMPORTANTE sobre os campos do retorno: 'operacionalDoDia' (vendas, ticket médio) é o valor REAL e ISOLADO daquele dia. 'financeiroIsoladoDoDia' (taxas, comissões, deduções) também é o valor EXATO e ISOLADO daquele dia — só vem preenchido quando foi possível calcular com certeza (comparando com o dia anterior); quando vier null, use 'financeiroAcumulado' (o snapshot acumulado desde o dia 1 do mês até essa data) e deixe claro que é um valor ACUMULADO, não isolado daquele dia (ex.: \"até o dia 11, acumulou R$ X\", nunca \"no dia 11 gastou R$ X\"). Se a data ainda não ocorreu, ou não houver lançamento registrado, a ferramenta informa isso explicitamente — nunca invente um valor para um dia sem lançamento.",
+    "Consulta o lançamento de UM DIA específico do Dashboard Executivo (iFood) da unidade do usuário logado. Use quando a pergunta for sobre um dia específico (ex.: \"dia 4\", \"ontem\", \"22/08\") — consultar_dashboard_executivo só traz o total do MÊS. IMPORTANTE sobre os campos do retorno: 'operacionalDoDia' (vendas, ticket médio) é o valor REAL e ISOLADO daquele dia. 'financeiroIsoladoDoDia' (taxas, comissões, deduções, ajustes) também é o valor EXATO e ISOLADO daquele dia — só vem preenchido quando foi possível calcular com certeza (comparando com o dia anterior); quando vier null, use 'financeiroAcumulado' (o snapshot acumulado desde o dia 1 do mês até essa data) e deixe claro que é um valor ACUMULADO, não isolado daquele dia (ex.: \"até o dia 11, acumulou R$ X\", nunca \"no dia 11 gastou R$ X\"). 'ajustesFavorLoja' é CRÉDITO/reembolso a favor da loja (aumenta a receita líquida, NÃO é despesa); 'ajustesContraLoja' é DÉBITO/desconto contra a loja (reduz a receita líquida, entra no total de deduções). Se a data ainda não ocorreu, ou não houver lançamento registrado, a ferramenta informa isso explicitamente — nunca invente um valor para um dia sem lançamento.",
   input_schema: {
     type: "object",
     properties: {
@@ -125,10 +125,11 @@ async function calcularFinanceiroIsolado(deps, data, atual, { organizacaoId, uni
     const taxasComissoes = deltaFinanceiro(atual.taxasComissoes, anterior.taxasComissoes);
     const servicosPromocoes = deltaFinanceiro(atual.servicosPromocoes, anterior.servicosPromocoes);
     const taxasEntregadores = deltaFinanceiro(atual.taxasEntregadores, anterior.taxasEntregadores);
-    const outrasDeducoes = deltaFinanceiro(atual.outrasDeducoes, anterior.outrasDeducoes);
-    if ([valorVendasIfood, taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes].every((v) => v == null)) return null;
+    const ajustesFavorLoja = deltaFinanceiro(atual.ajustesFavorLoja, anterior.ajustesFavorLoja);
+    const ajustesContraLoja = deltaFinanceiro(atual.ajustesContraLoja, anterior.ajustesContraLoja);
+    if ([valorVendasIfood, taxasComissoes, servicosPromocoes, taxasEntregadores, ajustesFavorLoja, ajustesContraLoja].every((v) => v == null)) return null;
 
-    return { diaComparado: dataAnterior, valorVendasIfood, taxasComissoes, servicosPromocoes, taxasEntregadores, outrasDeducoes };
+    return { diaComparado: dataAnterior, valorVendasIfood, taxasComissoes, servicosPromocoes, taxasEntregadores, ajustesFavorLoja, ajustesContraLoja };
   } catch {
     return null;
   }
@@ -154,9 +155,10 @@ function normalizar(data, l, operacionalDoDia, financeiroIsoladoDoDia) {
       taxasComissoes: l.taxasComissoes,
       servicosPromocoes: l.servicosPromocoes,
       taxasEntregadores: l.taxasEntregadores,
-      outrasDeducoes: l.outrasDeducoes,
+      ajustesFavorLoja: l.ajustesFavorLoja,
+      ajustesContraLoja: l.ajustesContraLoja,
       totalDeducoes: l.calculado.totalDeducoes,
-      receitaAposDeducoes: l.calculado.receitaAposDeducoes,
+      receitaLiquida: l.calculado.receitaLiquida,
       percentuais: l.calculado.percentuais,
     },
   };

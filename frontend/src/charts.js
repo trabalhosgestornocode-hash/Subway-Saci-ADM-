@@ -73,6 +73,7 @@ export function destruirGraficosDashboardExecutivo() { instanciasDex.forEach((c)
 const ROTULO_INDICADOR = {
   taxas_comissoes: "Taxas e comissões", servicos_promocoes: "Serviços e promoções",
   taxas_entregadores: "Taxas de entregadores", total_deducoes: "Total de deduções",
+  ajustes_contra_loja: "Ajustes contra a loja",
 };
 
 /** Gráfico 1 — comparativo de percentuais (atual × meta ideal × limite). */
@@ -255,7 +256,7 @@ export function linhaDeducoesAcumuladas(id, pontos, metaIdeal = null, limite = n
   }));
 }
 
-/** Gráfico 5 — comparativo mensal (faturamento, deduções, receita após deduções). */
+/** Gráfico 5 — comparativo mensal (faturamento, deduções, receita líquida). */
 export function barraComparativoMensal(id, meses) {
   const el = document.getElementById(id);
   if (!el || !window.Chart || !meses?.length) return;
@@ -266,7 +267,7 @@ export function barraComparativoMensal(id, meses) {
       datasets: [
         { label: "Faturamento", data: meses.map((m) => m.faturamento), backgroundColor: C.verde, borderRadius: 4 },
         { label: "Total de deduções", data: meses.map((m) => m.totalDeducoes), backgroundColor: C.verm, borderRadius: 4 },
-        { label: "Receita após deduções", data: meses.map((m) => m.receitaAposDeducoes), backgroundColor: C.azul, borderRadius: 4 },
+        { label: "Receita líquida", data: meses.map((m) => m.receitaLiquida), backgroundColor: C.azul, borderRadius: 4 },
       ],
     },
     options: {
@@ -388,7 +389,7 @@ export function visaoAnual(id, meses) {
       labels: meses.map((m) => NOME_MES_CURTO[m.mes]),
       datasets: [
         { type: "bar", label: "Faturamento", data: meses.map((m) => (m.status === "futuro" ? null : m.faturamento)), backgroundColor: C.verde, borderRadius: 4, order: 2 },
-        { type: "bar", label: "Receita após deduções", data: meses.map((m) => (m.status === "futuro" ? null : m.receitaAposDeducoes)), backgroundColor: C.azul, borderRadius: 4, order: 2 },
+        { type: "bar", label: "Receita líquida", data: meses.map((m) => (m.status === "futuro" ? null : m.receitaLiquida)), backgroundColor: C.azul, borderRadius: 4, order: 2 },
         { type: "line", label: "% deduções", data: meses.map((m) => (m.status === "futuro" ? null : m.percentualDeducoes)), borderColor: C.verm, yAxisID: "y1", tension: 0.25, order: 1, spanGaps: false, pointRadius: 3 },
       ],
     },

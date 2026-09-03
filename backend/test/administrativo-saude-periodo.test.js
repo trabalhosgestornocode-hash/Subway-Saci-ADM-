@@ -52,7 +52,7 @@ const uni = (id, orgId, nome) => ({ id, organizacao_id: orgId, nome, ativo: true
 const dia = (u, data) => ({
   unidade_id: u, data_lancamento: data, status: "finalizado", situacao: "normal",
   valor_vendas_ifood: 1000, origem_lancamento: "diario",
-  taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null,
+  taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_favor_loja: null, ajustes_contra_loja: null,
 });
 function preenche(u, mes, de, ate) {
   const out = [];

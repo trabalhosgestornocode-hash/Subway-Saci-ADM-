@@ -6,7 +6,7 @@ import { normalizarDadosLancamento } from "../src/modules/dashboard-executivo/da
 // aceitar dado incompleto quando statusAlvo === 'rascunho', mesmo em cenários
 // que antes eram sempre obrigatórios (financeiro elegível, motivo de "sem
 // operação"), e continuar exigindo tudo quando statusAlvo === 'finalizado'.
-const OPCOES = { podeAjustarNegativo: false, exigirFinanceiro: true, desempenhoAnterior: null };
+const OPCOES = { exigirFinanceiro: true, desempenhoAnterior: null };
 
 test("rascunho: situação normal, financeiro elegível, nada preenchido -> aceita, tudo null", () => {
   const dados = normalizarDadosLancamento({ situacao: "normal", status: "rascunho" }, OPCOES);
@@ -15,19 +15,20 @@ test("rascunho: situação normal, financeiro elegível, nada preenchido -> acei
   assert.equal(dados.valorVendasBruto, null);
   assert.equal(dados.valorVendasIfood, null);
   assert.equal(dados.taxasComissoes, null);
-  assert.equal(dados.outrasDeducoes, null);
+  assert.equal(dados.ajustesFavorLoja, null);
+  assert.equal(dados.ajustesContraLoja, null);
 });
 
 test("finalizado: situação normal, financeiro elegível, sem valorVendasIfood -> rejeita", () => {
   assert.throws(() => normalizarDadosLancamento(
-    { situacao: "normal", status: "finalizado", taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 2, outrasDeducoes: 0 },
+    { situacao: "normal", status: "finalizado", taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 2, ajustesContraLoja: 0 },
     OPCOES,
   ), /Valor das vendas \(iFood\)/);
 });
 
 test("finalizado: situação normal, financeiro elegível, tudo preenchido -> aceita", () => {
   const dados = normalizarDadosLancamento(
-    { situacao: "normal", status: "finalizado", valorVendasIfood: 100, taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 2, outrasDeducoes: 0 },
+    { situacao: "normal", status: "finalizado", valorVendasIfood: 100, taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 2, ajustesContraLoja: 0 },
     OPCOES,
   );
   assert.equal(dados.statusAlvo, "finalizado");
@@ -56,7 +57,7 @@ test("finalizado: situação sem_operacao com motivo -> aceita", () => {
 
 test("situação 'parcial' segue o MESMO fluxo de 'normal': finalizado sem valorVendasIfood -> rejeita", () => {
   assert.throws(() => normalizarDadosLancamento(
-    { situacao: "parcial", status: "finalizado", taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 2, outrasDeducoes: 0 },
+    { situacao: "parcial", status: "finalizado", taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 2, ajustesContraLoja: 0 },
     OPCOES,
   ), /Valor das vendas \(iFood\)/);
 });
@@ -64,9 +65,9 @@ test("situação 'parcial' segue o MESMO fluxo de 'normal': finalizado sem valor
 test("situação 'parcial' finalizada com financeiro completo -> aceita, preserva situação e NÃO zera nada", () => {
   const dados = normalizarDadosLancamento(
     { situacao: "parcial", status: "finalizado", qtdVendas: 40, valorVendasBruto: 1800, novosClientes: 3,
-      valorVendasIfood: 2000, taxasComissoes: 300, servicosPromocoes: 120, taxasEntregadores: 90, outrasDeducoes: -15,
-      justificativaAjuste: "ajuste a favor" },
-    { ...OPCOES, podeAjustarNegativo: true },
+      valorVendasIfood: 2000, taxasComissoes: 300, servicosPromocoes: 120, taxasEntregadores: 90,
+      ajustesFavorLoja: 15, ajustesContraLoja: 8 },
+    OPCOES,
   );
   assert.equal(dados.situacao, "parcial");
   assert.equal(dados.statusAlvo, "finalizado");
@@ -80,7 +81,9 @@ test("situação 'parcial' finalizada com financeiro completo -> aceita, preserv
   assert.equal(dados.taxasComissoes, 300);
   assert.equal(dados.servicosPromocoes, 120);
   assert.equal(dados.taxasEntregadores, 90);
-  assert.equal(dados.outrasDeducoes, -15);
+  // Ajustes: ambos positivos, sem exigir permissão nem justificativa.
+  assert.equal(dados.ajustesFavorLoja, 15);
+  assert.equal(dados.ajustesContraLoja, 8);
 });
 
 test("situação 'parcial' como RASCUNHO: aceita incompleto e mantém o que foi preenchido (round-trip)", () => {

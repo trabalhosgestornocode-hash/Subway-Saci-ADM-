@@ -22,7 +22,7 @@
 // snapshot inteiro, que incluiria dias já fechados.
 
 import {
-  snapshotFinanceiroMaisRecente, totalDeducoes, receitaAposDeducoes,
+  snapshotFinanceiroMaisRecente, totalDeducoes, receitaLiquida,
 } from "../dashboard-executivo/dashboardExecutivo.calc.js";
 
 /** Zero seguro: `null` (não sei) nunca vira 0 numa comparação, mas soma como 0. */
@@ -37,7 +37,8 @@ const n = (v) => (v == null ? 0 : Number(v));
  * @returns {{
  *   total: number|null, confirmado: number, provisorio: number,
  *   incluiProvisorio: boolean, statusSnapshot: string|null, dataSnapshot: string|null,
- *   deducoes: number|null, receitaLiquida: number|null
+ *   deducoes: number|null, receitaLiquida: number|null,
+ *   ajustesFavor: number|null, ajustesContra: number|null
  * }}
  */
 export function faturamentoDaUnidade(linhas, { ateDataIso = null } = {}) {
@@ -46,6 +47,7 @@ export function faturamentoDaUnidade(linhas, { ateDataIso = null } = {}) {
     return {
       total: null, confirmado: 0, provisorio: 0, incluiProvisorio: false,
       statusSnapshot: null, dataSnapshot: null, deducoes: null, receitaLiquida: null,
+      ajustesFavor: null, ajustesContra: null,
     };
   }
 
@@ -73,8 +75,9 @@ export function faturamentoDaUnidade(linhas, { ateDataIso = null } = {}) {
     taxasComissoes: snap.taxas_comissoes ?? null,
     servicosPromocoes: snap.servicos_promocoes ?? null,
     taxasEntregadores: snap.taxas_entregadores ?? null,
-    outrasDeducoes: snap.outras_deducoes ?? null,
+    ajustesContraLoja: snap.ajustes_contra_loja ?? null,
   });
+  const ajustesFavor = snap.ajustes_favor_loja ?? null;
 
   return {
     total,
@@ -84,7 +87,9 @@ export function faturamentoDaUnidade(linhas, { ateDataIso = null } = {}) {
     statusSnapshot: snap.status ?? null,
     dataSnapshot: snap.data_lancamento ?? null,
     deducoes: ded,
-    receitaLiquida: receitaAposDeducoes(total, ded),
+    ajustesFavor,
+    ajustesContra: snap.ajustes_contra_loja ?? null,
+    receitaLiquida: receitaLiquida(total, ded, ajustesFavor),
   };
 }
 

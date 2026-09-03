@@ -186,8 +186,8 @@ describe("consultar_dashboard_dia", () => {
   const LANCAMENTO_COM_DADOS = {
     lancamento: {
       situacao: "normal", motivoSemOperacao: null, qtdVendas: 40, valorVendasBruto: 2000,
-      valorVendasIfood: 1800, taxasComissoes: 200, servicosPromocoes: 90, taxasEntregadores: 120, outrasDeducoes: 0,
-      calculado: { totalDeducoes: 410, receitaAposDeducoes: 1390, percentuais: { totalDeducoes: 22.8 }, ticketMedio: 50 },
+      valorVendasIfood: 1800, taxasComissoes: 200, servicosPromocoes: 90, taxasEntregadores: 120, ajustesFavorLoja: 0, ajustesContraLoja: 0,
+      calculado: { totalDeducoes: 410, receitaLiquida: 1390, percentuais: { totalDeducoes: 22.8 }, ticketMedio: 50 },
     },
     disponibilidade: { disponivel: true, motivo: null, status: STATUS_DIA.PREENCHIDO },
   };
@@ -196,8 +196,8 @@ describe("consultar_dashboard_dia", () => {
   const VALOR_ZERO_REAL = {
     lancamento: {
       situacao: "zero_vendas", motivoSemOperacao: null, qtdVendas: 0, valorVendasBruto: 0,
-      valorVendasIfood: 0, taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, outrasDeducoes: 0,
-      calculado: { totalDeducoes: 0, receitaAposDeducoes: 0, percentuais: { totalDeducoes: 0 }, ticketMedio: null },
+      valorVendasIfood: 0, taxasComissoes: 0, servicosPromocoes: 0, taxasEntregadores: 0, ajustesFavorLoja: 0, ajustesContraLoja: 0,
+      calculado: { totalDeducoes: 0, receitaLiquida: 0, percentuais: { totalDeducoes: 0 }, ticketMedio: null },
     },
     disponibilidade: { disponivel: true, motivo: null, status: STATUS_DIA.ZERO_VENDAS },
   };
@@ -216,8 +216,8 @@ describe("consultar_dashboard_dia", () => {
   const LANCAMENTO_DIA_ANTERIOR = {
     lancamento: {
       situacao: "normal", motivoSemOperacao: null, qtdVendas: 38, valorVendasBruto: 1900,
-      valorVendasIfood: 1600, taxasComissoes: 180, servicosPromocoes: 80, taxasEntregadores: 100, outrasDeducoes: 0,
-      calculado: { totalDeducoes: 360, receitaAposDeducoes: 1240, percentuais: { totalDeducoes: 22.5 }, ticketMedio: 50 },
+      valorVendasIfood: 1600, taxasComissoes: 180, servicosPromocoes: 80, taxasEntregadores: 100, ajustesFavorLoja: 0, ajustesContraLoja: 0,
+      calculado: { totalDeducoes: 360, receitaLiquida: 1240, percentuais: { totalDeducoes: 22.5 }, ticketMedio: 50 },
     },
     disponibilidade: { disponivel: true, motivo: null, status: STATUS_DIA.PREENCHIDO },
   };
@@ -250,6 +250,12 @@ describe("consultar_dashboard_dia", () => {
     assert.equal(r.financeiroIsoladoDoDia.taxasEntregadores, 20);
     assert.equal(r.financeiroIsoladoDoDia.valorVendasIfood, 200); // 1800 - 1600
     assert.equal(r.financeiroIsoladoDoDia.diaComparado, "2026-08-03");
+    // Ajustes a favor / contra a loja também são expostos (crédito x débito).
+    assert.equal(r.financeiroAcumulado.ajustesFavorLoja, 0);
+    assert.equal(r.financeiroAcumulado.ajustesContraLoja, 0);
+    assert.equal(r.financeiroIsoladoDoDia.ajustesFavorLoja, 0);
+    assert.equal(r.financeiroIsoladoDoDia.ajustesContraLoja, 0);
+    assert.equal("outrasDeducoes" in r.financeiroAcumulado, false);
     // Operacional (Desempenho) é o valor ISOLADO do dia — já vem em delta de obterMes().
     assert.equal(r.operacionalDoDia.valorVendasBruto, 2000);
     assert.equal(r.operacionalDoDia.qtdVendas, 40);
@@ -287,8 +293,8 @@ describe("consultar_dashboard_dia", () => {
     const SO_DESEMPENHO = {
       lancamento: {
         situacao: "normal", motivoSemOperacao: null, qtdVendas: 40, valorVendasBruto: 2000,
-        valorVendasIfood: null, taxasComissoes: null, servicosPromocoes: null, taxasEntregadores: null, outrasDeducoes: null,
-        calculado: { totalDeducoes: 0, receitaAposDeducoes: null, percentuais: { totalDeducoes: null }, ticketMedio: 50 },
+        valorVendasIfood: null, taxasComissoes: null, servicosPromocoes: null, taxasEntregadores: null, ajustesFavorLoja: null, ajustesContraLoja: null,
+        calculado: { totalDeducoes: 0, receitaLiquida: null, percentuais: { totalDeducoes: null }, ticketMedio: 50 },
       },
       disponibilidade: { disponivel: true, motivo: null, status: STATUS_DIA.FINANCEIRO_PENDENTE },
     };

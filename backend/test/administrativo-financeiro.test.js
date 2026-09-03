@@ -22,7 +22,7 @@ import {
 const lin = (data, acumulado, over = {}) => ({
   unidade_id: "u1", data_lancamento: data, valor_vendas_ifood: acumulado,
   status: "finalizado", situacao: "normal", origem_lancamento: "diario",
-  taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null,
+  taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_favor_loja: null, ajustes_contra_loja: null,
   ...over,
 });
 

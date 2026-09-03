@@ -5,10 +5,10 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  ticketMedio, percentual, totalDeducoes, receitaAposDeducoes, saldoPercentual,
+  ticketMedio, percentual, totalDeducoes, receitaLiquida, saldoPercentual,
   mediaDiaria, projecaoMensal, confiabilidadeProjecao, statusDiaBase, statusMes,
   resumoPreenchimento, verificarDisponibilidade, agruparPendenciasPorMes,
-  validarOutrasDeducoes, inconsistencias,
+  inconsistencias,
   diasDoMes, mesAnterior, diaAnterior, STATUS_DIA,
   MODELOS_LOGISTICOS, ROTULO_MODELO, INDICADORES_POR_MODELO, indicadorAplicavel,
   statusIndicador, saldoMeta, distribuirValorMensal, distribuirQuantidadeMensal,
@@ -42,17 +42,28 @@ describe("percentual", () => {
 });
 
 // ---------------------------------------------------------------------------
-describe("total de deduções e receita após deduções", () => {
-  test("soma das 4 deduções", () => {
-    const total = totalDeducoes({ taxasComissoes: 100, servicosPromocoes: 50, taxasEntregadores: 30, outrasDeducoes: 20 });
+describe("total de deduções e receita líquida", () => {
+  test("soma taxas + serviços + entregadores + ajustes CONTRA a loja", () => {
+    const total = totalDeducoes({ taxasComissoes: 100, servicosPromocoes: 50, taxasEntregadores: 30, ajustesContraLoja: 20 });
     assert.equal(total, 200);
   });
-  test("outras deduções negativas reduzem o total (ajuste a favor)", () => {
-    const total = totalDeducoes({ taxasComissoes: 100, servicosPromocoes: 50, taxasEntregadores: 30, outrasDeducoes: -20 });
-    assert.equal(total, 160);
+  test("ajuste A FAVOR da loja NÃO entra no total de deduções", () => {
+    // só o ajuste contra soma; o a favor é crédito e nem é passado aqui
+    const total = totalDeducoes({ taxasComissoes: 100, servicosPromocoes: 50, taxasEntregadores: 30, ajustesContraLoja: 0 });
+    assert.equal(total, 180);
   });
-  test("receita após deduções = vendas - total", () => {
-    assert.equal(receitaAposDeducoes(1000, 300), 700);
+  test("receita líquida = vendas - total de deduções + ajustes a favor", () => {
+    assert.equal(receitaLiquida(1000, 300), 700);
+    assert.equal(receitaLiquida(1000, 300, 0), 700);
+    assert.equal(receitaLiquida(1000, 300, 80), 780);
+  });
+  test("exemplo obrigatório do pedido: 100 - 10 - 5 - 3 + 8 = 90 (total de deduções = 18)", () => {
+    const total = totalDeducoes({ taxasComissoes: 10, servicosPromocoes: 5, taxasEntregadores: 0, ajustesContraLoja: 3 });
+    assert.equal(total, 18);
+    assert.equal(receitaLiquida(100, total, 8), 90);
+  });
+  test("receita líquida indisponível quando o total de deduções é null", () => {
+    assert.equal(receitaLiquida(1000, null, 50), null);
   });
   test("saldo percentual = 100 - percentual total; null quando o percentual é null", () => {
     assert.equal(saldoPercentual(30), 70);
@@ -470,7 +481,7 @@ describe("listaSnapshotsFinanceiros", () => {
 
   test("um ponto por dia do mês; dias sem snapshot vêm null (nunca R$0)", () => {
     const linhas = [
-      { data_lancamento: "2026-08-02", situacao: "normal", valor_vendas_ifood: 5000, taxas_comissoes: 500, servicos_promocoes: 100, taxas_entregadores: 200, outras_deducoes: 0 },
+      { data_lancamento: "2026-08-02", situacao: "normal", valor_vendas_ifood: 5000, taxas_comissoes: 500, servicos_promocoes: 100, taxas_entregadores: 200, ajustes_contra_loja: 0, ajustes_favor_loja: 0 },
     ];
     const r = listaSnapshotsFinanceiros(dias3, linhas);
     assert.equal(r.length, 3);
@@ -483,8 +494,8 @@ describe("listaSnapshotsFinanceiros", () => {
 
   test("delta é contra o snapshot anterior do MÊS, não o dia anterior do calendário", () => {
     const linhas = [
-      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 50000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
-      { data_lancamento: "2026-08-03", situacao: "normal", valor_vendas_ifood: 53000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 50000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_contra_loja: null },
+      { data_lancamento: "2026-08-03", situacao: "normal", valor_vendas_ifood: 53000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_contra_loja: null },
     ];
     const r = listaSnapshotsFinanceiros(dias3, linhas);
     assert.equal(r[0].delta, null);
@@ -510,8 +521,8 @@ describe("listaSnapshotsFinanceiros", () => {
 
   test("dia 'parcial' ENTRA na série mensal, igual 'normal' (financeiro é extrato real do iFood)", () => {
     const linhas = [
-      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 4000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
-      { data_lancamento: "2026-08-03", situacao: "parcial", valor_vendas_ifood: 7000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, outras_deducoes: null },
+      { data_lancamento: "2026-08-01", situacao: "normal", valor_vendas_ifood: 4000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_contra_loja: null },
+      { data_lancamento: "2026-08-03", situacao: "parcial", valor_vendas_ifood: 7000, taxas_comissoes: null, servicos_promocoes: null, taxas_entregadores: null, ajustes_contra_loja: null },
     ];
     const r = listaSnapshotsFinanceiros(dias3, linhas);
     assert.equal(r[0].valor, 4000);
@@ -610,21 +621,6 @@ describe("ultimoDesempenhoConhecido", () => {
 });
 
 // ---------------------------------------------------------------------------
-describe("validação de outras deduções (ajuste negativo)", () => {
-  test("valor positivo é sempre aceito", () => {
-    assert.equal(validarOutrasDeducoes({ valor: 50, justificativa: null, podeAjustarNegativo: false }), null);
-  });
-  test("negativo sem permissão é barrado", () => {
-    assert.match(validarOutrasDeducoes({ valor: -50, justificativa: "motivo", podeAjustarNegativo: false }), /permissão/i);
-  });
-  test("negativo com permissão mas sem justificativa é barrado", () => {
-    assert.match(validarOutrasDeducoes({ valor: -50, justificativa: "", podeAjustarNegativo: true }), /justificativa/i);
-  });
-  test("negativo com permissão e justificativa é aceito", () => {
-    assert.equal(validarOutrasDeducoes({ valor: -50, justificativa: "erro de lançamento do dia anterior", podeAjustarNegativo: true }), null);
-  });
-});
-
 describe("inconsistências (avisos, não bloqueiam sozinhas)", () => {
   test("vendas com valor mas quantidade zero gera aviso", () => {
     const avisos = inconsistencias({ qtdVendas: 0, valorVendasBruto: 100, valorVendasIfood: 100, totalDed: 20 });
@@ -691,17 +687,17 @@ describe("ticket médio — nenhum dos dois lados vira 0 por conta própria", ()
 });
 
 describe("totalDeducoes / percentual — null quando não há dado, nunca inventa 0", () => {
-  test("as 4 deduções ausentes -> total null (não 0)", () => {
-    assert.equal(totalDeducoes({ taxasComissoes: null, servicosPromocoes: null, taxasEntregadores: null, outrasDeducoes: null }), null);
+  test("as 4 parcelas ausentes -> total null (não 0)", () => {
+    assert.equal(totalDeducoes({ taxasComissoes: null, servicosPromocoes: null, taxasEntregadores: null, ajustesContraLoja: null }), null);
   });
   test("algumas presentes -> soma só as conhecidas (melhor esforço)", () => {
-    assert.equal(totalDeducoes({ taxasComissoes: 100, servicosPromocoes: null, taxasEntregadores: null, outrasDeducoes: null }), 100);
+    assert.equal(totalDeducoes({ taxasComissoes: 100, servicosPromocoes: null, taxasEntregadores: null, ajustesContraLoja: null }), 100);
   });
   test("percentual(null, base) -> null, nunca 0%", () => {
     assert.equal(percentual(null, 1000), null);
   });
-  test("receitaAposDeducoes com total null -> null (não finge deduções = 0)", () => {
-    assert.equal(receitaAposDeducoes(1000, null), null);
+  test("receitaLiquida com total null -> null (não finge deduções = 0)", () => {
+    assert.equal(receitaLiquida(1000, null), null);
   });
 });
 
@@ -802,7 +798,8 @@ describe("distribuirQuantidadeMensal — mesma exatidão, para contagens inteira
 describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensal", () => {
   const EXTRAS_VAZIOS = {
     qtdVendasTotal: null, valorVendasBrutoTotal: null, novosClientesTotal: null, taxasComissoesTotal: null,
-    servicosPromocoesTotal: null, taxasEntregadoresTotal: null, outrasDeducoesTotal: null,
+    servicosPromocoesTotal: null, taxasEntregadoresTotal: null,
+    ajustesFavorLojaTotal: null, ajustesContraLojaTotal: null,
   };
 
   test("Caso A — só informar taxas depois: faturamento permanece, taxas são adicionadas", () => {
@@ -839,8 +836,8 @@ describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensa
       patch: { valorTotalMensal: 82000 }, // muda só o faturamento
       quantidadeDias: 28,
     });
-    assert.equal(r.extras.outrasDeducoesTotal, null);
-    assert.equal(r.fatiasPorCampo.outrasDeducoesTotal, null);
+    assert.equal(r.extras.ajustesContraLojaTotal, null);
+    assert.equal(r.fatiasPorCampo.ajustesContraLojaTotal, null);
   });
 
   test("edição não mexe em campos com valor previamente salvo que não vieram no patch", () => {
@@ -857,14 +854,67 @@ describe("recalcularDistribuicaoMensal — edição parcial do lançamento mensa
   });
 
   test("limpar um extra explicitamente (patch com null) zera o total, não distribui mais nada", () => {
-    const extrasAtuais = { ...EXTRAS_VAZIOS, outrasDeducoesTotal: 500 };
+    const extrasAtuais = { ...EXTRAS_VAZIOS, ajustesContraLojaTotal: 500 };
     const r = recalcularDistribuicaoMensal({
       valorAtual: 80000, extrasAtuais,
-      patch: { extras: { outrasDeducoesTotal: null } },
+      patch: { extras: { ajustesContraLojaTotal: null } },
       quantidadeDias: 30,
     });
-    assert.equal(r.extras.outrasDeducoesTotal, null);
-    assert.equal(r.fatiasPorCampo.outrasDeducoesTotal, null);
+    assert.equal(r.extras.ajustesContraLojaTotal, null);
+    assert.equal(r.fatiasPorCampo.ajustesContraLojaTotal, null);
+  });
+
+  test("distribuição mensal — só ajuste a favor: distribui em ajustesFavorLojaTotal, contra fica null", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 60000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { ajustesFavorLojaTotal: 90 } },
+      quantidadeDias: 30,
+    });
+    assert.ok(perto(r.fatiasPorCampo.ajustesFavorLojaTotal.reduce((s, f) => s + f, 0), 90, 1e-9));
+    assert.equal(r.fatiasPorCampo.ajustesContraLojaTotal, null);
+  });
+
+  test("distribuição mensal — só ajuste contra: distribui em ajustesContraLojaTotal, a favor fica null", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 60000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { ajustesContraLojaTotal: 45 } },
+      quantidadeDias: 30,
+    });
+    assert.ok(perto(r.fatiasPorCampo.ajustesContraLojaTotal.reduce((s, f) => s + f, 0), 45, 1e-9));
+    assert.equal(r.fatiasPorCampo.ajustesFavorLojaTotal, null);
+  });
+
+  test("distribuição mensal — ambos os ajustes: cada um distribuído no seu campo, soma exata", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 60000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { extras: { ajustesFavorLojaTotal: 30, ajustesContraLojaTotal: 12 } },
+      quantidadeDias: 28,
+    });
+    assert.ok(perto(r.fatiasPorCampo.ajustesFavorLojaTotal.reduce((s, f) => s + f, 0), 30, 1e-9));
+    assert.ok(perto(r.fatiasPorCampo.ajustesContraLojaTotal.reduce((s, f) => s + f, 0), 12, 1e-9));
+  });
+
+  test("distribuição mensal — mês sem ajustes: os dois campos ficam null", () => {
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 60000, extrasAtuais: EXTRAS_VAZIOS,
+      patch: { valorTotalMensal: 61000 },
+      quantidadeDias: 30,
+    });
+    assert.equal(r.fatiasPorCampo.ajustesFavorLojaTotal, null);
+    assert.equal(r.fatiasPorCampo.ajustesContraLojaTotal, null);
+  });
+
+  test("distribuição mensal — edição de mês histórico: só o ajuste editado muda, o outro é preservado", () => {
+    const extrasAtuais = { ...EXTRAS_VAZIOS, ajustesFavorLojaTotal: 30, ajustesContraLojaTotal: 12 };
+    const r = recalcularDistribuicaoMensal({
+      valorAtual: 60000, extrasAtuais,
+      patch: { extras: { ajustesContraLojaTotal: 20 } },
+      quantidadeDias: 28,
+    });
+    assert.equal(r.extras.ajustesFavorLojaTotal, 30); // preservado
+    assert.equal(r.extras.ajustesContraLojaTotal, 20); // atualizado
+    assert.ok(perto(r.fatiasPorCampo.ajustesFavorLojaTotal.reduce((s, f) => s + f, 0), 30, 1e-9));
+    assert.ok(perto(r.fatiasPorCampo.ajustesContraLojaTotal.reduce((s, f) => s + f, 0), 20, 1e-9));
   });
 
   test("contagens inteiras (pedidos/clientes) usam distribuirQuantidadeMensal, não centavos", () => {
