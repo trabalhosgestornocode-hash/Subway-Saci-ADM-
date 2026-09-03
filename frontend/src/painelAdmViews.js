@@ -279,17 +279,28 @@ function detalheCardVisao({ id, titulo, sub, corpo, tom = "" }) {
     </section>`;
 }
 
+/** Mini-badge numérico para o resumo de cada linha das listas dos cards. */
+const miniBadge = (n, rotulo, tom) =>
+  n > 0 ? `<span class="padm-mini padm-mini--${tom}">${fmtNum(n)} ${escapeHtml(rotulo)}</span>` : "";
+
 function listaEmpresasCard(empresas) {
   if (!empresas.length) return vazio("Nenhuma empresa nesta situação", "Não há empresas com pendência no período selecionado.");
   return `<ul class="padm-card-lista">${empresas.map((e) => {
     const n = qtdPendentes(e);
-    const partes = [n ? `${n} unidade${n === 1 ? "" : "s"} com pendência` : "sem pendência"];
-    if ((e.criticas ?? 0) > 0) partes.push(`${e.criticas} crítica${e.criticas === 1 ? "" : "s"}`);
-    if ((e.atencao ?? 0) > 0) partes.push(`${e.atencao} em atenção`);
+    const meta = n
+      ? [
+          miniBadge(n, `pendente${n === 1 ? "" : "s"}`, e.criticas > 0 ? "critico" : "atencao"),
+          miniBadge(e.criticas ?? 0, `crítica${(e.criticas ?? 0) === 1 ? "" : "s"}`, "critico"),
+          miniBadge(e.atencao ?? 0, "em atenção", "atencao"),
+        ].filter(Boolean).join("")
+      : `<span class="padm-mini padm-mini--ok">sem pendência</span>`;
     return `<li>
       <button type="button" class="padm-card-lista-item" data-padm-nav="empresa" data-id="${escapeHtml(e.organizacaoId ?? "")}" data-nome="${escapeHtml(e.empresaNome ?? "")}">
         <span class="padm-card-lista-icone">${icon("building", { size: 14 })}</span>
-        <span class="padm-card-lista-texto"><b>${escapeHtml(e.empresaNome ?? "—")}</b><small>${escapeHtml(partes.join(" · "))}</small></span>
+        <span class="padm-card-lista-texto">
+          <b>${escapeHtml(e.empresaNome ?? "—")}</b>
+          <span class="padm-card-lista-meta">${meta}</span>
+        </span>
         <span class="padm-item-ir" aria-hidden="true">›</span>
       </button>
     </li>`;
@@ -311,10 +322,12 @@ function gruposUnidadesCard(empresas, selecionar) {
       </header>
       <ul class="padm-card-lista">${unidades.map((u) => `
         <li>
-          <button type="button" class="padm-card-lista-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}">
+          <button type="button" class="padm-card-lista-item padm-card-lista-item--${CRITICIDADE[u.criticidade]?.classe ?? "muted"}" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}">
             <span class="padm-card-lista-icone">${icon("store", { size: 14 })}</span>
-            <span class="padm-card-lista-texto"><b>${escapeHtml(u.unidadeNome ?? "—")}</b><small>${escapeHtml(u.criticidade === "em_dia" ? "Em dia no período" : (CATEGORIA_D1[u.d1Status]?.rotulo ?? "Com pendência"))}</small></span>
-            ${chipCriticidade(u.criticidade)}
+            <span class="padm-card-lista-texto">
+              <b>${escapeHtml(u.unidadeNome ?? "—")}</b>
+              <small>${escapeHtml(u.criticidade === "em_dia" ? "Em dia no período" : (CATEGORIA_D1[u.d1Status]?.rotulo ?? "Com pendência"))}${u.diasPendentes > 0 ? ` · ${escapeHtml(fmtDiasPendentes(u.diasPendentes))}` : ""}</small>
+            </span>
             <span class="padm-item-ir" aria-hidden="true">›</span>
           </button>
         </li>`).join("")}</ul>
@@ -1232,9 +1245,15 @@ function ligarLista() {
 function ligarCardsResumo() {
   const botoes = els("[data-padm-card]");
   const paineis = els("[data-padm-card-painel]");
+  const caixa = el(".padm-cards-detalhes");
+  // No mobile a lista abre como painel deslizante sobre a tela (CSS via :has);
+  // travar o scroll do fundo mantém a leitura organizada.
+  const travar = (on) => { try { document.body?.classList?.toggle("padm-sheet-lock", on); } catch { /* fake DOM */ } };
+
   const fecharTodos = () => {
     botoes.forEach((b) => { b.setAttribute("aria-expanded", "false"); b.classList.remove("padm-card--ativo"); });
     paineis.forEach((p) => { p.hidden = true; });
+    travar(false);
   };
   botoes.forEach((b) => b.addEventListener("click", () => {
     const painel = el(`#padm-card-detalhe-${b.dataset.padmCard}`);
@@ -1244,9 +1263,12 @@ function ligarCardsResumo() {
     painel.hidden = false;
     b.setAttribute("aria-expanded", "true");
     b.classList.add("padm-card--ativo");
+    travar(true);
     painel.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
   }));
   els("[data-padm-card-fechar]").forEach((b) => b.addEventListener("click", fecharTodos));
+  // toque fora do painel (no fundo escurecido do modo mobile) fecha
+  caixa?.addEventListener?.("click", (e) => { if (e.target === caixa) fecharTodos(); });
 }
 
 function ligarNav() {

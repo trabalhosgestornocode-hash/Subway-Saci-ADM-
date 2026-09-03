@@ -2198,101 +2198,169 @@ body {
 
 /* ---------- cartões de indicador ---------- */
 .padm-cards {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
-  gap: 13px; margin-bottom: 26px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 12px; margin-bottom: 18px; align-items: stretch;
 }
 .padm-card {
-  position: relative; overflow: hidden;
+  position: relative; overflow: hidden; isolation: isolate;
   background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
-  padding: 15px 16px 16px; display: flex; flex-direction: column; gap: 7px;
-  box-shadow: var(--sombra-sm); transition: box-shadow var(--t), transform var(--t);
+  padding: 14px 15px; display: flex; flex-direction: column; gap: 6px;
+  box-shadow: var(--sombra-sm); transition: box-shadow var(--t), transform var(--t), border-color var(--t);
 }
 .padm-card::before {
-  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--linha);
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--linha); z-index: 1;
 }
-.padm-card:hover { box-shadow: var(--sombra); transform: translateY(-1px); }
 .padm-card--critico::before { background: var(--bad); }
 .padm-card--atencao::before { background: var(--warn); }
 .padm-card--ok::before { background: var(--ok); }
 .padm-card--neutro::before { background: var(--cinza-claro); }
-.padm-card--destaque { border-color: rgba(219,59,59,.32); box-shadow: 0 6px 22px rgba(219,59,59,.13); }
+.padm-card--destaque { border-color: rgba(219,59,59,.3); }
 .padm-card--destaque .padm-card-valor { color: var(--bad); }
-.padm-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.padm-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 15px; }
 .padm-card-label {
-  font-size: 10.5px; letter-spacing: .55px; text-transform: uppercase;
-  color: var(--cinza); font-weight: 750; line-height: 1.35;
+  font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--cinza); font-weight: 750; line-height: 1.3;
 }
-.padm-card-ic { color: var(--cinza-claro); display: inline-flex; flex: 0 0 auto; }
-.padm-card--critico .padm-card-ic { color: var(--bad); }
-.padm-card--atencao .padm-card-ic { color: var(--warn); }
-.padm-card--ok .padm-card-ic { color: var(--ok); }
-.padm-card-valor { font-size: 30px; font-weight: 780; letter-spacing: -1.2px; line-height: 1; margin-top: 2px; }
-.padm-card-barra { display: block; height: 4px; border-radius: 999px; background: var(--superficie-2); overflow: hidden; }
+.padm-card-ic {
+  color: var(--cinza-claro); display: inline-flex; flex: 0 0 auto;
+  width: 22px; height: 22px; border-radius: 7px; align-items: center; justify-content: center;
+  background: var(--superficie-2);
+}
+.padm-card--critico .padm-card-ic { color: var(--bad); background: var(--bad-bg); }
+.padm-card--atencao .padm-card-ic { color: var(--warn); background: var(--warn-bg); }
+.padm-card--ok .padm-card-ic { color: var(--ok); background: var(--ok-bg); }
+.padm-card-valor { font-size: 27px; font-weight: 780; letter-spacing: -1px; line-height: 1.05; }
+.padm-card-barra { display: block; height: 4px; border-radius: 999px; background: var(--superficie-2); overflow: hidden; margin-top: 1px; }
 .padm-card-barra i { display: block; height: 100%; border-radius: 999px; background: var(--grad-verde); }
-.padm-card-nota { font-size: 11.5px; color: var(--cinza); line-height: 1.4; }
+.padm-card-nota { font-size: 11px; color: var(--cinza); line-height: 1.35; }
+
+/* cartão clicável: afeta a mão + a borda, e ganha um rodapé de ação claro */
 .padm-card--interativo {
   appearance: none; width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.padm-card--interativo:hover, .padm-card--interativo:focus-visible { border-color: var(--cinza-claro); }
+.padm-card--interativo:hover { border-color: var(--cinza-claro); box-shadow: var(--sombra); transform: translateY(-1px); }
 .padm-card--interativo:focus-visible { outline: 3px solid rgba(219,59,59,.16); outline-offset: 2px; }
-.padm-card--ativo { box-shadow: var(--sombra); transform: translateY(-1px); }
-.padm-card-cta {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: auto; padding-top: 3px; color: var(--vermelho); font-size: 11px; font-weight: 750;
+.padm-card--ativo { border-color: var(--verde); box-shadow: var(--sombra); }
+.padm-card--ativo::after {
+  content: ""; position: absolute; left: 50%; bottom: -1px; width: 34px; height: 3px;
+  transform: translateX(-50%); border-radius: 3px 3px 0 0; background: var(--verde);
 }
-.padm-card--ok .padm-card-cta { color: var(--ok); }
-.padm-card--atencao .padm-card-cta { color: var(--warn); }
+.padm-card-cta {
+  display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+  margin-top: 6px; padding: 3px 9px; border-radius: 999px;
+  background: var(--superficie-2); color: var(--cinza); font-size: 10.5px; font-weight: 750;
+  letter-spacing: .2px;
+}
+.padm-card--critico .padm-card-cta { background: var(--bad-bg); color: var(--bad); }
+.padm-card--atencao .padm-card-cta { background: var(--warn-bg); color: var(--warn); }
+.padm-card--ok .padm-card-cta { background: var(--ok-bg); color: var(--ok); }
+.padm-card--interativo:hover .padm-card-cta { filter: brightness(.97); }
+.padm-card--ativo .padm-card-cta { background: var(--verde); color: #fff; }
 
-.padm-cards-detalhes { margin: -12px 0 26px; }
+/* ---------- lista aberta pelo cartão ---------- */
+.padm-cards-detalhes { margin: 0 0 22px; }
 .padm-card-detalhe {
   overflow: hidden; background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
-  box-shadow: var(--sombra-sm); animation: padm-card-detalhe-entrada .16s ease-out;
+  box-shadow: var(--sombra); animation: padm-card-detalhe-entrada .16s ease-out;
 }
 .padm-card-detalhe[hidden] { display: none; }
-.padm-card-detalhe--critico { border-top: 3px solid var(--bad); }
-.padm-card-detalhe--atencao { border-top: 3px solid var(--warn); }
-.padm-card-detalhe--ok { border-top: 3px solid var(--ok); }
 .padm-card-detalhe-head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  padding: 16px 18px 13px; border-bottom: 1px solid var(--linha); background: var(--superficie-2);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 14px 16px 12px; border-bottom: 1px solid var(--linha); background: var(--superficie-2);
 }
-.padm-card-detalhe-head h2 { font-size: 15px; font-weight: 750; }
-.padm-card-detalhe-head p { margin-top: 3px; color: var(--cinza); font-size: 11.5px; }
+.padm-card-detalhe--critico .padm-card-detalhe-head { box-shadow: inset 0 3px 0 var(--bad); }
+.padm-card-detalhe--atencao .padm-card-detalhe-head { box-shadow: inset 0 3px 0 var(--warn); }
+.padm-card-detalhe--ok .padm-card-detalhe-head { box-shadow: inset 0 3px 0 var(--ok); }
+.padm-card-detalhe-head h2 { font-size: 14.5px; font-weight: 750; }
+.padm-card-detalhe-head p { margin-top: 2px; color: var(--cinza); font-size: 11px; line-height: 1.4; }
 .padm-card-detalhe-fechar {
   width: 30px; height: 30px; flex: 0 0 auto; border: 0; border-radius: 8px; cursor: pointer;
-  background: transparent; color: var(--cinza); font-size: 20px; line-height: 1;
+  background: var(--card); color: var(--cinza); font-size: 19px; line-height: 1;
+  display: grid; place-items: center; transition: all var(--t);
 }
-.padm-card-detalhe-fechar:hover { background: var(--muted-bg); color: var(--texto); }
-.padm-card-detalhe-corpo { padding: 14px 18px 18px; max-height: 430px; overflow: auto; }
-.padm-card-grupos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 13px; }
-.padm-card-grupo { min-width: 0; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; }
+.padm-card-detalhe-fechar:hover { background: var(--bad-bg); color: var(--bad); }
+.padm-card-detalhe-corpo { padding: 12px 14px 16px; max-height: 420px; overflow: auto; overscroll-behavior: contain; }
+.padm-card-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 11px; }
+.padm-card-grupo { min-width: 0; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; background: var(--card); }
 .padm-card-grupo > header {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 9px 11px; background: var(--superficie-2); border-bottom: 1px solid var(--linha);
+  padding: 8px 10px; background: var(--superficie-2); border-bottom: 1px solid var(--linha);
 }
 .padm-card-grupo > header button {
   display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; background: none;
-  color: var(--texto); cursor: pointer; text-align: left;
+  color: var(--texto); cursor: pointer; text-align: left; padding: 0;
 }
+.padm-card-grupo > header button svg { flex: 0 0 auto; color: var(--cinza-claro); }
 .padm-card-grupo > header button:hover b { text-decoration: underline; }
-.padm-card-grupo > header b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.padm-card-grupo > header > span { flex: 0 0 auto; color: var(--cinza); font-size: 10.5px; }
-.padm-card-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.padm-card-grupo > header b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 700; }
+.padm-card-grupo > header > span {
+  flex: 0 0 auto; color: var(--cinza); font-size: 10px; font-weight: 700;
+  background: var(--card); border-radius: 999px; padding: 1px 8px;
+}
+.padm-card-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+/* lista plana (empresas): não deixa a linha esticar demais em telas largas */
+.padm-card-detalhe-corpo > .padm-card-lista { max-width: 640px; }
 .padm-card-grupo .padm-card-lista { padding: 8px; }
 .padm-card-lista-item {
-  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 11px;
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px;
   border: 1px solid var(--linha); border-radius: 9px; background: var(--card); color: var(--texto);
-  text-align: left; cursor: pointer;
+  text-align: left; cursor: pointer; transition: border-color var(--t), background var(--t);
 }
 .padm-card-lista-item:hover { border-color: var(--cinza-claro); background: var(--superficie-2); }
+.padm-card-lista-item--critico { border-left: 3px solid var(--bad); }
+.padm-card-lista-item--atencao { border-left: 3px solid var(--warn); }
+.padm-card-lista-item--ok { border-left: 3px solid var(--ok); }
 .padm-card-lista-icone {
-  width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto;
+  width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto;
   border-radius: 8px; background: var(--muted-bg); color: var(--cinza);
 }
 .padm-card-lista-texto { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; gap: 2px; }
 .padm-card-lista-texto b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
 .padm-card-lista-texto small { color: var(--cinza); font-size: 10.5px; }
+.padm-card-lista-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+.padm-card-lista-item .padm-item-ir { flex: 0 0 auto; }
+
+/* mini-badge numérico (resumo por linha) */
+.padm-mini {
+  display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 750;
+  letter-spacing: .1px; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  background: var(--muted-bg); color: var(--cinza);
+}
+.padm-mini--critico { background: var(--bad-bg); color: var(--bad); }
+.padm-mini--atencao { background: var(--warn-bg); color: var(--warn); }
+.padm-mini--ok { background: var(--ok-bg); color: var(--ok); }
+
 @keyframes padm-card-detalhe-entrada { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes padm-sheet-sobe { from { transform: translateY(100%); } }
+
+.padm-sheet-lock { overflow: hidden; }
+
+/* MOBILE: a lista aberta pelo cartão vira um painel deslizante sobre a tela,
+   colada ao rodapé — perto do polegar e desconectada do scroll dos cartões.
+   Sem :has() (navegador antigo) ela simplesmente aparece embaixo, como no
+   desktop: degradação limpa. */
+@media (max-width: 640px) {
+  .padm-cards-detalhes:has(.padm-card-detalhe:not([hidden])) {
+    position: fixed; inset: 0; z-index: 95; margin: 0;
+    display: flex; align-items: flex-end; padding: 0;
+    background: rgba(10,4,6,.5); animation: fadeIn .15s;
+  }
+  .padm-cards-detalhes:has(.padm-card-detalhe:not([hidden])) .padm-card-detalhe:not([hidden]) {
+    width: 100%; max-height: 85vh; display: flex; flex-direction: column;
+    border: 0; border-radius: 16px 16px 0 0; box-shadow: var(--sombra-lg);
+    animation: padm-sheet-sobe .22s ease-out;
+  }
+  .padm-cards-detalhes:has(.padm-card-detalhe:not([hidden])) .padm-card-detalhe-head {
+    position: relative; padding-top: 20px;
+  }
+  .padm-cards-detalhes:has(.padm-card-detalhe:not([hidden])) .padm-card-detalhe-head::before {
+    content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 4px; border-radius: 999px; background: var(--linha);
+  }
+  .padm-cards-detalhes:has(.padm-card-detalhe:not([hidden])) .padm-card-detalhe-corpo {
+    flex: 1; max-height: none;
+  }
+}
 
 /* ---------- seção ---------- */
 .padm-secao { margin-bottom: 28px; }
@@ -2566,15 +2634,21 @@ body {
   .padm-periodo-campos select { flex: 1; }
 }
 @media (max-width: 720px) {
-  .padm-cards { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-  .padm-card-valor { font-size: 25px; }
+  .padm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-bottom: 16px; }
+  .padm-card { padding: 12px 13px; gap: 5px; }
+  .padm-card-valor { font-size: 23px; }
   .padm-card-detalhe-head { padding: 13px 14px 11px; }
   .padm-card-detalhe-corpo { padding: 11px 12px 14px; max-height: 65vh; }
   .padm-card-grupos { grid-template-columns: 1fr; }
   .padm-card-lista-item { padding: 9px; }
   .padm-card-lista-item .padm-chip { display: none; }
   /* rótulos apertados quebravam em "D-" / "1"; o hífen é ponto de quebra em CSS */
-  .padm-card-label { font-size: 10px; letter-spacing: .25px; }
+  .padm-card-label { font-size: 9.5px; letter-spacing: .2px; }
+  .padm-card-ic { display: none; }
+  .padm-card-nota { font-size: 10.5px; }
+  /* nº ímpar de cartões: o último ocupa a linha inteira (não fica sozinho torto) */
+  .padm-cards > .padm-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .padm-cards > .padm-card:last-child:nth-child(odd) .padm-card-valor { font-size: 21px; }
   /* listas viram cards empilhados */
   .padm-item, .padm-emp { flex-wrap: wrap; align-items: flex-start; row-gap: 9px; }
   .padm-item-txt, .padm-emp-id { flex: 1 1 100%; }
