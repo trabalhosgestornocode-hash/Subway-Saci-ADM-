@@ -159,8 +159,11 @@ comment on function agente_reservar_quota(jsonb) is
   'de todos e exceção AGENTE_QUOTA_EXCEDIDA:<escopo>. Chamada SÓ pelo backend '
   '(service_role). Não lê dado de tenant; recebe só UUIDs da sessão.';
 
--- Ninguém além do backend chama isto.
-revoke all on function agente_reservar_quota(jsonb) from anon, authenticated;
+-- Funções novas recebem EXECUTE de PUBLIC por padrão no PostgreSQL. Revogar
+-- apenas `anon`/`authenticated` não remove essa permissão herdada; por isso a
+-- revogação inclui PUBLIC e o backend recebe o grant de forma explícita.
+revoke all on function agente_reservar_quota(jsonb) from public, anon, authenticated;
+grant execute on function agente_reservar_quota(jsonb) to service_role;
 
 commit;
 
