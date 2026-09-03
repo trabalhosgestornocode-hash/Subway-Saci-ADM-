@@ -14,15 +14,16 @@ import assert from "node:assert/strict";
 
 import { limiteDeTaxa, combinar, ipCliente, _resetarLimites } from "../src/shared/rateLimit.js";
 
-/** Simula uma passagem por um middleware Express. Devolve o erro (ou null) e o header Retry-After. */
+/** Simula uma passagem por um middleware Express. Devolve o erro (ou null) e os headers. */
 function passar(mw, req) {
   let erro = null;
   const res = {
     headers: {},
     setHeader(k, v) { this.headers[k] = v; },
+    getHeader(k) { return this.headers[k]; },
   };
   mw(req, res, (e) => { erro = e ?? null; });
-  return { erro, retryAfter: res.headers["Retry-After"] ?? null };
+  return { erro, retryAfter: res.headers["Retry-After"] ?? null, headers: res.headers };
 }
 
 const reqConta = (id) => ({ user: { id }, ip: "10.0.0.1", socket: {} });
@@ -112,4 +113,32 @@ test("config: parâmetros obrigatórios são validados", () => {
   assert.throws(() => limiteDeTaxa({ escopo: "x", max: 0, janelaMs: 1000 }));
   assert.throws(() => limiteDeTaxa({ escopo: "", max: 1, janelaMs: 1000 }));
   assert.throws(() => limiteDeTaxa({ escopo: "x", max: 1, janelaMs: 0 }));
+});
+
+test("headers padrão RateLimit-* em toda resposta; Retry-After só no 429", () => {
+  _resetarLimites();
+  const mw = limiteDeTaxa({ escopo: "h1", max: 3, janelaMs: 60_000 });
+  const req = reqConta("conta-H");
+  let r = passar(mw, req);
+  assert.equal(r.headers["RateLimit-Limit"], 3);
+  assert.equal(r.headers["RateLimit-Remaining"], 2);
+  assert.ok(Number(r.headers["RateLimit-Reset"]) > 0);
+  assert.equal(r.headers["Retry-After"], undefined, "sem 429, sem Retry-After");
+  passar(mw, req); passar(mw, req);
+  r = passar(mw, req);
+  assert.ok(r.erro && r.erro.statusCode === 429);
+  assert.equal(r.headers["RateLimit-Remaining"], 0);
+  assert.ok(Number(r.headers["Retry-After"]) > 0);
+});
+
+test("combinar(): os headers refletem o limite MAIS APERTADO", () => {
+  _resetarLimites();
+  const mw = combinar(
+    limiteDeTaxa({ escopo: "hc-a", max: 100, janelaMs: 60_000 }),          // folgado
+    limiteDeTaxa({ escopo: "hc-b", max: 2, janelaMs: 60_000, chave: ipCliente }), // apertado
+  );
+  const req = reqConta("conta-HC");
+  const r = passar(mw, req);
+  assert.equal(r.headers["RateLimit-Limit"], 2, "publica o limite do balde apertado, não o folgado");
+  assert.equal(r.headers["RateLimit-Remaining"], 1);
 });

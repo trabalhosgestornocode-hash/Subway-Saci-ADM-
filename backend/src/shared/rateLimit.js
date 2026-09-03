@@ -64,10 +64,25 @@ export function limiteDeTaxa({ escopo, max, janelaMs, chave }) {
 
     const agora = Date.now();
     const janela = (balde.get(k) ?? []).filter((t) => agora - t < janelaMs);
+    const bloqueado = janela.length >= max;
 
-    if (janela.length >= max) {
-      const liberaEmMs = janelaMs - (agora - janela[0]);
-      res.setHeader("Retry-After", Math.max(1, Math.ceil(liberaEmMs / 1000)));
+    // Headers padrão (draft-ietf-httpapi-ratelimit-headers). Só refletem o
+    // balde DESTE chamador (chave = conta/IP dele) — não vazam nada de outro
+    // tenant. Com `combinar()`, o limite MAIS APERTADO prevalece (só sobrescreve
+    // se o "restante" for menor que o já publicado).
+    const restante = Math.max(0, max - janela.length - (bloqueado ? 0 : 1));
+    const resetSeg = janela.length
+      ? Math.max(1, Math.ceil((janelaMs - (agora - janela[0])) / 1000))
+      : Math.ceil(janelaMs / 1000);
+    const restanteAtual = Number(res.getHeader?.("RateLimit-Remaining"));
+    if (!Number.isFinite(restanteAtual) || restante <= restanteAtual) {
+      res.setHeader("RateLimit-Limit", max);
+      res.setHeader("RateLimit-Remaining", restante);
+      res.setHeader("RateLimit-Reset", resetSeg);
+    }
+
+    if (bloqueado) {
+      res.setHeader("Retry-After", resetSeg);
       return next(new ApiError(429, "Muitas requisições em pouco tempo. Aguarde alguns instantes e tente de novo.", { codigo: "RATE_LIMITED" }));
     }
 

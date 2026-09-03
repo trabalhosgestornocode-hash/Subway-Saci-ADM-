@@ -31,14 +31,34 @@ export function classificarEventoSeguranca(req, err) {
   return null;
 }
 
+// Anti-spam da auditoria: sob um ataque de rate limit, NÃO gravar uma linha por
+// requisição. Só a 1ª ocorrência de cada (ator, rota, ação) numa janela.
+const JANELA_THROTTLE_MS = 10 * 60_000;
+const ultimoEvento = new Map(); // `${acao}|${ator}|${rota}` -> epoch
+const _limpezaThrottle = setInterval(() => {
+  const agora = Date.now();
+  for (const [k, t] of ultimoEvento) if (agora - t > JANELA_THROTTLE_MS) ultimoEvento.delete(k);
+}, JANELA_THROTTLE_MS);
+_limpezaThrottle.unref?.();
+
+/** As ações de "acesso negado / rate limit / MFA requerida" são throttladas; PIN bloqueado não (é raro e relevante sempre). */
+const ACOES_THROTTLED = new Set([ACOES.SEGURANCA_RATE_LIMIT, ACOES.SEGURANCA_ACESSO_NEGADO, ACOES.SEGURANCA_MFA_REQUERIDA]);
+
 /**
  * Registra o evento (se houver) — fire-and-forget, JAMAIS bloqueia a resposta
- * (auditar() já engole o próprio erro).
+ * (auditar() já engole o próprio erro). Com throttle anti-spam por (ator, rota).
  */
 function registrarEventoSeguranca(req, err) {
   try {
     const ev = classificarEventoSeguranca(req, err);
     if (!ev) return;
+    if (ACOES_THROTTLED.has(ev.acao)) {
+      const chave = `${ev.acao}|${req.user?.id ?? "anon"}|${req.path ?? "?"}`;
+      const agora = Date.now();
+      if (agora - (ultimoEvento.get(chave) ?? 0) < JANELA_THROTTLE_MS) return; // já registrado na janela
+      ultimoEvento.set(chave, agora);
+      ev.detalhes.throttleMin = JANELA_THROTTLE_MS / 60_000; // deixa claro que representa "1ª de N na janela"
+    }
     auditar({ ...contextoDaRequisicao(req), acao: ev.acao, entidade: "seguranca", detalhes: ev.detalhes });
   } catch { /* nunca propaga */ }
 }
