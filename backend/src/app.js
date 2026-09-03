@@ -10,6 +10,8 @@ import { notFound } from "./middlewares/notFound.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { router } from "./routes.js";
 import { corsOptions, helmetOptions, LIMITES_CORPO, emProducao, cspEmModoBloqueio } from "./config/seguranca.js";
+import { limiteDeTaxa } from "./shared/rateLimit.js";
+import { RATE_LIMIT } from "./config/limites.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(__dirname, "../../frontend");
@@ -72,6 +74,10 @@ export function createApp() {
 
   // 🔒 A PARTIR DAQUI: toda rota de dados exige autenticação real (JWT do Supabase).
   app.use("/api/v1", requireAuth);
+  // Teto grosseiro de requisições por CONTA autenticada — barra abuso/automação
+  // sem atrapalhar uso normal (limite generoso, ajustável por env). Limites
+  // mais apertados (PIN, senha, agente, importações) ficam nos routers.
+  app.use("/api/v1", limiteDeTaxa({ escopo: "api:global", ...RATE_LIMIT.apiGlobal }));
   // Identidade do usuário — inclui `superadmin`, que é o que o frontend usa
   // para decidir entre o Painel SuperAdmin e a tela de seleção de empresa.
   // Não traz empresa alguma: isso é papel de /api/v1/sessao.

@@ -1,6 +1,8 @@
 import { Router } from "express";
 import * as c from "./administrativo.controller.js";
 import { requirePainelAdministrativo } from "../../middlewares/auth.js";
+import { limiteDeTaxa } from "../../shared/rateLimit.js";
+import { RATE_LIMIT } from "../../config/limites.js";
 
 // API do PAINEL ADMINISTRATIVO da Crescer com Delivery.
 //
@@ -24,6 +26,8 @@ import { requirePainelAdministrativo } from "../../middlewares/auth.js";
 
 export const administrativoRouter = Router();
 administrativoRouter.use(requirePainelAdministrativo);
+// Rede contra script descontrolado (só leitura, já restrito ao Painel Adm).
+administrativoRouter.use(limiteDeTaxa({ escopo: "administrativo", ...RATE_LIMIT.administrativo }));
 
 // ---- Fase B: sanidade da cadeia de autorização
 administrativoRouter.get("/ping", c.ping);

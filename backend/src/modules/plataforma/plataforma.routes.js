@@ -1,6 +1,8 @@
 import { Router } from "express";
 import * as c from "./plataforma.controller.js";
 import { requireSuperadmin } from "../../middlewares/auth.js";
+import { limiteDeTaxa } from "../../shared/rateLimit.js";
+import { RATE_LIMIT } from "../../config/limites.js";
 
 // API do Painel SuperAdmin.
 //
@@ -16,6 +18,9 @@ import { requireSuperadmin } from "../../middlewares/auth.js";
 
 export const plataformaRouter = Router();
 plataformaRouter.use(requireSuperadmin);
+// Rede contra script descontrolado no painel (já restrito a SuperAdmin).
+// Folgado — operações em lote são legítimas aqui.
+plataformaRouter.use(limiteDeTaxa({ escopo: "plataforma", ...RATE_LIMIT.plataforma }));
 
 // ---- Dashboard Global
 plataformaRouter.get("/dashboard", c.obterDashboard);
