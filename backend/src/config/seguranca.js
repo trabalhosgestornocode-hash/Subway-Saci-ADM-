@@ -47,11 +47,19 @@ export const PORTAL_MARTIN_BROWER = "https://portal.martinbrower.com.br";
 
 export const cspDirectives = {
   defaultSrc: ["'self'"],
-  // SEM 'unsafe-inline': o frontend não tem NENHUM <script> inline nem handler
-  // inline (o único, `onclick` no rodapé "by atlaz.company", virou <span> na
-  // Fase P0). Os únicos scripts são /src/*.js (self) e Chart.js/supabase-js
-  // (jsdelivr). 'unsafe-eval' também fica de fora.
-  scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+  // SEM 'unsafe-inline' / 'unsafe-eval'. Scripts permitidos:
+  //   * 'self'                    -> /src/*.js do app;
+  //   * cdn.jsdelivr.net          -> Chart.js e supabase-js;
+  //   * 'sha256-...'              -> o ÚNICO <script> inline do sistema: o
+  //     paginador do PDF do Painel Administrativo (frontend/src/painelAdmPdf.js
+  //     #SCRIPT_PAGINADOR), embutido num documento `srcdoc` que herda esta CSP.
+  //     O hash é do conteúdo EXATO da constante; um teste de frontend
+  //     (painelAdmPdf.test.js) falha se ela mudar sem atualizar o hash aqui.
+  scriptSrc: [
+    "'self'",
+    "https://cdn.jsdelivr.net",
+    "'sha256-e2xARXQzydEK9Gk0PEfWzlmz7wl3KXWGw/ZCZL9PLBI='",
+  ],
   // 'unsafe-inline' em ESTILO permanece NECESSÁRIO e é aceito: o app escreve
   // style="" em elementos gerados dinamicamente (altura de barras de gráfico,
   // largura de barras de progresso, cor de badge). Trocar por nonce/hash
