@@ -35,6 +35,7 @@ import {
   dashExecLancamentoMensal, dashExecAtualizarLancamentoMensal, dashExecExcluirLancamentoMensal,
 } from "./api.js";
 import { icon } from "./icons.js";
+import { numeroDecimal } from "./numeroDecimal.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const PASSOS = ["periodo", "desempenho", "financeiro", "conferencia"];
@@ -133,7 +134,7 @@ function anosDisponiveis() {
 function extrasInputsHtml(grupo) {
   return camposDoGrupo(grupo).map((c) => `
     <label class="cfg-campo"><span>${c.label}</span>
-      <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="Não informado"></label>`).join("");
+      <input type="${c.tipo === "int" ? "number" : "text"}" inputmode="${c.tipo === "int" ? "numeric" : "decimal"}" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="${c.tipo === "int" ? "Não informado" : "0,00"}"></label>`).join("");
 }
 
 // Ticket médio do mês = valor bruto de vendas ÷ quantidade de pedidos —
@@ -144,7 +145,7 @@ function extrasInputsHtml(grupo) {
 // o que o backend recalcula (ver montarResumoLoteMensal -> lote.ticketMedio).
 // Nunca assume zero: falta um dos dois lados -> null.
 function ticketMedioPreview(valorBruto, qtd) {
-  const v = valorBruto === "" || valorBruto == null ? null : Number(valorBruto);
+  const v = valorBruto === "" || valorBruto == null ? null : numeroDecimal(valorBruto);
   const q = qtd === "" || qtd == null ? null : Number(qtd);
   if (v == null || q == null || !(q > 0)) return null;
   return v / q;
@@ -217,7 +218,7 @@ function renderFinanceiro(m) {
     <p class="dex-form-info">Dados oficiais do mês. O faturamento total é obrigatório; o detalhamento das deduções é opcional.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$) *</span>
-        <input type="number" min="0.01" step="0.01" id="lm-valor" value="${lm.valor}" placeholder="0,00"></label>
+        <input type="text" inputmode="decimal" id="lm-valor" value="${lm.valor}" placeholder="0,00"></label>
       ${extrasInputsHtml("financeiro")}
     </div>
     <div class="ed-acoes dex-form-acoes">
@@ -236,18 +237,28 @@ function payloadExtras() {
   const p = {};
   for (const { campo } of CAMPOS_EXTRAS) {
     const v = lm.extras[campo];
-    p[campo] = v === "" || v == null ? undefined : Number(v);
+    p[campo] = v === "" || v == null ? undefined : (CAMPOS_EXTRAS.find((c) => c.campo === campo)?.tipo === "money" ? numeroDecimal(v) : Number(v));
   }
   return p;
 }
 
+function extrasSaoValidos(extras) {
+  return CAMPOS_EXTRAS.every(({ campo, tipo }) => {
+    const valor = extras[campo];
+    if (valor === "" || valor == null) return true;
+    const numero = tipo === "money" ? numeroDecimal(valor) : Number(valor);
+    return Number.isFinite(numero) && numero >= 0 && (tipo !== "int" || Number.isInteger(numero));
+  });
+}
+
 async function avancarParaConferencia(m) {
-  if (!lm.valor || Number(lm.valor) <= 0) { toast("Informe o faturamento total do mês."); return; }
+  if (!lm.valor || !Number.isFinite(numeroDecimal(lm.valor)) || numeroDecimal(lm.valor) <= 0) { toast("Informe um faturamento total válido."); return; }
+  if (!extrasSaoValidos(lm.extras)) { toast("Revise os valores de desempenho e financeiro informados."); return; }
   const btn = m.querySelector("#lm-avancar");
   btn.disabled = true; btn.textContent = "Calculando…";
   try {
     const { data } = await dashExecPreviewLancamentoMensal({
-      unidadeId: lm.unidadeId || undefined, mes: lm.mes, ano: lm.ano, valorTotalMensal: Number(lm.valor),
+      unidadeId: lm.unidadeId || undefined, mes: lm.mes, ano: lm.ano, valorTotalMensal: numeroDecimal(lm.valor),
       ...payloadExtras(),
     });
     lm.passo = 4;
@@ -261,7 +272,7 @@ async function avancarParaConferencia(m) {
 /** Uma linha "rótulo -> valor formatado (ou 'Não informado')" pra um campo extra — usada na Conferência e no Gerenciamento, único formatador pros dois. */
 function linhaExtraResumo(c, valorBruto) {
   const vazio = valorBruto === "" || valorBruto == null;
-  const html = vazio ? `<span class="dex-lm-nao-informado">Não informado</span>` : (c.tipo === "money" ? fmtMoeda(Number(valorBruto)) : String(Number(valorBruto)));
+  const html = vazio ? `<span class="dex-lm-nao-informado">Não informado</span>` : (c.tipo === "money" ? fmtMoeda(numeroDecimal(valorBruto)) : String(Number(valorBruto)));
   return linhaResumo(ROTULO_EXTRA[c.campo], html);
 }
 /** Mesmo formatador "valor ou Não informado" acima, mas pro Ticket Médio (item 1/7 do pedido: nunca R$ 0,00 quando falta um dos dois lados). */
@@ -389,7 +400,7 @@ function renderEdicao(m) {
   const ed = lm.edicao;
   const inputsExtras = (grupo) => camposDoGrupo(grupo).map((c) => `
     <label class="cfg-campo"><span>${c.label}</span>
-      <input type="number" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="Não informado"></label>`).join("");
+      <input type="${c.tipo === "int" ? "number" : "text"}" inputmode="${c.tipo === "int" ? "numeric" : "decimal"}" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="${c.tipo === "int" ? "Não informado" : "0,00"}"></label>`).join("");
   const ticket = ticketMedioPreview(ed.extras.valorVendasBrutoTotal, ed.extras.qtdVendasTotal);
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
@@ -398,7 +409,7 @@ function renderEdicao(m) {
     <div class="modal-sec-titulo">${icon("banknote", { size: 14 })} Financeiro <small>dados oficiais</small></div>
     <div class="cfg-form-grid">
       <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$)</span>
-        <input type="number" min="0.01" step="0.01" id="lm-ed-valor" value="${ed.valorTotalMensal}"></label>
+        <input type="text" inputmode="decimal" id="lm-ed-valor" value="${ed.valorTotalMensal}" placeholder="0,00"></label>
       ${inputsExtras("financeiro")}
     </div>
     <p class="dex-form-info">${icon("alert-triangle", { size: 13 })} Alterar o faturamento recalcula a distribuição pelos mesmos ${lote.diasDistribuidos} dia(s) já lançados — a soma continua batendo exatamente com o novo valor.</p>
@@ -431,15 +442,17 @@ function payloadPatchExtras() {
     const valorOriginal = lote.extras[campo];
     const strOriginal = valorOriginal == null ? "" : String(valorOriginal);
     if (valorForm === strOriginal) continue; // intocado — não manda a chave
-    p[campo] = valorForm === "" ? null : Number(valorForm); // limpou de propósito -> null explícito; senão, novo valor
+    const tipo = CAMPOS_EXTRAS.find((c) => c.campo === campo)?.tipo;
+    p[campo] = valorForm === "" ? null : (tipo === "money" ? numeroDecimal(valorForm) : Number(valorForm)); // limpou de propósito -> null explícito; senão, novo valor
   }
   return p;
 }
 
 async function salvarEdicao(m) {
   const valorForm = lm.edicao.valorTotalMensal;
-  if (!valorForm || Number(valorForm) <= 0) { toast("Informe o faturamento total do mês."); return; }
-  const patch = { valorTotalMensal: Number(valorForm), ...payloadPatchExtras() };
+  if (!valorForm || !Number.isFinite(numeroDecimal(valorForm)) || numeroDecimal(valorForm) <= 0) { toast("Informe um faturamento total válido."); return; }
+  if (!extrasSaoValidos(lm.edicao.extras)) { toast("Revise os valores de desempenho e financeiro informados."); return; }
+  const patch = { valorTotalMensal: numeroDecimal(valorForm), ...payloadPatchExtras() };
   const btn = m.querySelector("#lm-ed-salvar");
   btn.disabled = true; btn.textContent = "Salvando…";
   const loteId = lm.lote.id;

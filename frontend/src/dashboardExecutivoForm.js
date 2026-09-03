@@ -9,6 +9,7 @@ import {
   dashExecPreviewResetTeste, dashExecConfirmarResetTeste, dashExecExcluirLancamento,
 } from "./api.js";
 import { icon } from "./icons.js";
+import { numeroDecimal, numeroDecimalOuIndefinido } from "./numeroDecimal.js";
 
 const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema operacional", "Falta de insumos", "Fechamento temporário", "Outro"];
 
@@ -360,7 +361,7 @@ function passoDesempenho() {
     <p class="dex-form-info">${icon("bar-chart", { size: 13 })} Desempenho acumulado do mês até aqui — informe o TOTAL desde ${fmtDataBr(inicioMes)} até ${fmtDataBr(fm.data)} (não só o que esse dia fez sozinho). O sistema calcula automaticamente quanto cada dia rendeu por conta própria, pela diferença com o acumulado do dia anterior. Preencha caso tenha acesso às informações — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Quantidade de vendas acumulada no mês</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}" placeholder="Não informado"></label>
-      <label class="cfg-campo"><span>Valor bruto acumulado no mês (R$)</span><input type="number" min="0" step="0.01" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="Não informado"></label>
+      <label class="cfg-campo"><span>Valor bruto acumulado no mês (R$)</span><input type="text" inputmode="decimal" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="0,00"></label>
       <label class="cfg-campo"><span>Novos clientes acumulados no mês</span><input type="number" min="0" step="1" id="dex-novos" value="${c.novosClientes}" placeholder="Não informado"></label>
       <label class="cfg-campo"><span>Ticket médio (mês até aqui, calculado)</span><input type="text" value="${ticket == null ? "—" : fmtMoeda(ticket)}" disabled></label>
     </div>`;
@@ -371,7 +372,7 @@ function passoDesempenho() {
 function ticketMedioPreview(c) {
   if (c.qtdVendas === "" || c.valorVendasBruto === "") return null;
   const q = Number(c.qtdVendas);
-  const v = Number(c.valorVendasBruto);
+  const v = numeroDecimal(c.valorVendasBruto);
   return q > 0 ? v / q : null;
 }
 
@@ -387,14 +388,14 @@ function passoFinanceiro() {
   return `
     <p class="dex-form-info">${icon("calendar", { size: 13 })} Financeiro acumulado do mês até aqui — dados consolidados de ${fmtDataBr(fm.periodoFinanceiroInicio)} até ${fmtDataBr(fm.periodoFinanceiroFim)}, o extrato que o iFood libera hoje.</p>
     <div class="cfg-form-grid">
-      <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="number" min="0" step="0.01" id="dex-vifood" value="${c.valorVendasIfood}"></label>
-      <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="number" min="0" step="0.01" id="dex-taxas" value="${c.taxasComissoes}"></label>
-      <label class="cfg-campo"><span>Serviços e promoções (R$) *</span><input type="number" min="0" step="0.01" id="dex-servicos" value="${c.servicosPromocoes}"></label>
+      <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="text" inputmode="decimal" id="dex-vifood" value="${c.valorVendasIfood}" placeholder="0,00"></label>
+      <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="text" inputmode="decimal" id="dex-taxas" value="${c.taxasComissoes}" placeholder="0,00"></label>
+      <label class="cfg-campo"><span>Serviços e promoções (R$) *</span><input type="text" inputmode="decimal" id="dex-servicos" value="${c.servicosPromocoes}" placeholder="0,00"></label>
       ${mostrarEntreg
-        ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="number" min="0" step="0.01" id="dex-entregadores" value="${c.taxasEntregadores}"></label>`
+        ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="text" inputmode="decimal" id="dex-entregadores" value="${c.taxasEntregadores}" placeholder="0,00"></label>`
         : `<p class="dex-form-info dex-form-na">${icon("truck", { size: 13 })} Este modelo (Full Service) não usa entregador próprio — a entrega é feita pelo parceiro do iFood, então não há "taxas de entregadores da loja" a lançar.</p>`}
       <label class="cfg-campo"><span>Outras deduções/ajustes (R$)${podeNegativo ? " — negativo = ajuste a favor" : ""}</span>
-        <input type="number" step="0.01" id="dex-outras" value="${c.outrasDeducoes}" ${podeNegativo ? "" : "min=\"0\""}></label>
+        <input type="text" inputmode="decimal" id="dex-outras" value="${c.outrasDeducoes}" placeholder="0,00"></label>
       ${podeNegativo ? `<label class="cfg-campo ed-campo-full"><span>Justificativa do ajuste (obrigatória se negativo)</span><input type="text" id="dex-justificativa" value="${escapeHtml(c.justificativaAjuste)}"></label>` : ""}
     </div>
     <div class="dex-calc-preview">
@@ -408,11 +409,11 @@ function passoFinanceiro() {
 }
 
 function calculoPreview(c) {
-  const base = Number(c.valorVendasIfood) || 0;
-  const taxas = Number(c.taxasComissoes) || 0;
-  const servicos = Number(c.servicosPromocoes) || 0;
-  const entreg = Number(c.taxasEntregadores) || 0;
-  const outras = Number(c.outrasDeducoes) || 0;
+  const base = numeroDecimal(c.valorVendasIfood) || 0;
+  const taxas = numeroDecimal(c.taxasComissoes) || 0;
+  const servicos = numeroDecimal(c.servicosPromocoes) || 0;
+  const entreg = numeroDecimal(c.taxasEntregadores) || 0;
+  const outras = numeroDecimal(c.outrasDeducoes) || 0;
   const totalDed = taxas + servicos + entreg + outras;
   const pct = (v) => (base > 0 ? (v / base) * 100 : null);
   return {
@@ -493,11 +494,11 @@ function calcularAvisos(c) {
   if (!situacaoOperou(c.situacao)) return [];
   const avisos = [];
   const q = Number(c.qtdVendas) || 0;
-  const v = Number(c.valorVendasBruto) || 0;
+  const v = numeroDecimal(c.valorVendasBruto) || 0;
   if (v > 0 && q === 0) avisos.push("Há valor de vendas informado, mas a quantidade de vendas está zerada.");
   if (q > 0 && v === 0) avisos.push("Há quantidade de vendas informada, mas o valor bruto está zerado.");
   const calc = calculoPreview(c);
-  if (calc.totalDed > (Number(c.valorVendasIfood) || 0)) avisos.push("O total de deduções ultrapassa o valor das vendas do iFood.");
+  if (calc.totalDed > (numeroDecimal(c.valorVendasIfood) || 0)) avisos.push("O total de deduções ultrapassa o valor das vendas do iFood.");
   return avisos;
 }
 
@@ -567,7 +568,8 @@ function validarPassoAtual(m) {
     // Desempenho é opcional — nada aqui bloqueia o avanço. Só valida o que
     // foi de fato preenchido (não pode ser negativo).
     if (c.qtdVendas !== "" && Number(c.qtdVendas) < 0) { toast("A quantidade de vendas não pode ser negativa."); return false; }
-    if (c.valorVendasBruto !== "" && Number(c.valorVendasBruto) < 0) { toast("O valor bruto não pode ser negativo."); return false; }
+    if (c.valorVendasBruto !== "" && !Number.isFinite(numeroDecimal(c.valorVendasBruto))) { toast("Informe um valor bruto válido."); return false; }
+    if (c.valorVendasBruto !== "" && numeroDecimal(c.valorVendasBruto) < 0) { toast("O valor bruto não pode ser negativo."); return false; }
     return true;
   }
   // Financeiro só aparece nas etapas ativas quando fm.mostrarFinanceiro é
@@ -580,10 +582,17 @@ function validarPassoAtual(m) {
     if (obrigatorios.some((v) => v === "")) {
       toast("Preencha todos os campos financeiros obrigatórios."); return false;
     }
-    if (Number(c.outrasDeducoes) < 0 && !pode("dashboard_executivo.corrigir")) {
+    if (obrigatorios.some((valor) => !Number.isFinite(numeroDecimal(valor)))
+      || (c.outrasDeducoes !== "" && !Number.isFinite(numeroDecimal(c.outrasDeducoes)))) {
+      toast("Informe valores financeiros válidos."); return false;
+    }
+    if (obrigatorios.some((valor) => numeroDecimal(valor) < 0)) {
+      toast("Os valores financeiros obrigatórios não podem ser negativos."); return false;
+    }
+    if (numeroDecimal(c.outrasDeducoes) < 0 && !pode("dashboard_executivo.corrigir")) {
       toast("Você não tem permissão para lançar um ajuste negativo."); return false;
     }
-    if (Number(c.outrasDeducoes) < 0 && !c.justificativaAjuste?.trim()) {
+    if (numeroDecimal(c.outrasDeducoes) < 0 && !c.justificativaAjuste?.trim()) {
       toast("Informe a justificativa do ajuste negativo."); return false;
     }
     return true;
@@ -613,7 +622,7 @@ function payloadBase(status) {
   if (c.situacao === "zero_vendas") return { ...base, novosClientes: numOuIndefinido(c.novosClientes) };
   const desempenho = {
     // Desempenho: opcional, nunca vira 0 por conta própria.
-    qtdVendas: numOuIndefinido(c.qtdVendas), valorVendasBruto: numOuIndefinido(c.valorVendasBruto), novosClientes: numOuIndefinido(c.novosClientes),
+    qtdVendas: numOuIndefinido(c.qtdVendas), valorVendasBruto: numeroDecimalOuIndefinido(c.valorVendasBruto), novosClientes: numOuIndefinido(c.novosClientes),
   };
   if (!fm.mostrarFinanceiro) {
     // Etapa Financeiro nem fez parte deste lançamento (dia ≠ ontem, sem
@@ -630,9 +639,9 @@ function payloadBase(status) {
   // aqui não muda nada pra quem finaliza — só corrige quem salva rascunho cedo.
   return {
     ...base, ...desempenho,
-    valorVendasIfood: numOuIndefinido(c.valorVendasIfood), taxasComissoes: numOuIndefinido(c.taxasComissoes),
-    servicosPromocoes: numOuIndefinido(c.servicosPromocoes), taxasEntregadores: numOuIndefinido(c.taxasEntregadores),
-    outrasDeducoes: numOuIndefinido(c.outrasDeducoes), justificativaAjuste: c.justificativaAjuste || undefined,
+    valorVendasIfood: numeroDecimalOuIndefinido(c.valorVendasIfood), taxasComissoes: numeroDecimalOuIndefinido(c.taxasComissoes),
+    servicosPromocoes: numeroDecimalOuIndefinido(c.servicosPromocoes), taxasEntregadores: numeroDecimalOuIndefinido(c.taxasEntregadores),
+    outrasDeducoes: numeroDecimalOuIndefinido(c.outrasDeducoes), justificativaAjuste: c.justificativaAjuste || undefined,
     confirmarAvisos: fm.confirmarAvisos,
   };
 }
