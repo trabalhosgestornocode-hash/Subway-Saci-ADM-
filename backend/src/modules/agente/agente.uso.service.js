@@ -92,11 +92,54 @@ export async function buscarUsoNoPeriodo(filtro = {}) {
   return { linhas: data ?? [], intervalo };
 }
 
+/** A RPC de reserva atômica não existe -> migration 067 ainda não aplicada. */
+const RE_RPC_AUSENTE = /agente_reservar_quota|could not find the function|function .* does not exist|PGRST202|schema cache/i;
+
 /**
- * Conta interações do Agente de UMA organização desde um instante — a base do
- * teto por organização (proteção financeira, P0.5). Usa COUNT no servidor
- * (head: true), sem transferir linhas. Nunca lança: falha aqui devolve `null`
- * e o chamador decide (fail-open — a 1ª camada por conta já protege).
+ * RESERVA ATÔMICA de quota do Agente (Fase P0.2 — migration 067). Incrementa,
+ * numa única transação no Postgres, os contadores de TODOS os escopos passados;
+ * se QUALQUER um passar do limite, o banco faz ROLLBACK de todos e a reserva
+ * inteira falha. Correto sob concorrência e com múltiplas instâncias.
+ *
+ * @param {Array<{escopo:'org'|'conta'|'perfil', chave:string, janelaSegundos:number, limite:number}>} reservas
+ * @returns {Promise<
+ *   | { resultado: 'ok', detalhes: Record<string, any> }
+ *   | { resultado: 'excedido', escopo: string }
+ *   | { resultado: 'degradado' }        // RPC ausente (migration 067 pendente)
+ *   | { resultado: 'falha_infra', erro: string }  // banco indisponível -> FAIL CLOSED
+ * >}
+ */
+export async function reservarQuotaAgente(reservas) {
+  if (!Array.isArray(reservas) || reservas.length === 0) return { resultado: "ok", detalhes: {} };
+  const p_reservas = reservas.map((r) => ({
+    escopo: r.escopo, chave: r.chave,
+    janela_segundos: r.janelaSegundos, limite: r.limite,
+  }));
+  try {
+    const { data, error } = await supabase.rpc("agente_reservar_quota", { p_reservas });
+    if (error) {
+      const msg = error.message || String(error);
+      const m = /AGENTE_QUOTA_EXCEDIDA:(\w+)/.exec(msg);
+      if (m) return { resultado: "excedido", escopo: m[1] };
+      if (RE_RPC_AUSENTE.test(msg)) {
+        console.warn("[agente] agente_reservar_quota indisponível (migration 067 pendente) — usando contagem best-effort.");
+        return { resultado: "degradado" };
+      }
+      // Erro real do banco (timeout, conexão, permissão) -> FAIL CLOSED.
+      console.error("[agente] reserva de quota falhou (fail-closed):", msg);
+      return { resultado: "falha_infra", erro: msg };
+    }
+    return { resultado: "ok", detalhes: data ?? {} };
+  } catch (e) {
+    console.error("[agente] exceção na reserva de quota (fail-closed):", e?.message);
+    return { resultado: "falha_infra", erro: e?.message || "exceção" };
+  }
+}
+
+/**
+ * FALLBACK best-effort (pré-migration 067): conta interações de UMA organização
+ * desde um instante. Não é atômico — só cobre a janela em que a migration ainda
+ * não rodou. `null` = leitura falhou.
  * @param {{organizacaoId: string, desdeIso: string}} p
  * @returns {Promise<number|null>}
  */

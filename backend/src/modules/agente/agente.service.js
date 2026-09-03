@@ -40,20 +40,38 @@ import { RATE_LIMIT_AGENTE } from "../../config/limites.js";
 export const MAX_TOOL_ITERATIONS = 6;
 
 /**
- * Decisão PURA do teto por organização (proteção financeira, P0.5). Recebe as
- * contagens já lidas e devolve se pode seguir. `null` numa contagem = leitura
- * falhou -> FAIL-OPEN nessa janela (a 1ª camada, por conta, já protege).
+ * Monta a lista de reservas de quota (org + conta + perfil × janelas) a partir
+ * de identificadores que vêm SEMPRE da sessão validada — nunca do corpo.
+ * `perfilId` nulo (impersonação) -> pula o escopo de perfil.
+ * @param {{ organizacaoId: string, contaId: string|null, perfilId: string|null }} p
+ */
+export function montarReservasQuota({ organizacaoId, contaId, perfilId }) {
+  const A = RATE_LIMIT_AGENTE.atomica;
+  const r = [];
+  if (organizacaoId) for (const j of A.org) r.push({ escopo: "org", chave: organizacaoId, janelaSegundos: j.janelaSegundos, limite: j.max });
+  if (contaId) for (const j of A.conta) r.push({ escopo: "conta", chave: contaId, janelaSegundos: j.janelaSegundos, limite: j.max });
+  if (perfilId) for (const j of A.perfil) r.push({ escopo: "perfil", chave: perfilId, janelaSegundos: j.janelaSegundos, limite: j.max });
+  return r;
+}
+
+/** Mensagem ao usuário quando a quota estoura, por escopo. */
+function mensagemQuota(escopo) {
+  if (escopo === "org") return "O Agente Crescer atingiu o limite de uso da sua empresa. Tente novamente mais tarde.";
+  if (escopo === "perfil") return "Você atingiu o limite de uso do Agente Crescer para o seu usuário. Tente novamente mais tarde.";
+  return "Você atingiu o limite de uso do Agente Crescer. Tente novamente mais tarde.";
+}
+
+/**
+ * Decisão PURA do teto por organização — usada SÓ no caminho DEGRADADO
+ * (pré-migration 067, quando a reserva atômica ainda não existe). `null` numa
+ * contagem = leitura falhou -> não bloqueia por essa janela.
  * @param {{ interacoesHora: number|null, interacoesDia: number|null }} p
  * @returns {{ ok: true } | { ok: false, janela: 'hora'|'dia', limite: number }}
  */
 export function avaliarQuotaOrganizacao({ interacoesHora, interacoesDia }) {
-  const { porOrganizacaoHora, porOrganizacaoDia } = RATE_LIMIT_AGENTE;
-  if (interacoesHora != null && interacoesHora >= porOrganizacaoHora.max) {
-    return { ok: false, janela: "hora", limite: porOrganizacaoHora.max };
-  }
-  if (interacoesDia != null && interacoesDia >= porOrganizacaoDia.max) {
-    return { ok: false, janela: "dia", limite: porOrganizacaoDia.max };
-  }
+  const [h, d] = RATE_LIMIT_AGENTE.atomica.org; // [ {janelaSegundos:3600,max}, {janelaSegundos:86400,max} ]
+  if (interacoesHora != null && interacoesHora >= h.max) return { ok: false, janela: "hora", limite: h.max };
+  if (interacoesDia != null && interacoesDia >= d.max) return { ok: false, janela: "dia", limite: d.max };
   return { ok: true };
 }
 const TAMANHO_MAX_MENSAGEM = 2000;
@@ -106,23 +124,41 @@ export async function processarMensagem({
   // silenciosamente, nunca derruba a mensagem do usuário.
   const contextoPagina = sanitizarPageContext(pageContext);
 
-  // TETO POR ORGANIZAÇÃO (P0.5) — 2ª camada da proteção financeira, verificada
-  // contra agente_uso (sobrevive a restart do processo, ao contrário do limite
-  // em memória por conta). Checado ANTES de qualquer chamada a Claude e antes
-  // de criar conversa. Fail-open se a leitura falhar (telemetria não derruba
-  // operação — mesmo espírito de registrarUso/auditar).
-  if (uso.contarInteracoesDaOrganizacao) {
-    const agora = Date.now();
-    const [interacoesHora, interacoesDia] = await Promise.all([
-      uso.contarInteracoesDaOrganizacao({ organizacaoId, desdeIso: new Date(agora - RATE_LIMIT_AGENTE.porOrganizacaoHora.janelaMs).toISOString() }),
-      uso.contarInteracoesDaOrganizacao({ organizacaoId, desdeIso: new Date(agora - RATE_LIMIT_AGENTE.porOrganizacaoDia.janelaMs).toISOString() }),
-    ]);
-    const quota = avaliarQuotaOrganizacao({ interacoesHora, interacoesDia });
-    if (!quota.ok) {
-      const quando = quota.janela === "hora" ? "na última hora" : "hoje";
-      throw new ApiError(429,
-        `O Agente Crescer atingiu o limite de uso da sua empresa ${quando} (${quota.limite} consultas). Tente novamente mais tarde.`,
-        { codigo: "AGENTE_QUOTA_ORGANIZACAO", janela: quota.janela });
+  // QUOTA DO AGENTE — proteção financeira. Camada AUTORIDADE: reserva ATÔMICA
+  // no banco (org + conta + perfil numa transação; se um estoura, ROLLBACK de
+  // todos). Feita ANTES de qualquer chamada a Claude e antes de criar conversa.
+  //
+  //   * excedido      -> 429 (nada foi consumido — o banco reverteu).
+  //   * falha_infra   -> 503 FAIL CLOSED: sem comprovar a quota, não chama a IA.
+  //   * degradado     -> migration 067 ainda não aplicada: cai no fallback
+  //                      best-effort por organização (não atômico) — a janela
+  //                      de transição até a 067 rodar, sem regressão.
+  //
+  // O escopo `perfil` usa o perfil OPERACIONAL da sessão (null em impersonação),
+  // nunca o fallback de isolamento de conversa. Nada vem do corpo.
+  if (uso.reservarQuotaAgente) {
+    const reservas = montarReservasQuota({
+      organizacaoId, contaId: usuario?.id ?? null, perfilId: perfil?.id ?? null,
+    });
+    const r = await uso.reservarQuotaAgente(reservas);
+    if (r.resultado === "excedido") {
+      throw new ApiError(429, mensagemQuota(r.escopo), { codigo: "AGENTE_QUOTA_EXCEDIDA", escopo: r.escopo });
+    }
+    if (r.resultado === "falha_infra") {
+      throw new ApiError(503,
+        "O Agente Crescer está indisponível no momento (não foi possível validar o limite de uso). Tente de novo em instantes.",
+        { codigo: "AGENTE_QUOTA_INDISPONIVEL" });
+    }
+    if (r.resultado === "degradado" && uso.contarInteracoesDaOrganizacao) {
+      const agora = Date.now();
+      const [iHora, iDia] = await Promise.all([
+        uso.contarInteracoesDaOrganizacao({ organizacaoId, desdeIso: new Date(agora - 3600_000).toISOString() }),
+        uso.contarInteracoesDaOrganizacao({ organizacaoId, desdeIso: new Date(agora - 86400_000).toISOString() }),
+      ]);
+      const quota = avaliarQuotaOrganizacao({ interacoesHora: iHora, interacoesDia: iDia });
+      if (!quota.ok) {
+        throw new ApiError(429, mensagemQuota("org"), { codigo: "AGENTE_QUOTA_EXCEDIDA", escopo: "org", degradado: true });
+      }
     }
   }
 

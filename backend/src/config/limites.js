@@ -88,28 +88,47 @@ export const RATE_LIMIT = {
 
 /**
  * Limites do AGENTE CRESCER (assistente de IA) — proteção FINANCEIRA contra
- * spam/automação/loop/consumo acidental enorme. Duas camadas:
- *   - por CONTA (memória): corta rajada de dezenas/centenas de chamadas.
- *   - por ORGANIZAÇÃO (banco, tabela agente_uso): teto que sobrevive a
- *     restart do processo (o Render Free reinicia com frequência).
+ * spam / automação / loop / consumo acidental enorme.
+ *
+ * DUAS CAMADAS:
+ *   1. MEMÓRIA, por conta (agente.routes.js): pré-filtro barato que corta
+ *      rajada antes de tocar o banco. Reseta no restart do processo.
+ *   2. RESERVA ATÔMICA no banco (migration 067 — agente_reservar_quota):
+ *      a autoridade. Uma transação incrementa ORG + CONTA + PERFIL de uma vez;
+ *      se um passar do limite, ROLLBACK de todos -> 429. Sobrevive a restart e
+ *      é correta sob concorrência e com múltiplas instâncias.
+ *
  * Todos generosos e ajustáveis por env. NÃO é um plano comercial.
  */
 export const RATE_LIMIT_AGENTE = {
-  porContaMinuto: {
-    max: intEnv("RATE_LIMIT_AGENTE_CONTA_MIN_MAX", 12),
+  // --- 1. memória, por conta -------------------------------------------
+  memoriaPorContaMinuto: {
+    max: intEnv("RATE_LIMIT_AGENTE_MEM_CONTA_MIN_MAX", 12),
     janelaMs: MIN,
   },
-  porContaHora: {
-    max: intEnv("RATE_LIMIT_AGENTE_CONTA_HORA_MAX", 120),
+  memoriaPorContaHora: {
+    max: intEnv("RATE_LIMIT_AGENTE_MEM_CONTA_HORA_MAX", 120),
     janelaMs: HORA,
   },
-  // Teto por organização, verificado contra COUNT em agente_uso.
-  porOrganizacaoHora: {
-    max: intEnv("RATE_LIMIT_AGENTE_ORG_HORA_MAX", 300),
-    janelaMs: HORA,
-  },
-  porOrganizacaoDia: {
-    max: intEnv("RATE_LIMIT_AGENTE_ORG_DIA_MAX", 1500),
-    janelaMs: DIA,
+
+  // --- 2. reserva atômica no banco (janelas em SEGUNDOS) --------------
+  // Cada escopo tem uma janela de HORA e uma de DIA. `chave`:
+  //   org    -> req.tenant.organizacaoId
+  //   conta  -> req.user.id
+  //   perfil -> req.perfil.id  (pulado em impersonação — não há perfil)
+  // NENHUMA vem do corpo da requisição.
+  atomica: {
+    org: [
+      { janelaSegundos: 3600, max: intEnv("RATE_LIMIT_AGENTE_ORG_HORA_MAX", 300) },
+      { janelaSegundos: 86400, max: intEnv("RATE_LIMIT_AGENTE_ORG_DIA_MAX", 1500) },
+    ],
+    conta: [
+      { janelaSegundos: 3600, max: intEnv("RATE_LIMIT_AGENTE_CONTA_HORA_MAX", 120) },
+      { janelaSegundos: 86400, max: intEnv("RATE_LIMIT_AGENTE_CONTA_DIA_MAX", 600) },
+    ],
+    perfil: [
+      { janelaSegundos: 3600, max: intEnv("RATE_LIMIT_AGENTE_PERFIL_HORA_MAX", 80) },
+      { janelaSegundos: 86400, max: intEnv("RATE_LIMIT_AGENTE_PERFIL_DIA_MAX", 400) },
+    ],
   },
 };

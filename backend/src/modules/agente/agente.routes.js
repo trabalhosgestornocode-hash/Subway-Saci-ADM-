@@ -7,12 +7,13 @@ import { RATE_LIMIT_AGENTE } from "../../config/limites.js";
 // montagem deste router em routes.js — mesmo padrão dos demais módulos.
 export const agenteRouter = Router();
 
-// Proteção FINANCEIRA (P0.5) — 1ª camada, por CONTA, em memória: corta rajada
-// de dezenas/centenas de chamadas (spam, automação, loop). A 2ª camada é o
-// teto por ORGANIZAÇÃO verificado contra agente_uso dentro do service.
+// Proteção FINANCEIRA — 1ª camada, por CONTA, em MEMÓRIA: pré-filtro barato que
+// corta rajada (spam, automação, loop) antes de tocar o banco. A 2ª camada — a
+// autoridade — é a RESERVA ATÔMICA (org + conta + perfil) feita no service via
+// a RPC agente_reservar_quota (migration 067).
 const limiteAgenteConta = combinar(
-  limiteDeTaxa({ escopo: "agente:conta:min", ...RATE_LIMIT_AGENTE.porContaMinuto }),
-  limiteDeTaxa({ escopo: "agente:conta:hora", ...RATE_LIMIT_AGENTE.porContaHora }),
+  limiteDeTaxa({ escopo: "agente:conta:min", ...RATE_LIMIT_AGENTE.memoriaPorContaMinuto }),
+  limiteDeTaxa({ escopo: "agente:conta:hora", ...RATE_LIMIT_AGENTE.memoriaPorContaHora }),
 );
 
 agenteRouter.post("/mensagem", limiteAgenteConta, controller.mensagem);
