@@ -8,7 +8,11 @@ services:
     runtime: node
     plan: free
     # Sem rootDir: assim mudanças no frontend/ TAMBÉM disparam auto-deploy.
-    buildCommand: cd backend && npm install
+    # `npm ci` (não `npm install`): instala EXATAMENTE o que está no
+    # package-lock.json (inclui a versão pinada+integridade do xlsx da
+    # distribuição oficial do SheetJS e os `overrides` de qs/body-parser).
+    # Deploy reproduzível; nunca "resolve" uma versão diferente no build.
+    buildCommand: cd backend && npm ci
     startCommand: cd backend && npm start
     healthCheckPath: /health
     envVars:
