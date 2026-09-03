@@ -34,9 +34,28 @@ import * as usoPadrao from "./agente.uso.service.js";
 import { usageVazio, acumularUsage } from "./agente.usage.js";
 import { calcularCustoUso } from "./agente.pricing.js";
 import { MODELO } from "./agente.provider.js";
+import { RATE_LIMIT_AGENTE } from "../../config/limites.js";
 
 /** Limite de segurança contra loop infinito de tool use. Pequeno de propósito. */
 export const MAX_TOOL_ITERATIONS = 6;
+
+/**
+ * Decisão PURA do teto por organização (proteção financeira, P0.5). Recebe as
+ * contagens já lidas e devolve se pode seguir. `null` numa contagem = leitura
+ * falhou -> FAIL-OPEN nessa janela (a 1ª camada, por conta, já protege).
+ * @param {{ interacoesHora: number|null, interacoesDia: number|null }} p
+ * @returns {{ ok: true } | { ok: false, janela: 'hora'|'dia', limite: number }}
+ */
+export function avaliarQuotaOrganizacao({ interacoesHora, interacoesDia }) {
+  const { porOrganizacaoHora, porOrganizacaoDia } = RATE_LIMIT_AGENTE;
+  if (interacoesHora != null && interacoesHora >= porOrganizacaoHora.max) {
+    return { ok: false, janela: "hora", limite: porOrganizacaoHora.max };
+  }
+  if (interacoesDia != null && interacoesDia >= porOrganizacaoDia.max) {
+    return { ok: false, janela: "dia", limite: porOrganizacaoDia.max };
+  }
+  return { ok: true };
+}
 const TAMANHO_MAX_MENSAGEM = 2000;
 /** Nunca lotar a resposta de botões — item explícito da Etapa F.1 (a maioria das respostas usa 0 ou 1). */
 export const MAX_ACOES_SUGERIDAS = 3;
@@ -86,6 +105,26 @@ export async function processarMensagem({
   // antes de tocar em qualquer coisa; malformada/maliciosa vira `null`
   // silenciosamente, nunca derruba a mensagem do usuário.
   const contextoPagina = sanitizarPageContext(pageContext);
+
+  // TETO POR ORGANIZAÇÃO (P0.5) — 2ª camada da proteção financeira, verificada
+  // contra agente_uso (sobrevive a restart do processo, ao contrário do limite
+  // em memória por conta). Checado ANTES de qualquer chamada a Claude e antes
+  // de criar conversa. Fail-open se a leitura falhar (telemetria não derruba
+  // operação — mesmo espírito de registrarUso/auditar).
+  if (uso.contarInteracoesDaOrganizacao) {
+    const agora = Date.now();
+    const [interacoesHora, interacoesDia] = await Promise.all([
+      uso.contarInteracoesDaOrganizacao({ organizacaoId, desdeIso: new Date(agora - RATE_LIMIT_AGENTE.porOrganizacaoHora.janelaMs).toISOString() }),
+      uso.contarInteracoesDaOrganizacao({ organizacaoId, desdeIso: new Date(agora - RATE_LIMIT_AGENTE.porOrganizacaoDia.janelaMs).toISOString() }),
+    ]);
+    const quota = avaliarQuotaOrganizacao({ interacoesHora, interacoesDia });
+    if (!quota.ok) {
+      const quando = quota.janela === "hora" ? "na última hora" : "hoje";
+      throw new ApiError(429,
+        `O Agente Crescer atingiu o limite de uso da sua empresa ${quando} (${quota.limite} consultas). Tente novamente mais tarde.`,
+        { codigo: "AGENTE_QUOTA_ORGANIZACAO", janela: quota.janela });
+    }
+  }
 
   const inicio = Date.now();
   const toolsUtilizadas = [];

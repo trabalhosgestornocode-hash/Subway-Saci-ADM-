@@ -92,6 +92,28 @@ export async function buscarUsoNoPeriodo(filtro = {}) {
   return { linhas: data ?? [], intervalo };
 }
 
+/**
+ * Conta interações do Agente de UMA organização desde um instante — a base do
+ * teto por organização (proteção financeira, P0.5). Usa COUNT no servidor
+ * (head: true), sem transferir linhas. Nunca lança: falha aqui devolve `null`
+ * e o chamador decide (fail-open — a 1ª camada por conta já protege).
+ * @param {{organizacaoId: string, desdeIso: string}} p
+ * @returns {Promise<number|null>}
+ */
+export async function contarInteracoesDaOrganizacao({ organizacaoId, desdeIso }) {
+  try {
+    const { count, error } = await supabase.from("agente_uso")
+      .select("id", { count: "exact", head: true })
+      .eq("organizacao_id", organizacaoId)
+      .gte("created_at", desdeIso);
+    if (error) { console.error("[agente] contagem de uso da org falhou:", error.message); return null; }
+    return count ?? 0;
+  } catch (e) {
+    console.error("[agente] excecao ao contar uso da org:", e?.message);
+    return null;
+  }
+}
+
 const somarNum = (linhas, campo) => linhas.reduce((s, l) => s + (Number(l[campo]) || 0), 0);
 const somarCusto = (linhas) => linhas.reduce((s, l) => s + (l.estimated_cost_usd != null ? Number(l.estimated_cost_usd) : 0), 0);
 
