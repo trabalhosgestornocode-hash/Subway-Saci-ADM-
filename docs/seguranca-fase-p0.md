@@ -199,4 +199,4 @@ nunca de texto livre — mesmo modelo de confiança do resto do código.
 | Teto do Agente Crescer | `security(agent): usage caps` | por conta (memória) + por org (agente_uso) |
 | MFA dormente | `security(mfa): dormant AAL2 support` | este documento |
 | CSP / XSS / headers | ver commits `security(xss)` / `security(headers)` | CSP **não** foi ligada em enforce nesta fase — ver o commit |
-| Eventos de segurança | `security(audit): record security events` | usa a auditoria existente |
+| Eventos de segurança | `security(audit): record security events` | via errorHandler -> `plataforma_auditoria`. Ações: `seguranca.rate_limit_excedido`, `seguranca.mfa_requerida`, `seguranca.acesso_negado` (403 em /plataforma ou /administrativo), `perfil.pin_bloqueado`. Impersonação, mudança de SuperAdmin e de Painel Administrativo **já** eram auditadas. Nada de senha/PIN/token nos detalhes. **Falta** (P1): alertas ativos (hoje é trilha passiva) — exportar para um sink com notificação |
