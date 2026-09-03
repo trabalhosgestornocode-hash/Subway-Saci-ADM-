@@ -26,6 +26,7 @@ import {
 } from "./api.js";
 import { pode } from "./sessao.js";
 import { registrarResetDeContexto, geracaoContexto, contextoMudou } from "./contextoEscopo.js";
+import { estadoMfa, iniciarCadastro, confirmarCadastro, removerFator } from "./mfa.js";
 
 // Perfis da UI <-> enum papel_acesso do banco (migration 015). O cargo
 // pertence ao VÍNCULO usuário<->empresa, não ao usuário: o mesmo login pode
@@ -502,8 +503,8 @@ const DETALHES = {
     }
   },
 
-  // 5. Segurança — só o que a plataforma REALMENTE aplica. Sem toggles que
-  // aparentam funcionar sem enforcement.
+  // 5. Segurança — proteções da plataforma + cadastro do 2º fator (MFA) da
+  // PRÓPRIA conta, via Supabase Auth (ver mfa.js). Não há TOTP próprio.
   seguranca(root) {
     root.innerHTML = painel("Proteções de acesso (aplicadas pela plataforma)", `
       <ul class="cfg-lista-check">
@@ -512,9 +513,12 @@ const DETALHES = {
         <li>✅ <b>Sessão com expiração e revogação imediata</b> — trocar o cargo ou remover o acesso encerra as sessões abertas daquele usuário nesta empresa na hora.</li>
         <li>✅ <b>Registro de acessos e ações</b> — logins e operações sensíveis ficam na auditoria da plataforma (imutável).</li>
         <li>✅ <b>Isolamento por empresa/unidade</b> — cada requisição é validada contra o contexto assinado; uma empresa nunca lê dado de outra.</li>
+        <li>✅ <b>Limites de uso</b> — tentativas de PIN, importações e o Agente Crescer têm freios contra abuso.</li>
       </ul>
-      <p class="cfg-meta">Políticas configuráveis por empresa (nº de tentativas, tempo de sessão personalizado) ainda não estão disponíveis — quando estiverem, aparecem aqui.</p>
     `, "Estas proteções estão sempre ativas e não são desligáveis pela loja.");
+    const mfaBox = document.createElement("div");
+    root.appendChild(mfaBox);
+    montarMfa(mfaBox);
   },
 
   // 6. Notificações — ainda não há mecanismo de envio. Estado informativo,
@@ -595,6 +599,92 @@ const DETALHES = {
     });
   },
 };
+
+// ======================= MFA (2º fator) — via Supabase Auth =======================
+// Cadastro/remoção do 2º fator da PRÓPRIA conta. O enroll/challenge/verify é
+// 100% Supabase (mfa.js). O backend só é avisado para auditar (estado real).
+// O enforcement (MFA_ENFORCE_*) continua desligado — aqui é só a EXPERIÊNCIA.
+async function montarMfa(box) {
+  box.className = "cfg-panel";
+  box.innerHTML = `<div class="cfg-panel-head"><h3>Verificação em duas etapas (2FA)</h3>
+    <p>Um código do seu app autenticador, além da senha. Recomendado para todas as contas — obrigatório quando a plataforma ativar a exigência.</p></div>
+    <div class="cfg-panel-body" id="mfa-corpo"><div class="estado-mini">Carregando…</div></div>`;
+  const corpo = box.querySelector("#mfa-corpo");
+
+  const usuario = state.sessao?.usuario ?? {};
+  const privilegiado = !!(usuario.superadmin || usuario.painelAdministrativo);
+
+  const desenhar = async () => {
+    let st;
+    try { st = await estadoMfa(); }
+    catch (e) { corpo.innerHTML = `<div class="estado-mini bad">Não foi possível carregar o estado do 2FA: ${escapeHtml(e.message)}</div>`; return; }
+
+    if (st.estado === "aal2" || st.estado === "aal1_com_fator") {
+      const nota = st.estado === "aal1_com_fator"
+        ? `<p class="cfg-meta">Esta sessão está autenticada só com a senha. Ao acessar áreas que exijam 2FA, o código será solicitado.</p>` : "";
+      corpo.innerHTML = `
+        <div class="cfg-lista-check"><li>🔐 <b>2FA ativo</b> nesta conta (${st.fatores.filter((f) => f.status === "verified").length} autenticador(es)).</li></div>
+        ${nota}
+        <div class="cfg-acoes"><button class="btn btn-ghost btn-sm" id="mfa-remover">Remover 2FA</button></div>`;
+      corpo.querySelector("#mfa-remover")?.addEventListener("click", async () => {
+        if (!confirm("Remover a verificação em duas etapas desta conta?\n\nSem o 2º fator a conta fica só com a senha. Se a plataforma exigir 2FA, você precisará cadastrar de novo antes de acessar áreas protegidas.")) return;
+        try {
+          for (const f of st.fatores) await removerFator(f.id);
+          toast("2FA removido desta conta.");
+          desenhar();
+        } catch (e) { toast("Erro ao remover: " + e.message); }
+      });
+      return;
+    }
+
+    // sem_fator
+    const aviso = privilegiado
+      ? `<div class="estado-mini warn">⚠️ Sua conta tem acesso administrativo. <b>Ative o 2FA</b> — quando a exigência for ligada, o acesso administrativo fica bloqueado sem ele.</div>` : "";
+    corpo.innerHTML = `${aviso}
+      <p>Você ainda não tem um 2º fator cadastrado.</p>
+      <div class="cfg-acoes"><button class="btn btn-primary" id="mfa-ativar">Ativar verificação em duas etapas</button></div>`;
+    corpo.querySelector("#mfa-ativar")?.addEventListener("click", () => fluxoCadastro(corpo, desenhar));
+  };
+
+  await desenhar();
+}
+
+async function fluxoCadastro(corpo, aoConcluir) {
+  corpo.innerHTML = `<div class="estado-mini">Gerando o código…</div>`;
+  let dados;
+  try { dados = await iniciarCadastro("Autenticador"); }
+  catch (e) { corpo.innerHTML = `<div class="estado-mini bad">${escapeHtml(e.message)}</div>`; return; }
+
+  // O Supabase entrega o QR como data URI (SVG) — <img> é CSP-safe.
+  corpo.innerHTML = `
+    <ol class="cfg-passos">
+      <li>Abra seu app autenticador (Google Authenticator, Authy, 1Password…).</li>
+      <li>Escaneie o QR abaixo <b>ou</b> digite a chave manualmente.</li>
+      <li>Informe o código de 6 dígitos que o app mostrar.</li>
+    </ol>
+    ${dados.qrSvg ? `<div class="mfa-qr"><img alt="QR do 2FA" src="${escapeHtml(dados.qrSvg)}" width="180" height="180" /></div>` : ""}
+    ${dados.segredo ? `<p class="cfg-meta">Chave: <code>${escapeHtml(dados.segredo)}</code></p>` : ""}
+    <label class="adm-campo"><span>Código do app</span>
+      <input id="mfa-codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" /></label>
+    <div class="cfg-acoes">
+      <button class="btn btn-primary" id="mfa-confirmar">Confirmar</button>
+      <button class="btn btn-ghost btn-sm" id="mfa-cancelar">Cancelar</button>
+    </div>
+    <p class="mfa-erro bad" id="mfa-erro" hidden></p>`;
+
+  corpo.querySelector("#mfa-cancelar")?.addEventListener("click", aoConcluir);
+  corpo.querySelector("#mfa-confirmar")?.addEventListener("click", async () => {
+    const codigo = corpo.querySelector("#mfa-codigo")?.value?.trim() ?? "";
+    const err = corpo.querySelector("#mfa-erro");
+    err.hidden = true;
+    if (!/^\d{6}$/.test(codigo)) { err.textContent = "Digite os 6 dígitos do app."; err.hidden = false; return; }
+    try {
+      await confirmarCadastro(dados.factorId, codigo);
+      toast("Verificação em duas etapas ativada.");
+      aoConcluir();
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+  });
+}
 
 // Trocar de empresa/unidade com a tela de Configurações aberta: o próprio
 // funil de troca (app.js#mostrarApp) já re-renderiza a rota. Este reset é a

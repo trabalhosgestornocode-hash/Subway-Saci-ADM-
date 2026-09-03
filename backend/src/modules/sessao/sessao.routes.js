@@ -42,6 +42,11 @@ sessaoRouter.post("/selecionar", exigirSenhaDefinitiva, limiteSelecionar, contro
 sessaoRouter.get("/perfis", exigirSenhaDefinitiva, controller.perfis);
 sessaoRouter.post("/selecionar-perfil", exigirSenhaDefinitiva, limitePin, controller.selecionarPerfil);
 
+// MFA (P0.2) — o frontend avisa após cadastrar/remover o 2º fator (o
+// enroll/verify é client-side via Supabase Auth). Só registra auditoria a
+// partir do estado REAL relido do JWT; não recebe segredo nenhum.
+sessaoRouter.post("/mfa/evento", exigirSenhaDefinitiva, controller.mfaEvento);
+
 // `atual` exige contexto (é o que ele descreve).
 sessaoRouter.get("/atual", exigirSenhaDefinitiva, requireContexto, controller.atual);
 

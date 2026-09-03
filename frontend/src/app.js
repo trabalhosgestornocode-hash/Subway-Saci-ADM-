@@ -39,6 +39,7 @@ import { abrirInsumoPorNome } from "./insumoModal.js";
 import { abrirParserCancelamentos, abrirParserPedidoPorNumero, aguardarCarregamentoParser } from "./parserFoodDelivery.js";
 import { registrarResolverAcao } from "./agenteAcoesResolvedores.js";
 import { aplicarTemaSalvo } from "./configuracoes.js";
+import { precisaDesafioMfa, abrirDesafioMfa } from "./mfa.js";
 import { abrirPainelAdmin, fecharPainelAdmin } from "./admin.js";
 import { abrirPainelAdministrativo } from "./painelAdm.js";
 import { rotaPosAcessos, botaoPainelAdmVisivel } from "./encaminhamento.js";
@@ -724,6 +725,13 @@ function wireEventos() {
       btn?.classList.add("carregando");
       if (btn) btn.disabled = true;
       await login(el("#login-user").value, el("#login-pass").value);
+      // 2º fator: se a conta tem autenticador cadastrado, a sessão está em
+      // AAL1 e precisa subir para AAL2 antes de seguir. O backend é a
+      // autoridade (gate exige AAL2 onde configurado); isto é só a UX.
+      if (await precisaDesafioMfa()) {
+        const ok = await abrirDesafioMfa();
+        if (!ok) { await logout(); mostrarLogin(); return; }
+      }
       await encaminhar();
     } catch (err) {
       erroBox.textContent = err.message;
@@ -825,6 +833,12 @@ function wireEventos() {
 
   // Sessão expirada (401): o login caiu, volta para o login.
   document.addEventListener("app:sessao-expirada", async () => { await logout(); mostrarLogin(); });
+  // MFA exigida pelo backend numa rota protegida (enforcement ligado): a sessão
+  // é válida, só falta o 2º fator. Pede o código e, se verificar, recarrega.
+  document.addEventListener("app:mfa-requerida", async () => {
+    const ok = await abrirDesafioMfa();
+    if (ok) document.dispatchEvent(new CustomEvent("app:reload"));
+  });
 
   // Contexto inválido (409): o login está bom, só o contexto caiu. Volta para
   // a seleção — expulsar o usuário do sistema aqui seria desproporcional.

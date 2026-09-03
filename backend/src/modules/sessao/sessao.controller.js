@@ -2,6 +2,7 @@ import { asyncHandler } from "../../shared/asyncHandler.js";
 import * as service from "./sessao.service.js";
 import * as perfilService from "./perfil.service.js";
 import * as v from "../../shared/validar.js";
+import { auditar, ACOES } from "../../shared/auditoria.js";
 
 /** Origem da requisição — usada na auditoria e gravada na sessão. */
 function origem(req) {
@@ -121,6 +122,30 @@ export const encerrar = asyncHandler(async (req, res) => {
     usuario: req.user, acesso: req.acesso ?? null, ...origem(req),
   });
   res.json({ data });
+});
+
+// POST /api/v1/sessao/mfa/evento — o frontend avisa que o usuário cadastrou ou
+// removeu o 2º fator (o enroll/verify/unenroll acontece client-side via Supabase
+// Auth — nós NÃO temos nem armazenamos o segredo TOTP). O backend NÃO confia no
+// que o cliente diz: relê `req.user.mfaCadastrada` (que vem de
+// supabase.auth.getUser().factors em requireAuth) e audita o ESTADO REAL.
+export const mfaEvento = asyncHandler(async (req, res) => {
+  const body = v.corpo(req.body);
+  const alegado = v.umDeOpcional(body.acao, "Ação", ["cadastrada", "removida"]);
+  const temFator = req.user?.mfaCadastrada === true;
+
+  // Estado real manda; o "alegado" só entra nos detalhes para conferência.
+  const acao = temFator ? ACOES.MFA_CADASTRADA : ACOES.MFA_REMOVIDA;
+  const encaminhado = req.headers["x-forwarded-for"];
+  const ip = (Array.isArray(encaminhado) ? encaminhado[0] : encaminhado)?.split(",")[0]?.trim()
+    || req.socket?.remoteAddress || null;
+  await auditar({
+    atorId: req.user.id, atorEmail: req.user.email, atorTipo: "usuario",
+    acao, entidade: "usuario", entidadeId: req.user.id,
+    detalhes: { mfaCadastrada: temFator, alegado: alegado ?? null, aal: req.user.aal ?? null },
+    ip, userAgent: req.header("user-agent") || null,
+  });
+  res.json({ data: { mfaCadastrada: temFator, aal: req.user.aal ?? null } });
 });
 
 // POST /api/v1/sessao/senha — define a nova senha do próprio usuário e limpa a

@@ -80,6 +80,14 @@ async function chamar(url, opcoes = {}) {
   });
 
   if (r.status === 401) {
+    const c = await r.json().catch(() => ({}));
+    if ((c?.codigo || c?.details?.codigo) === "MFA_REQUERIDA") {
+      // A sessão é válida — falta o 2º fator. NÃO expulsa para o login.
+      document.dispatchEvent(new CustomEvent("app:mfa-requerida", { detail: c.error }));
+      const e = new Error(c.error || "Verificação em duas etapas necessária.");
+      e.codigo = "MFA_REQUERIDA"; e.status = 401;
+      throw e;
+    }
     document.dispatchEvent(new CustomEvent("app:sessao-expirada"));
     throw new Error("Sessão expirada. Faça login novamente.");
   }
