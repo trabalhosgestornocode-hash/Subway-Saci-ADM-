@@ -293,7 +293,6 @@ function renderVisaoGeral(box) {
   const proj = d.projecao;
   box.innerHTML = `
     <div id="dex-sim-container"></div>
-    ${alertaPendencias(d)}
     <section class="dex-resumo">
       <h3>${MESES[d.periodo.mes - 1]} de ${d.periodo.ano}</h3>
       <p><b>${r.diasPreenchidos}</b> de <b>${r.totalDias}</b> dias resolvidos · ${r.diasPendentes} pendente(s) · ${fmtPct(r.percentualConclusao)} do mês concluído</p>
@@ -361,18 +360,6 @@ function wirePlanoAcao() {
   // Etapa H — botões "✦ Diagnosticar..." de cada card (ligarBotoesContextuais
   // já ignora quem já foi ligado, então é seguro chamar de novo a cada render).
   ligarBotoesContextuais();
-}
-
-function alertaPendencias(d) {
-  const grupos = d.pendenciasMesesAnteriores ?? [];
-  if (!grupos.length) return "";
-  const totalDias = grupos.reduce((s, g) => s + g.dias.length, 0);
-  const listaMeses = grupos.map((g) => `${MESES[g.mes - 1]}/${g.ano} (${g.dias.length})`).join(", ");
-  return `<div class="dex-alerta">
-    <b>${icon("alert-triangle", { size: 14 })} DADOS PENDENTES</b>
-    <p>Existem ${totalDias} dia(s) financeiro(s) não regularizado(s) em meses anteriores: ${escapeHtml(listaMeses)}.</p>
-    <p>Isso não bloqueia o lançamento deste mês, mas prejudica a confiabilidade do histórico e das comparações.</p>
-  </div>`;
 }
 
 // Severidade sempre como bolinha colorida (mesmo padrão de .alerta-dot já
@@ -519,7 +506,6 @@ function renderLancamentos(box) {
 
   box.innerHTML = `
     ${lancamentoMensalBanner(d.lancamentoMensal)}
-    ${alertaPendencias(d)}
     ${resumoFinanceiroBanner(d)}
     <section class="dex-cal-wrap">
       <div class="dex-cal">${d.calendario.map((dia) => diaHtml(dia)).join("")}</div>
