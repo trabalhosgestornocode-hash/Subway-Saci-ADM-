@@ -161,22 +161,27 @@ export function barraSaude({ criticas = 0, atencao = 0, emDia = 0 }) {
  * KPI premium. `tom` ∈ "", "critico", "atencao", "ok". `progresso` (0..1)
  * desenha a barra sutil sob o número. `nota` explica o dado (ou por que é "—").
  * `destaque` engrossa o cartão — usado quando o número exige ação.
- * @param {{label: string, valor: string, nota?: string, tom?: string, icone?: string, progresso?: number|null, destaque?: boolean}} o
+ * @param {{label: string, valor: string, nota?: string, tom?: string, icone?: string, progresso?: number|null, destaque?: boolean, acao?: string}} o
  */
-export function card({ label, valor, nota = "", tom = "", icone = "", progresso = null, destaque = false }) {
+export function card({ label, valor, nota = "", tom = "", icone = "", progresso = null, destaque = false, acao = "" }) {
   const classes = ["padm-card", tom ? `padm-card--${tom}` : "", destaque ? "padm-card--destaque" : ""].filter(Boolean).join(" ");
+  const tag = acao ? "button" : "div";
+  const attrs = acao
+    ? ` type="button" data-padm-card="${escapeHtml(acao)}" aria-controls="padm-card-detalhe-${escapeHtml(acao)}" aria-expanded="false"`
+    : "";
   return `
-    <div class="${classes}">
-      <div class="padm-card-top">
+    <${tag} class="${classes}${acao ? " padm-card--interativo" : ""}"${attrs}>
+      <span class="padm-card-top">
         <span class="padm-card-label">${escapeHtml(label)}</span>
         ${icone ? `<span class="padm-card-ic">${icon(icone, { size: 15 })}</span>` : ""}
-      </div>
+      </span>
       <span class="padm-card-valor">${escapeHtml(String(valor))}</span>
       ${progresso !== null && progresso !== undefined
         ? `<span class="padm-card-barra"><i style="width:${(Math.max(0, Math.min(1, progresso)) * 100).toFixed(1)}%"></i></span>`
         : ""}
       ${nota ? `<span class="padm-card-nota">${escapeHtml(nota)}</span>` : ""}
-    </div>`;
+      ${acao ? `<span class="padm-card-cta">Ver lista <span aria-hidden="true">↓</span></span>` : ""}
+    </${tag}>`;
 }
 
 export const cards = (html) => `<div class="padm-cards">${html}</div>`;

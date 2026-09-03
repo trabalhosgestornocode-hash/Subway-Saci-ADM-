@@ -246,12 +246,15 @@ export function consolidarEmpresas(unidades) {
         unidadesMonitoradas: 0, emDia: 0, atencao: 0, criticas: 0,
         d1Elegiveis: 0, d1Concluidas: 0, d1EmPreenchimento: 0, d1NaoRealizadas: 0, d1Bloqueadas: 0,
         mesCompleto: 0, mesEsperado: 0,
-        pendentes: [], comHistorico: [],
+        pendentes: [], emDiaLista: [], comHistorico: [],
       });
     }
     const g = mapa.get(chave);
     g.unidadesMonitoradas += 1;
-    if (u.rollup?.status === ROLLUP.EM_DIA) g.emDia += 1;
+    if (u.rollup?.status === ROLLUP.EM_DIA) {
+      g.emDia += 1;
+      g.emDiaLista.push(resumoUnidade(u));
+    }
     else if (u.rollup?.status === ROLLUP.ATENCAO) g.atencao += 1;
     else if (u.rollup?.status === ROLLUP.CRITICO) g.criticas += 1;
     if (u.d1?.elegivel) {
@@ -279,6 +282,8 @@ export function consolidarEmpresas(unidades) {
       return {
         ...semAuxiliar,
         pendentes,
+        emDiaLista: [...g.emDiaLista].sort((a, b) =>
+          (a.unidadeNome ?? "").localeCompare(b.unidadeNome ?? "", "pt-BR")),
         unidadesPendentes: pendentes.length,
         historicoAnterior: { existe: heranca.length > 0, desde: heranca[0] ?? null, unidades: heranca.length },
         piorUnidade: pendentes[0] ?? null,

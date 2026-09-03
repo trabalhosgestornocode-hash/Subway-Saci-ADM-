@@ -216,6 +216,7 @@ export function htmlVisaoGeral(d) {
     card({
       label: "Empresas com pendência", valor: fmtNum(nEmpresasPend), icone: "building",
       tom: nEmpresasPend > 0 ? "critico" : "ok", destaque: nEmpresasPend > 0,
+      acao: "empresas-pendencia",
       nota: nEmpresasPend > 0
         ? `de ${fmtNum(r.empresasMonitoradas)} monitoradas · ${fmtNum(nSaudaveis)} sem pendência`
         : `todas as ${fmtNum(r.empresasMonitoradas)} empresas em dia`,
@@ -223,6 +224,7 @@ export function htmlVisaoGeral(d) {
     card({
       label: "Unidades com pendência", valor: fmtNum(nUnidadesPend), icone: "store",
       tom: nUnidadesPend > 0 ? "critico" : "ok", destaque: nUnidadesPend > 0,
+      acao: "unidades-pendencia",
       nota: `de ${fmtNum(r.unidadesMonitoradas)} unidades monitoradas`,
     }),
     card({
@@ -233,10 +235,12 @@ export function htmlVisaoGeral(d) {
     card({
       label: "Atenção", valor: fmtNum(r.atencao), icone: "clock",
       tom: (r.atencao ?? 0) > 0 ? "atencao" : "neutro",
+      acao: "atencao",
       nota: (r.atencao ?? 0) > 0 ? "fechamento de ontem em aberto" : "nada em aberto",
     }),
     card({
       label: "Em dia", valor: fmtNum(r.emDia), icone: "check-circle", tom: "ok",
+      acao: "em-dia",
       nota: "unidades sem pendência no período",
     }),
     card({
@@ -254,9 +258,94 @@ export function htmlVisaoGeral(d) {
   return `
     ${faixaPeriodo(d)}
     ${topo}
+    ${detalhesCardsVisao(empresas)}
     ${faixaFinanceira(d?.faturamento)}
     ${secaoAcaoNecessaria(d?.acaoNecessariaHoje ?? [], d)}
     ${secaoEmpresasComPendencia(empresas)}`;
+}
+
+function detalheCardVisao({ id, titulo, sub, corpo, tom = "" }) {
+  return `
+    <section class="padm-card-detalhe ${tom ? `padm-card-detalhe--${tom}` : ""}" id="padm-card-detalhe-${id}"
+             data-padm-card-painel="${id}" aria-labelledby="padm-card-detalhe-titulo-${id}" hidden>
+      <header class="padm-card-detalhe-head">
+        <div>
+          <h2 id="padm-card-detalhe-titulo-${id}">${escapeHtml(titulo)}</h2>
+          <p>${escapeHtml(sub)}</p>
+        </div>
+        <button type="button" class="padm-card-detalhe-fechar" data-padm-card-fechar aria-label="Fechar lista">×</button>
+      </header>
+      <div class="padm-card-detalhe-corpo">${corpo}</div>
+    </section>`;
+}
+
+function listaEmpresasCard(empresas) {
+  if (!empresas.length) return vazio("Nenhuma empresa nesta situação", "Não há empresas com pendência no período selecionado.");
+  return `<ul class="padm-card-lista">${empresas.map((e) => {
+    const n = qtdPendentes(e);
+    const partes = [n ? `${n} unidade${n === 1 ? "" : "s"} com pendência` : "sem pendência"];
+    if ((e.criticas ?? 0) > 0) partes.push(`${e.criticas} crítica${e.criticas === 1 ? "" : "s"}`);
+    if ((e.atencao ?? 0) > 0) partes.push(`${e.atencao} em atenção`);
+    return `<li>
+      <button type="button" class="padm-card-lista-item" data-padm-nav="empresa" data-id="${escapeHtml(e.organizacaoId ?? "")}" data-nome="${escapeHtml(e.empresaNome ?? "")}">
+        <span class="padm-card-lista-icone">${icon("building", { size: 14 })}</span>
+        <span class="padm-card-lista-texto"><b>${escapeHtml(e.empresaNome ?? "—")}</b><small>${escapeHtml(partes.join(" · "))}</small></span>
+        <span class="padm-item-ir" aria-hidden="true">›</span>
+      </button>
+    </li>`;
+  }).join("")}</ul>`;
+}
+
+function gruposUnidadesCard(empresas, selecionar) {
+  const grupos = empresas
+    .map((e) => ({ empresa: e, unidades: selecionar(e) }))
+    .filter((g) => g.unidades.length);
+  if (!grupos.length) return vazio("Nenhuma unidade nesta situação", "Não há unidades correspondentes no período selecionado.");
+  return `<div class="padm-card-grupos">${grupos.map(({ empresa, unidades }) => `
+    <section class="padm-card-grupo">
+      <header>
+        <button type="button" data-padm-nav="empresa" data-id="${escapeHtml(empresa.organizacaoId ?? "")}" data-nome="${escapeHtml(empresa.empresaNome ?? "")}">
+          ${icon("building", { size: 12 })}<b>${escapeHtml(empresa.empresaNome ?? "—")}</b>
+        </button>
+        <span>${unidades.length} unidade${unidades.length === 1 ? "" : "s"}</span>
+      </header>
+      <ul class="padm-card-lista">${unidades.map((u) => `
+        <li>
+          <button type="button" class="padm-card-lista-item" data-padm-nav="unidade" data-id="${escapeHtml(u.unidadeId ?? "")}" data-nome="${escapeHtml(u.unidadeNome ?? "")}">
+            <span class="padm-card-lista-icone">${icon("store", { size: 14 })}</span>
+            <span class="padm-card-lista-texto"><b>${escapeHtml(u.unidadeNome ?? "—")}</b><small>${escapeHtml(u.criticidade === "em_dia" ? "Em dia no período" : (CATEGORIA_D1[u.d1Status]?.rotulo ?? "Com pendência"))}</small></span>
+            ${chipCriticidade(u.criticidade)}
+            <span class="padm-item-ir" aria-hidden="true">›</span>
+          </button>
+        </li>`).join("")}</ul>
+    </section>`).join("")}</div>`;
+}
+
+/** Listas abertas pelos quatro cards de identificação da Visão Geral. */
+export function detalhesCardsVisao(empresas = []) {
+  const comPendencia = empresas.filter((e) => qtdPendentes(e) > 0);
+  return `<div class="padm-cards-detalhes">
+    ${detalheCardVisao({
+      id: "empresas-pendencia", titulo: "Empresas com pendência",
+      sub: "Empresas que possuem ao menos uma unidade pendente no período.", tom: "critico",
+      corpo: listaEmpresasCard(comPendencia),
+    })}
+    ${detalheCardVisao({
+      id: "unidades-pendencia", titulo: "Unidades com pendência",
+      sub: "Lista completa, agrupada por empresa e ordenada pela prioridade já calculada.", tom: "critico",
+      corpo: gruposUnidadesCard(comPendencia, (e) => e.pendentes ?? []),
+    })}
+    ${detalheCardVisao({
+      id: "atencao", titulo: "Unidades em atenção",
+      sub: "Unidades com fechamento em aberto, agrupadas por empresa.", tom: "atencao",
+      corpo: gruposUnidadesCard(empresas, (e) => (e.pendentes ?? []).filter((u) => u.criticidade === "atencao")),
+    })}
+    ${detalheCardVisao({
+      id: "em-dia", titulo: "Unidades em dia",
+      sub: "Unidades sem pendência no período selecionado, agrupadas por empresa.", tom: "ok",
+      corpo: gruposUnidadesCard(empresas, (e) => e.emDiaLista ?? []),
+    })}
+  </div>`;
 }
 
 /**
@@ -1134,9 +1223,30 @@ function baixarCsv(d, estado) {
 
 function ligarLista() {
   ligarNav();
+  ligarCardsResumo();
   els("[data-padm-ir]").forEach((b) =>
     b.addEventListener("click", () => nav.irParaTela?.(b.dataset.padmIr)));
   ligarBuscaLocal();
+}
+
+function ligarCardsResumo() {
+  const botoes = els("[data-padm-card]");
+  const paineis = els("[data-padm-card-painel]");
+  const fecharTodos = () => {
+    botoes.forEach((b) => { b.setAttribute("aria-expanded", "false"); b.classList.remove("padm-card--ativo"); });
+    paineis.forEach((p) => { p.hidden = true; });
+  };
+  botoes.forEach((b) => b.addEventListener("click", () => {
+    const painel = el(`#padm-card-detalhe-${b.dataset.padmCard}`);
+    const abrir = painel?.hidden ?? false;
+    fecharTodos();
+    if (!painel || !abrir) return;
+    painel.hidden = false;
+    b.setAttribute("aria-expanded", "true");
+    b.classList.add("padm-card--ativo");
+    painel.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+  }));
+  els("[data-padm-card-fechar]").forEach((b) => b.addEventListener("click", fecharTodos));
 }
 
 function ligarNav() {

@@ -24,32 +24,41 @@ function fakeNode(tag) {
       padmNav: attr(tag, "data-padm-nav") ?? undefined,
       padmFiltro: attr(tag, "data-padm-filtro") ?? undefined,
       padmAgrupar: attr(tag, "data-padm-agrupar") ?? undefined,
+      padmCard: attr(tag, "data-padm-card") ?? undefined,
+      padmCardPainel: attr(tag, "data-padm-card-painel") ?? undefined,
+      padmCardFechar: /data-padm-card-fechar(?:\s|>)/.test(tag) ? "" : undefined,
       id: attr(tag, "data-id") ?? undefined,
       nome: attr(tag, "data-nome") ?? undefined,
       busca: attr(tag, "data-busca") ?? undefined,
     },
-    id: attr(tag, "id") ?? "",
+    id: attr(tag, "id") ?? "", hidden: /\shidden(?:\s|>)/.test(tag),
     _l: {},
     addEventListener(ev, fn) { (this._l[ev] ||= []).push(fn); },
     dispatch(ev, arg) { (this._l[ev] ?? []).forEach((f) => f(arg ?? { preventDefault() {} })); },
+    setAttribute(nome, valor) { this[nome] = valor; },
+    classList: { add() {}, remove() {} },
+    scrollIntoView() {},
     focus() {}, setSelectionRange() {},
     closest() { return null; },
   };
 }
 let padmView;
 function makeView() {
-  const store = { nav: [], filtros: [], agrupar: [], inputs: {} };
+  const store = { nav: [], filtros: [], agrupar: [], cards: [], paineis: [], fecharCards: [], inputs: {} };
   return {
     _html: "",
     get innerHTML() { return this._html; },
     set innerHTML(v) {
       this._html = String(v);
-      store.nav = []; store.filtros = []; store.agrupar = []; store.inputs = {};
+      store.nav = []; store.filtros = []; store.agrupar = []; store.cards = []; store.paineis = []; store.fecharCards = []; store.inputs = {};
       for (const t of this._html.match(/<[a-zA-Z][^>]*>/g) ?? []) {
         const n = fakeNode(t);
         if (n.dataset.padmNav) store.nav.push(n);
         if (n.dataset.padmFiltro) store.filtros.push(n);
         if (n.dataset.padmAgrupar) store.agrupar.push(n);
+        if (n.dataset.padmCard) store.cards.push(n);
+        if (n.dataset.padmCardPainel) store.paineis.push(n);
+        if (n.dataset.padmCardFechar !== undefined) store.fecharCards.push(n);
         if (n.id) store.inputs[n.id] = n;
       }
     },
@@ -62,6 +71,9 @@ globalThis.document = {
     if (sel === "[data-padm-nav]") return padmView._store.nav;
     if (sel === "[data-padm-filtro]") return padmView._store.filtros;
     if (sel === "[data-padm-agrupar]") return padmView._store.agrupar;
+    if (sel === "[data-padm-card]") return padmView._store.cards;
+    if (sel === "[data-padm-card-painel]") return padmView._store.paineis;
+    if (sel === "[data-padm-card-fechar]") return padmView._store.fecharCards;
     return [];
   },
 };
@@ -91,6 +103,7 @@ const REDE_MOGI = {
     uni("u2", "Mogi Shopping", { criticidade: "critico", d1Status: "nao_realizado", diasPendentes: 2, pendenciaMaisAntiga: "2026-09-03", pendenciaHerdada: true, pendenciaHerdadaDesde: "2026-08-27" }),
     uni("u3", "Mogi Rodoviária", { criticidade: "atencao", d1Status: "em_preenchimento", diasPendentes: 1, pendenciaMaisAntiga: "2026-09-04" }),
   ],
+  emDiaLista: [uni("u5", "Mogi Norte")],
 };
 REDE_MOGI.piorUnidade = REDE_MOGI.pendentes[0];
 
@@ -102,6 +115,7 @@ const PIRACICABA = {
   conformidadeD1: 0.5, conformidadeMes: 0.9,
   pendenciaMaisAntiga: "2026-09-04",
   pendentes: [uni("u4", "Piracicaba Centro", { criticidade: "atencao", d1Status: "nao_realizado", diasPendentes: 1, pendenciaMaisAntiga: "2026-09-04" })],
+  emDiaLista: [uni("u6", "Piracicaba Shopping")],
 };
 PIRACICABA.piorUnidade = PIRACICABA.pendentes[0];
 
@@ -112,6 +126,7 @@ const LIMEIRA = {
   d1Elegiveis: 2, d1Concluidas: 2, d1Ok: true,
   conformidadeD1: 1, conformidadeMes: 1, pendenciaMaisAntiga: null,
   pendentes: [], piorUnidade: null,
+  emDiaLista: [uni("u7", "Limeira Centro"), uni("u8", "Limeira Shopping")],
 };
 
 const EMPRESAS = [REDE_MOGI, PIRACICABA, LIMEIRA];
@@ -149,7 +164,7 @@ describe("1/2) empresas com pendência vêm primeiro; saudáveis ficam fora do c
 
   test("só as empresas com pendência entram na seção principal", () => {
     const h = V.htmlVisaoGeral(VISAO);
-    const secao = h.slice(h.indexOf("Empresas com pendência"), h.indexOf("padm-saudaveis"));
+    const secao = h.slice(h.lastIndexOf("Empresas com pendência"), h.indexOf("padm-saudaveis"));
     assert.match(secao, /Subway Mogi Mirim/);
     assert.match(secao, /Subway Piracicaba/);
     assert.ok(!secao.includes("Subway Limeira"), "empresa saudável não polui a seção de problema");
@@ -170,6 +185,57 @@ describe("1/2) empresas com pendência vêm primeiro; saudáveis ficam fora do c
   test("nenhuma empresa com pendência -> estado positivo explícito", () => {
     const h = V.htmlVisaoGeral({ ...VISAO, empresas: [LIMEIRA], resumo: { ...VISAO.resumo, empresasComPendencia: 0, unidadesComPendencia: 0 } });
     assert.match(h, /Nenhuma empresa com pendência/i);
+  });
+});
+
+describe("cards da Visão Geral abrem listas de identificação", () => {
+  test("os quatro cards pedidos são botões acessíveis ligados aos respectivos painéis", () => {
+    const h = V.htmlVisaoGeral(VISAO);
+    for (const id of ["empresas-pendencia", "unidades-pendencia", "atencao", "em-dia"]) {
+      assert.match(h, new RegExp(`<button[^>]*data-padm-card="${id}"[^>]*aria-controls="padm-card-detalhe-${id}"`), id);
+      assert.match(h, new RegExp(`id="padm-card-detalhe-${id}"[^>]*data-padm-card-painel="${id}"[^>]*hidden`), id);
+    }
+  });
+
+  test("cada painel mostra somente as empresas ou unidades da situação escolhida", () => {
+    const h = V.detalhesCardsVisao(EMPRESAS);
+    const trecho = (id, proximo) => h.slice(h.indexOf(`data-padm-card-painel="${id}"`), proximo ? h.indexOf(`data-padm-card-painel="${proximo}"`) : undefined);
+    const empresasPend = trecho("empresas-pendencia", "unidades-pendencia");
+    assert.match(empresasPend, /Subway Mogi Mirim/);
+    assert.match(empresasPend, /Subway Piracicaba/);
+    assert.doesNotMatch(empresasPend, /Subway Limeira/);
+
+    const unidadesPend = trecho("unidades-pendencia", "atencao");
+    assert.match(unidadesPend, /Mogi Centro/);
+    assert.match(unidadesPend, /Piracicaba Centro/);
+    assert.doesNotMatch(unidadesPend, /Limeira Centro/);
+
+    const atencao = trecho("atencao", "em-dia");
+    assert.match(atencao, /Mogi Rodoviária/);
+    assert.match(atencao, /Piracicaba Centro/);
+    assert.doesNotMatch(atencao, /Mogi Centro/);
+
+    const emDia = trecho("em-dia");
+    assert.match(emDia, /Mogi Norte/);
+    assert.match(emDia, /Piracicaba Shopping/);
+    assert.match(emDia, /Limeira Centro/);
+    assert.doesNotMatch(emDia, /Mogi Centro/);
+  });
+
+  test("clique abre uma lista por vez e o segundo clique fecha", async () => {
+    await V.renderViewPadm({ tipo: "tela", id: "visao-geral" }, { api: { visaoGeral: async () => VISAO }, mes: "2026-09" });
+    const empresas = padmView._store.cards.find((n) => n.dataset.padmCard === "empresas-pendencia");
+    const unidades = padmView._store.cards.find((n) => n.dataset.padmCard === "unidades-pendencia");
+    const painelEmpresas = padmView._store.inputs["padm-card-detalhe-empresas-pendencia"];
+    const painelUnidades = padmView._store.inputs["padm-card-detalhe-unidades-pendencia"];
+    assert.equal(painelEmpresas.hidden, true);
+    empresas.dispatch("click");
+    assert.equal(painelEmpresas.hidden, false);
+    unidades.dispatch("click");
+    assert.equal(painelEmpresas.hidden, true);
+    assert.equal(painelUnidades.hidden, false);
+    unidades.dispatch("click");
+    assert.equal(painelUnidades.hidden, true);
   });
 });
 
@@ -304,7 +370,7 @@ describe("empresa saudável no período, com histórico anterior", () => {
       resumo: { ...VISAO.resumo, empresasComPendencia: 1, unidadesComPendencia: 3, empresasSaudaveis: 1 },
       empresas: [REDE_MOGI, PASTEL],
     });
-    const principal = h.slice(h.indexOf("Empresas com pendência"), h.indexOf("padm-saudaveis"));
+    const principal = h.slice(h.lastIndexOf("Empresas com pendência"), h.indexOf("padm-saudaveis"));
     assert.match(principal, /Subway Mogi Mirim/);
     assert.ok(!principal.includes("Pastel Di Féra"), "saudável não entra na seção de problema");
     assert.match(h, /1 empresa\(s\) sem pendência/);

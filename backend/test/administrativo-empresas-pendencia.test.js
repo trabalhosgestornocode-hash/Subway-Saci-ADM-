@@ -60,6 +60,13 @@ describe("consolidarEmpresas — quais unidades estão pendentes", () => {
     assert.ok(!e.pendentes.some((p) => p.unidadeNome === "Mogi Norte"), "unidade em dia fica fora");
   });
 
+  test("devolve também os nomes das unidades em dia para identificação no card", () => {
+    const [e] = consolidarEmpresas(frota);
+    assert.deepEqual(e.emDiaLista.map((p) => p.unidadeNome), ["Mogi Norte"]);
+    assert.equal(e.emDiaLista[0].criticidade, ROLLUP.EM_DIA);
+    assert.ok(!e.emDiaLista.some((p) => p.unidadeNome === "Mogi Centro"), "pendente não entra na lista em dia");
+  });
+
   test("a definição de pendente é a MESMA de `temPendencia` (uma regra só)", () => {
     const [e] = consolidarEmpresas(frota);
     assert.equal(e.pendentes.length, frota.filter(temPendencia).length);

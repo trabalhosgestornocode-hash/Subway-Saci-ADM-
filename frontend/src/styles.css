@@ -2230,6 +2230,69 @@ body {
 .padm-card-barra { display: block; height: 4px; border-radius: 999px; background: var(--superficie-2); overflow: hidden; }
 .padm-card-barra i { display: block; height: 100%; border-radius: 999px; background: var(--grad-verde); }
 .padm-card-nota { font-size: 11.5px; color: var(--cinza); line-height: 1.4; }
+.padm-card--interativo {
+  appearance: none; width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.padm-card--interativo:hover, .padm-card--interativo:focus-visible { border-color: var(--cinza-claro); }
+.padm-card--interativo:focus-visible { outline: 3px solid rgba(219,59,59,.16); outline-offset: 2px; }
+.padm-card--ativo { box-shadow: var(--sombra); transform: translateY(-1px); }
+.padm-card-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: auto; padding-top: 3px; color: var(--vermelho); font-size: 11px; font-weight: 750;
+}
+.padm-card--ok .padm-card-cta { color: var(--ok); }
+.padm-card--atencao .padm-card-cta { color: var(--warn); }
+
+.padm-cards-detalhes { margin: -12px 0 26px; }
+.padm-card-detalhe {
+  overflow: hidden; background: var(--card); border: 1px solid var(--linha); border-radius: var(--raio);
+  box-shadow: var(--sombra-sm); animation: padm-card-detalhe-entrada .16s ease-out;
+}
+.padm-card-detalhe[hidden] { display: none; }
+.padm-card-detalhe--critico { border-top: 3px solid var(--bad); }
+.padm-card-detalhe--atencao { border-top: 3px solid var(--warn); }
+.padm-card-detalhe--ok { border-top: 3px solid var(--ok); }
+.padm-card-detalhe-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 16px 18px 13px; border-bottom: 1px solid var(--linha); background: var(--superficie-2);
+}
+.padm-card-detalhe-head h2 { font-size: 15px; font-weight: 750; }
+.padm-card-detalhe-head p { margin-top: 3px; color: var(--cinza); font-size: 11.5px; }
+.padm-card-detalhe-fechar {
+  width: 30px; height: 30px; flex: 0 0 auto; border: 0; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--cinza); font-size: 20px; line-height: 1;
+}
+.padm-card-detalhe-fechar:hover { background: var(--muted-bg); color: var(--texto); }
+.padm-card-detalhe-corpo { padding: 14px 18px 18px; max-height: 430px; overflow: auto; }
+.padm-card-grupos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 13px; }
+.padm-card-grupo { min-width: 0; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; }
+.padm-card-grupo > header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; background: var(--superficie-2); border-bottom: 1px solid var(--linha);
+}
+.padm-card-grupo > header button {
+  display: flex; align-items: center; gap: 6px; min-width: 0; border: 0; background: none;
+  color: var(--texto); cursor: pointer; text-align: left;
+}
+.padm-card-grupo > header button:hover b { text-decoration: underline; }
+.padm-card-grupo > header b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.padm-card-grupo > header > span { flex: 0 0 auto; color: var(--cinza); font-size: 10.5px; }
+.padm-card-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.padm-card-grupo .padm-card-lista { padding: 8px; }
+.padm-card-lista-item {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 11px;
+  border: 1px solid var(--linha); border-radius: 9px; background: var(--card); color: var(--texto);
+  text-align: left; cursor: pointer;
+}
+.padm-card-lista-item:hover { border-color: var(--cinza-claro); background: var(--superficie-2); }
+.padm-card-lista-icone {
+  width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 auto;
+  border-radius: 8px; background: var(--muted-bg); color: var(--cinza);
+}
+.padm-card-lista-texto { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; gap: 2px; }
+.padm-card-lista-texto b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.padm-card-lista-texto small { color: var(--cinza); font-size: 10.5px; }
+@keyframes padm-card-detalhe-entrada { from { opacity: 0; transform: translateY(-4px); } }
 
 /* ---------- seção ---------- */
 .padm-secao { margin-bottom: 28px; }
@@ -2505,6 +2568,11 @@ body {
 @media (max-width: 720px) {
   .padm-cards { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   .padm-card-valor { font-size: 25px; }
+  .padm-card-detalhe-head { padding: 13px 14px 11px; }
+  .padm-card-detalhe-corpo { padding: 11px 12px 14px; max-height: 65vh; }
+  .padm-card-grupos { grid-template-columns: 1fr; }
+  .padm-card-lista-item { padding: 9px; }
+  .padm-card-lista-item .padm-chip { display: none; }
   /* rótulos apertados quebravam em "D-" / "1"; o hífen é ponto de quebra em CSS */
   .padm-card-label { font-size: 10px; letter-spacing: .25px; }
   /* listas viram cards empilhados */
