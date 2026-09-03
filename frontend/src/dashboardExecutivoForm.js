@@ -9,7 +9,7 @@ import {
   dashExecPreviewResetTeste, dashExecConfirmarResetTeste, dashExecExcluirLancamento,
 } from "./api.js";
 import { icon } from "./icons.js";
-import { numeroDecimal, numeroDecimalOuIndefinido } from "./numeroDecimal.js";
+import { aplicarMascaraMoeda, formatarMoedaBRL, numeroDecimal, numeroDecimalOuIndefinido } from "./numeroDecimal.js";
 
 const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema operacional", "Falta de insumos", "Fechamento temporário", "Outro"];
 
@@ -21,6 +21,7 @@ const MOTIVOS_SEM_OPERACAO = ["Folga", "Feriado", "Manutenção", "Problema oper
 // dashboardExecutivo.calc.js.
 const SITUACOES_OPERACIONAIS = ["normal", "parcial"];
 const situacaoOperou = (situacao) => SITUACOES_OPERACIONAIS.includes(situacao);
+const valorMoedaInput = (valor) => escapeHtml(formatarMoedaBRL(valor));
 
 let ov = null;
 let fm = null;
@@ -262,7 +263,7 @@ const podeExcluir = () => pode("dashboard_executivo.excluir");
 function renderExclusaoConfirmacao(m) {
   const c = fm.campos;
   const resumo = situacaoOperou(c.situacao)
-    ? `Valor das vendas (iFood): ${fmtMoeda(c.valorVendasIfood)}`
+    ? `Valor das vendas (iFood): ${fmtMoeda(numeroDecimal(c.valorVendasIfood))}`
     : c.situacao === "sem_operacao" ? "Sem operação" : "Zero vendas";
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
@@ -361,7 +362,7 @@ function passoDesempenho() {
     <p class="dex-form-info">${icon("bar-chart", { size: 13 })} Desempenho acumulado do mês até aqui — informe o TOTAL desde ${fmtDataBr(inicioMes)} até ${fmtDataBr(fm.data)} (não só o que esse dia fez sozinho). O sistema calcula automaticamente quanto cada dia rendeu por conta própria, pela diferença com o acumulado do dia anterior. Preencha caso tenha acesso às informações — nada aqui é obrigatório: o que ficar em branco fica registrado como "não informado", nunca como zero.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo"><span>Quantidade de vendas acumulada no mês</span><input type="number" min="0" step="1" id="dex-qtd" value="${c.qtdVendas}" placeholder="Não informado"></label>
-      <label class="cfg-campo"><span>Valor bruto acumulado no mês (R$)</span><input type="text" inputmode="decimal" id="dex-valorbruto" value="${c.valorVendasBruto}" placeholder="0,00"></label>
+      <label class="cfg-campo"><span>Valor bruto acumulado no mês (R$)</span><input type="text" inputmode="decimal" data-moeda id="dex-valorbruto" value="${valorMoedaInput(c.valorVendasBruto)}" placeholder="R$ 0,00"></label>
       <label class="cfg-campo"><span>Novos clientes acumulados no mês</span><input type="number" min="0" step="1" id="dex-novos" value="${c.novosClientes}" placeholder="Não informado"></label>
       <label class="cfg-campo"><span>Ticket médio (mês até aqui, calculado)</span><input type="text" value="${ticket == null ? "—" : fmtMoeda(ticket)}" disabled></label>
     </div>`;
@@ -386,16 +387,16 @@ function passoFinanceiro() {
   const calc = calculoPreview(c);
   const mostrarEntreg = mostraEntregadores();
   return `
-    <p class="dex-form-info">${icon("calendar", { size: 13 })} Financeiro acumulado do mês até aqui — dados consolidados de ${fmtDataBr(fm.periodoFinanceiroInicio)} até ${fmtDataBr(fm.periodoFinanceiroFim)}, o extrato que o iFood libera hoje.</p>
+    <p class="dex-form-info">${icon("calendar", { size: 13 })} Financeiro acumulado do mês até aqui — dados consolidados de ${fmtDataBr(fm.periodoFinanceiroInicio)} até ${fmtDataBr(fm.periodoFinanceiroFim)}, o extrato que o iFood libera hoje. Digite o valor normalmente. Use vírgula para centavos.</p>
     <div class="cfg-form-grid">
-      <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="text" inputmode="decimal" id="dex-vifood" value="${c.valorVendasIfood}" placeholder="0,00"></label>
-      <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="text" inputmode="decimal" id="dex-taxas" value="${c.taxasComissoes}" placeholder="0,00"></label>
-      <label class="cfg-campo"><span>Serviços e promoções (R$) *</span><input type="text" inputmode="decimal" id="dex-servicos" value="${c.servicosPromocoes}" placeholder="0,00"></label>
+      <label class="cfg-campo"><span>Valor das vendas no financeiro do iFood (R$) *</span><input type="text" inputmode="decimal" data-moeda id="dex-vifood" value="${valorMoedaInput(c.valorVendasIfood)}" placeholder="R$ 0,00"></label>
+      <label class="cfg-campo"><span>Taxas e comissões (R$) *</span><input type="text" inputmode="decimal" data-moeda id="dex-taxas" value="${valorMoedaInput(c.taxasComissoes)}" placeholder="R$ 0,00"></label>
+      <label class="cfg-campo"><span>Serviços e promoções (R$) *</span><input type="text" inputmode="decimal" data-moeda id="dex-servicos" value="${valorMoedaInput(c.servicosPromocoes)}" placeholder="R$ 0,00"></label>
       ${mostrarEntreg
-        ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="text" inputmode="decimal" id="dex-entregadores" value="${c.taxasEntregadores}" placeholder="0,00"></label>`
+        ? `<label class="cfg-campo"><span>Taxas de entregadores da loja (R$) *</span><input type="text" inputmode="decimal" data-moeda id="dex-entregadores" value="${valorMoedaInput(c.taxasEntregadores)}" placeholder="R$ 0,00"></label>`
         : `<p class="dex-form-info dex-form-na">${icon("truck", { size: 13 })} Este modelo (Full Service) não usa entregador próprio — a entrega é feita pelo parceiro do iFood, então não há "taxas de entregadores da loja" a lançar.</p>`}
       <label class="cfg-campo"><span>Outras deduções/ajustes (R$)${podeNegativo ? " — negativo = ajuste a favor" : ""}</span>
-        <input type="text" inputmode="decimal" id="dex-outras" value="${c.outrasDeducoes}" placeholder="0,00"></label>
+        <input type="text" inputmode="decimal" data-moeda id="dex-outras" value="${valorMoedaInput(c.outrasDeducoes)}" placeholder="R$ 0,00"></label>
       ${podeNegativo ? `<label class="cfg-campo ed-campo-full"><span>Justificativa do ajuste (obrigatória se negativo)</span><input type="text" id="dex-justificativa" value="${escapeHtml(c.justificativaAjuste)}"></label>` : ""}
     </div>
     <div class="dex-calc-preview">
@@ -450,7 +451,7 @@ function passoConferencia() {
       <div class="dex-conf-grid">
         ${linha("Quantidade de vendas (acumulado no mês)", c.qtdVendas === "" ? "—" : c.qtdVendas)}
         ${linha("Novos clientes (acumulado no mês)", c.novosClientes === "" ? "—" : c.novosClientes)}
-        ${linha("Vendas brutas (acumulado no mês)", fmtMoeda(c.valorVendasBruto))}
+        ${linha("Vendas brutas (acumulado no mês)", fmtMoeda(numeroDecimal(c.valorVendasBruto)))}
         ${linha("Ticket médio (mês até aqui)", fmtMoeda(ticketMedioPreview(c)))}
       </div>
       <p class="dex-form-info">${icon("banknote", { size: 13 })} Financeiro ainda não disponível para esta data — o iFood só consolida com 1 dia
@@ -466,13 +467,13 @@ function passoConferencia() {
     <div class="dex-conf-grid">
       ${linha("Quantidade de vendas", c.qtdVendas === "" ? "—" : c.qtdVendas)}
       ${linha("Novos clientes", c.novosClientes === "" ? "—" : c.novosClientes)}
-      ${linha("Vendas brutas", fmtMoeda(c.valorVendasBruto))}
+      ${linha("Vendas brutas", fmtMoeda(numeroDecimal(c.valorVendasBruto)))}
       ${linha("Ticket médio", fmtMoeda(ticketMedioPreview(c)))}
-      ${linha("Valor das vendas (iFood)", fmtMoeda(c.valorVendasIfood))}
-      ${linha("Taxas e comissões", `${fmtMoeda(c.taxasComissoes)} (${fmtPct(calc.pctTaxas)})`)}
-      ${linha("Serviços e promoções", `${fmtMoeda(c.servicosPromocoes)} (${fmtPct(calc.pctServicos)})`)}
-      ${mostraEntregadores() ? linha("Taxas de entregadores", `${fmtMoeda(c.taxasEntregadores)} (${fmtPct(calc.pctEntregadores)})`) : ""}
-      ${linha("Outras deduções", fmtMoeda(c.outrasDeducoes))}
+      ${linha("Valor das vendas (iFood)", fmtMoeda(numeroDecimal(c.valorVendasIfood)))}
+      ${linha("Taxas e comissões", `${fmtMoeda(numeroDecimal(c.taxasComissoes))} (${fmtPct(calc.pctTaxas)})`)}
+      ${linha("Serviços e promoções", `${fmtMoeda(numeroDecimal(c.servicosPromocoes))} (${fmtPct(calc.pctServicos)})`)}
+      ${mostraEntregadores() ? linha("Taxas de entregadores", `${fmtMoeda(numeroDecimal(c.taxasEntregadores))} (${fmtPct(calc.pctEntregadores)})`) : ""}
+      ${linha("Outras deduções", fmtMoeda(numeroDecimal(c.outrasDeducoes)))}
       ${linha("Total de deduções", `${fmtMoeda(calc.totalDed)} (${fmtPct(calc.pctTotal)})`)}
       ${linha("Receita após deduções", fmtMoeda(calc.receita))}
     </div>
@@ -516,13 +517,17 @@ function wirePasso(m, chave) {
   }
   if (chave === "desempenho" && situacaoOperou(fm.campos.situacao)) {
     const bind = (id, campo) => m.querySelector(id)?.addEventListener("input", (e) => { fm.campos[campo] = e.target.value; atualizarPreviewTicket(m); });
-    bind("#dex-qtd", "qtdVendas"); bind("#dex-valorbruto", "valorVendasBruto"); bind("#dex-novos", "novosClientes");
+    bind("#dex-qtd", "qtdVendas"); bind("#dex-novos", "novosClientes");
+    aplicarMascaraMoeda(m.querySelector("#dex-valorbruto"), { aoAlterar: (valor) => { fm.campos.valorVendasBruto = valor; atualizarPreviewTicket(m); } });
   }
   if (chave === "financeiro" && situacaoOperou(fm.campos.situacao)) {
     const campos = ["dex-vifood:valorVendasIfood", "dex-taxas:taxasComissoes", "dex-servicos:servicosPromocoes", "dex-entregadores:taxasEntregadores", "dex-outras:outrasDeducoes"];
     campos.forEach((par) => {
       const [id, campo] = par.split(":");
-      m.querySelector(`#${id}`)?.addEventListener("input", (e) => { fm.campos[campo] = e.target.value; atualizarPreviewFinanceiro(m); });
+      aplicarMascaraMoeda(m.querySelector(`#${id}`), {
+        permiteNegativo: campo === "outrasDeducoes" && pode("dashboard_executivo.corrigir"),
+        aoAlterar: (valor) => { fm.campos[campo] = valor; atualizarPreviewFinanceiro(m); },
+      });
     });
     m.querySelector("#dex-justificativa")?.addEventListener("input", (e) => { fm.campos.justificativaAjuste = e.target.value; });
   }

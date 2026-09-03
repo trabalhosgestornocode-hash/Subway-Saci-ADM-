@@ -35,7 +35,7 @@ import {
   dashExecLancamentoMensal, dashExecAtualizarLancamentoMensal, dashExecExcluirLancamentoMensal,
 } from "./api.js";
 import { icon } from "./icons.js";
-import { numeroDecimal } from "./numeroDecimal.js";
+import { aplicarMascaraMoeda, formatarMoedaBRL, numeroDecimal } from "./numeroDecimal.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const PASSOS = ["periodo", "desempenho", "financeiro", "conferencia"];
@@ -74,6 +74,8 @@ const CAMPOS_EXTRAS = [
   { campo: "outrasDeducoesTotal", label: "Outras deduções do mês (R$)", tipo: "money", grupo: "financeiro" },
 ];
 const ROTULO_EXTRA = Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, c.label.replace(" do mês", "").replace(" (R$)", "")]));
+const campoExtra = (campo) => CAMPOS_EXTRAS.find((c) => c.campo === campo);
+const valorMoedaInput = (valor) => escapeHtml(formatarMoedaBRL(valor));
 const camposVisiveis = () => CAMPOS_EXTRAS.filter((c) => !(c.ocultoSeFullService && lm.modeloLogistico === "full_service"));
 const camposDoGrupo = (grupo) => camposVisiveis().filter((c) => c.grupo === grupo);
 
@@ -134,7 +136,7 @@ function anosDisponiveis() {
 function extrasInputsHtml(grupo) {
   return camposDoGrupo(grupo).map((c) => `
     <label class="cfg-campo"><span>${c.label}</span>
-      <input type="${c.tipo === "int" ? "number" : "text"}" inputmode="${c.tipo === "int" ? "numeric" : "decimal"}" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${lm.extras[c.campo] ?? ""}" placeholder="${c.tipo === "int" ? "Não informado" : "0,00"}"></label>`).join("");
+      <input type="${c.tipo === "int" ? "number" : "text"}" inputmode="${c.tipo === "int" ? "numeric" : "decimal"}" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" ${c.tipo === "money" ? "data-moeda" : ""} value="${c.tipo === "money" ? valorMoedaInput(lm.extras[c.campo]) : (lm.extras[c.campo] ?? "")}" placeholder="${c.tipo === "int" ? "Não informado" : "R$ 0,00"}"></label>`).join("");
 }
 
 // Ticket médio do mês = valor bruto de vendas ÷ quantidade de pedidos —
@@ -162,10 +164,14 @@ function atualizarTicketMedioPreview(m, extras) {
   campo.value = valor == null ? "—" : fmtMoeda(valor);
 }
 function wireExtrasInputs(m) {
-  m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
-    lm.extras[e.target.dataset.extra] = e.target.value;
-    atualizarTicketMedioPreview(m, lm.extras);
-  }));
+  m.querySelectorAll("[data-extra]").forEach((input) => {
+    const campo = input.dataset.extra;
+    if (campoExtra(campo)?.tipo === "money") {
+      aplicarMascaraMoeda(input, { aoAlterar: (valor) => { lm.extras[campo] = valor; atualizarTicketMedioPreview(m, lm.extras); } });
+    } else {
+      input.addEventListener("input", (e) => { lm.extras[campo] = e.target.value; atualizarTicketMedioPreview(m, lm.extras); });
+    }
+  });
 }
 
 // PASSO 1 — Período (mês/ano, igual já era antes do stepper existir)
@@ -215,10 +221,10 @@ function renderDesempenho(m) {
 function renderFinanceiro(m) {
   m.innerHTML = `
     ${cabecalhoPasso("Financeiro")}
-    <p class="dex-form-info">Dados oficiais do mês. O faturamento total é obrigatório; o detalhamento das deduções é opcional.</p>
+    <p class="dex-form-info">Dados oficiais do mês. O faturamento total é obrigatório; o detalhamento das deduções é opcional. Digite o valor normalmente. Use vírgula para centavos.</p>
     <div class="cfg-form-grid">
       <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$) *</span>
-        <input type="text" inputmode="decimal" id="lm-valor" value="${lm.valor}" placeholder="0,00"></label>
+        <input type="text" inputmode="decimal" data-moeda id="lm-valor" value="${valorMoedaInput(lm.valor)}" placeholder="R$ 0,00"></label>
       ${extrasInputsHtml("financeiro")}
     </div>
     <div class="ed-acoes dex-form-acoes">
@@ -227,7 +233,7 @@ function renderFinanceiro(m) {
     </div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   m.querySelector("#lm-voltar").addEventListener("click", () => { lm.passo = 2; renderDesempenho(m); });
-  m.querySelector("#lm-valor").addEventListener("input", (e) => { lm.valor = e.target.value; });
+  aplicarMascaraMoeda(m.querySelector("#lm-valor"), { aoAlterar: (valor) => { lm.valor = valor; } });
   wireExtrasInputs(m);
   m.querySelector("#lm-avancar").addEventListener("click", () => avancarParaConferencia(m));
 }
@@ -237,7 +243,7 @@ function payloadExtras() {
   const p = {};
   for (const { campo } of CAMPOS_EXTRAS) {
     const v = lm.extras[campo];
-    p[campo] = v === "" || v == null ? undefined : (CAMPOS_EXTRAS.find((c) => c.campo === campo)?.tipo === "money" ? numeroDecimal(v) : Number(v));
+    p[campo] = v === "" || v == null ? undefined : (campoExtra(campo)?.tipo === "money" ? numeroDecimal(v) : Number(v));
   }
   return p;
 }
@@ -393,14 +399,14 @@ function renderEdicao(m) {
   const lote = lm.lote;
   if (!lm.edicao) {
     lm.edicao = {
-      valorTotalMensal: String(lote.valorTotalMensal),
+      valorTotalMensal: lote.valorTotalMensal,
       extras: Object.fromEntries(CAMPOS_EXTRAS.map((c) => [c.campo, lote.extras[c.campo] ?? ""])),
     };
   }
   const ed = lm.edicao;
   const inputsExtras = (grupo) => camposDoGrupo(grupo).map((c) => `
     <label class="cfg-campo"><span>${c.label}</span>
-      <input type="${c.tipo === "int" ? "number" : "text"}" inputmode="${c.tipo === "int" ? "numeric" : "decimal"}" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" value="${ed.extras[c.campo]}" placeholder="${c.tipo === "int" ? "Não informado" : "0,00"}"></label>`).join("");
+      <input type="${c.tipo === "int" ? "number" : "text"}" inputmode="${c.tipo === "int" ? "numeric" : "decimal"}" min="0" step="${c.tipo === "int" ? "1" : "0.01"}" data-extra="${c.campo}" ${c.tipo === "money" ? "data-moeda" : ""} value="${c.tipo === "money" ? valorMoedaInput(ed.extras[c.campo]) : ed.extras[c.campo]}" placeholder="${c.tipo === "int" ? "Não informado" : "R$ 0,00"}"></label>`).join("");
   const ticket = ticketMedioPreview(ed.extras.valorVendasBrutoTotal, ed.extras.qtdVendasTotal);
   m.innerHTML = `
     <button class="modal-close" aria-label="Fechar">×</button>
@@ -409,7 +415,7 @@ function renderEdicao(m) {
     <div class="modal-sec-titulo">${icon("banknote", { size: 14 })} Financeiro <small>dados oficiais</small></div>
     <div class="cfg-form-grid">
       <label class="cfg-campo ed-campo-full"><span>Faturamento total do mês (R$)</span>
-        <input type="text" inputmode="decimal" id="lm-ed-valor" value="${ed.valorTotalMensal}" placeholder="0,00"></label>
+        <input type="text" inputmode="decimal" data-moeda id="lm-ed-valor" value="${valorMoedaInput(ed.valorTotalMensal)}" placeholder="R$ 0,00"></label>
       ${inputsExtras("financeiro")}
     </div>
     <p class="dex-form-info">${icon("alert-triangle", { size: 13 })} Alterar o faturamento recalcula a distribuição pelos mesmos ${lote.diasDistribuidos} dia(s) já lançados — a soma continua batendo exatamente com o novo valor.</p>
@@ -421,16 +427,20 @@ function renderEdicao(m) {
     </div>`;
   m.querySelector(".modal-close").addEventListener("click", fecharOverlay);
   m.querySelector("#lm-ed-cancelar").addEventListener("click", () => { lm.edicao = null; renderGerenciamento(m); });
-  m.querySelector("#lm-ed-valor").addEventListener("input", (e) => { ed.valorTotalMensal = e.target.value; });
+  aplicarMascaraMoeda(m.querySelector("#lm-ed-valor"), { aoAlterar: (valor) => { ed.valorTotalMensal = valor; } });
   wireExtrasInputsEdicao(m, ed);
   m.querySelector("#lm-ed-salvar").addEventListener("click", () => salvarEdicao(m));
 }
 
 function wireExtrasInputsEdicao(m, ed) {
-  m.querySelectorAll("[data-extra]").forEach((input) => input.addEventListener("input", (e) => {
-    ed.extras[e.target.dataset.extra] = e.target.value;
-    atualizarTicketMedioPreview(m, ed.extras);
-  }));
+  m.querySelectorAll("[data-extra]").forEach((input) => {
+    const campo = input.dataset.extra;
+    if (campoExtra(campo)?.tipo === "money") {
+      aplicarMascaraMoeda(input, { aoAlterar: (valor) => { ed.extras[campo] = valor; atualizarTicketMedioPreview(m, ed.extras); } });
+    } else {
+      input.addEventListener("input", (e) => { ed.extras[campo] = e.target.value; atualizarTicketMedioPreview(m, ed.extras); });
+    }
+  });
 }
 
 /** Só entra no patch o que MUDOU em relação ao valor salvo (`lm.lote`) — chave ausente = "não editei", preserva o que já estava lá. */
@@ -440,9 +450,11 @@ function payloadPatchExtras() {
   for (const { campo } of CAMPOS_EXTRAS) {
     const valorForm = lm.edicao.extras[campo];
     const valorOriginal = lote.extras[campo];
-    const strOriginal = valorOriginal == null ? "" : String(valorOriginal);
-    if (valorForm === strOriginal) continue; // intocado — não manda a chave
-    const tipo = CAMPOS_EXTRAS.find((c) => c.campo === campo)?.tipo;
+    const tipo = campoExtra(campo)?.tipo;
+    const formVazio = valorForm === "" || valorForm == null;
+    const originalVazio = valorOriginal == null;
+    const valorNormalizado = formVazio ? null : (tipo === "money" ? numeroDecimal(valorForm) : Number(valorForm));
+    if ((formVazio && originalVazio) || (!formVazio && !originalVazio && valorNormalizado === Number(valorOriginal))) continue;
     p[campo] = valorForm === "" ? null : (tipo === "money" ? numeroDecimal(valorForm) : Number(valorForm)); // limpou de propósito -> null explícito; senão, novo valor
   }
   return p;
