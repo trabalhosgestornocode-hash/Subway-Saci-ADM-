@@ -1,8 +1,18 @@
 # Fase P0 de Segurança — hardening
 
-Correções dos itens P0 da auditoria de 2026-09-03. Este documento cobre o que
-exige atenção operacional (rollout de MFA, backup) e o que precisa ser feito
-fora do código.
+Correções dos itens P0 da auditoria de 2026-09-03 (+ Fase P0.2, fechamento dos
+bloqueadores apontados por revisão independente). Este documento cobre o que
+exige atenção operacional (rollout de MFA, backup, aplicar a migration 067) e o
+que precisa ser feito fora do código.
+
+## Migration pendente
+
+**`067_agente_quota_atomica.sql`** — reserva atômica da quota do Agente Crescer
+(elimina uma race condition). **NÃO aplicar em produção sem aprovação.** O
+backend degrada sem ela (usa o contador best-effort anterior). Aplicar no
+staging primeiro; depois de aplicada, a reserva vira atômica e o fail-closed
+passa a valer. Validada contra PostgreSQL 17 local (10 chamadas paralelas / 1
+vaga → 1 aceita, 9 recusadas). Ver o cabeçalho do arquivo para o rollback.
 
 ---
 
@@ -25,19 +35,33 @@ O **suporte de backend está pronto e DORMENTE**:
 
 Nada muda no comportamento até as flags serem ligadas.
 
-### O que falta (NÃO feito nesta fase — exige decisão de produto + ambiente de teste)
+### Enrollment e desafio — FEITOS na Fase P0.2
 
-1. **Fluxo de enrollment no frontend.** O Supabase JS já expõe a API
-   (`supabase.auth.mfa.enroll({ factorType: "totp" })` → QR code →
-   `supabase.auth.mfa.challenge` → `supabase.auth.mfa.verify`). Precisa de:
-   - uma tela "Configurar verificação em duas etapas" (mostra QR, pede o
-     código de 6 dígitos, confirma);
-   - no login, se a conta tem fator verificado e o AAL é `aal1`, pedir o
-     código antes de liberar o app (`supabase.auth.mfa.challengeAndVerify`);
-   - um aviso persistente para SuperAdmin / Painel Administrativo sem MFA
-     (`req.user.mfaCadastrada === false`) até que cadastrem.
-2. **Testar em um projeto Supabase real.** MFA depende de config do projeto
-   (Authentication → MFA habilitado). Não foi possível validar aqui.
+- `frontend/src/mfa.js` — wrapper do `supabase.auth.mfa.*`
+  (enroll → challenge → verify; listFactors; getAuthenticatorAssuranceLevel;
+  unenroll). Nunca há TOTP próprio nem armazenamento de segredo.
+- **Configurações → Segurança** — cadastro do 2º fator (QR data-URI do
+  Supabase via `<img>` CSP-safe + chave manual + código de 6 dígitos),
+  remoção, e um aviso **não intrusivo** para contas com acesso administrativo
+  sem MFA.
+- **Login** (`app.js`) — após a senha, se a conta tem fator e a sessão está
+  em AAL1, abre o desafio (`abrirDesafioMfa`) antes de seguir. Cancelar =
+  logout.
+- **401 `MFA_REQUERIDA`** — quando o enforcement estiver ligado e uma rota
+  protegida devolver 401 com esse código, `api.js`/`sessao.js` NÃO expulsam
+  para o login (a sessão é válida): disparam `app:mfa-requerida`, que abre o
+  desafio e recarrega. O backend continua a autoridade.
+- `POST /api/v1/sessao/mfa/evento` — o frontend avisa após cadastrar/remover;
+  o backend **relê `req.user.mfaCadastrada`** (de `getUser().factors`) e
+  audita o estado real (`seguranca.mfa_cadastrada` / `mfa_removida`) — não
+  confia no que o cliente diz, não recebe o segredo.
+
+### O que ainda falta
+
+1. **Testar em um projeto Supabase real** com MFA habilitado (Authentication →
+   MFA → TOTP). Sem isso não dá para validar o fluxo ponta a ponta.
+2. **Modal de desafio** — a versão atual é funcional e enxuta; pode ganhar
+   polimento (auto-submit ao 6º dígito, contagem regressiva do TOTP).
 
 ### Rollout seguro (ordem obrigatória)
 
@@ -64,6 +88,41 @@ Nada muda no comportamento até as flags serem ligadas.
 
 Remover a env var (ou setar `false`) e redeployar. O gate volta a ser no-op
 imediatamente (o valor é lido do ambiente na subida do processo).
+
+### Recuperação — "e se um SuperAdmin perder o autenticador?"
+
+**Não existe endpoint público de "remover MFA".** A remoção pelo próprio dono
+exige a sessão dele autenticada (`supabase.auth.mfa.unenroll` — ver
+`frontend/src/mfa.js#removerFator`). Para quem perdeu o acesso:
+
+1. **Preferência — múltiplos fatores.** Todo SuperAdmin deve cadastrar **dois**
+   autenticadores (ex.: app no celular + app no desktop, ou uma chave de
+   backup). Perder um não tranca a conta; o outro ainda verifica.
+
+2. **Remoção administrativa (Supabase Dashboard).** Um operador com acesso ao
+   projeto Supabase remove o fator perdido em
+   *Authentication → Users → (usuário) → MFA → delete factor*, OU via API
+   admin com a `service_role`:
+   ```
+   POST {SUPABASE_URL}/auth/v1/admin/users/{user_id}/factors/{factor_id}  (DELETE)
+   Authorization: Bearer {SERVICE_ROLE_KEY}
+   ```
+   Isso é uma ação **manual, rara e privilegiada** (quem tem a service_role já
+   controla tudo). Deve ser registrada fora da aplicação (ticket + aprovação
+   de 2 pessoas). **Não** foi criado um endpoint no backend para isso — seria
+   uma nova superfície privilegiada de alto risco; o custo/benefício não
+   compensa para um evento raro.
+
+3. **Conta de emergência ("quebra-vidro").** Manter **um** SuperAdmin dedicado,
+   com MFA já cadastrado, cujas credenciais (senha + seed TOTP impresso)
+   ficam em cofre físico/gerenciador de segredos da empresa, usadas só em
+   incidente. Com o enforcement ligado, é o caminho de entrada se todos os
+   outros administradores ficarem sem 2º fator ao mesmo tempo.
+
+4. **Risco de lockout total.** Só acontece se **todas** as contas SuperAdmin
+   perderem o 2º fator com o enforcement ligado. Mitigado por (1) + (3). Se
+   mesmo assim ocorrer: desligar `MFA_ENFORCE_SUPERADMIN` no Render e
+   redeployar (o gate volta a no-op), resolver os fatores, religar.
 
 ---
 
@@ -92,17 +151,43 @@ O que dá para afirmar a partir do repositório:
 | PITR disponível? Até quantos dias/segundos atrás? | Supabase → Database → Backups → Point in Time |
 | Já foi feito um teste de restore? | (processo — provavelmente não) |
 
+### Inventário do que existe (investigação read-only — Fase P0.2)
+
+```
+BACKUP AUTOMÁTICO: NÃO COMPROVADO
+  - depende do plano Supabase; não há como verificar pelo código/repo.
+
+PITR (point-in-time recovery): NÃO COMPROVADO
+  - idem.
+
+BACKUP MANUAL: PARCIAL e AD-HOC, NÃO cobre o banco
+  - `backend/backups/` (gitignored) contém:
+      * canonico.json  -> snapshot das fichas técnicas canônicas (1 módulo)
+      * insumos-<timestamp>/  -> snapshots de importação de insumos (script)
+      * relatorio-*.{txt,json,md}  -> relatórios de auditoria/simulação
+  - São artefatos de scripts locais (criar-modelo-padrao.js, auditar-fichas).
+    NÃO incluem vendas, financeiro, dashboard, bonificação, parser,
+    plataforma_auditoria, usuários, sessões. NÃO são automatizados.
+
+pg_dump / cron de backup: NÃO EXISTE (nenhum script no repo).
+
+RESTORE TESTADO: NÃO (nenhuma evidência de um teste de restauração).
+```
+
 ### Resposta às perguntas da auditoria
 
 > **Se o banco fosse apagado hoje, qual seria o caminho de recuperação?**
-> - Plano Pro+: restaurar o backup diário mais recente (ou PITR) pelo painel
->   do Supabase. Perda = até 24h (Pro) ou minutos (PITR).
-> - Plano Free: **apenas** os dumps manuais em `backend/backups/`, se
->   existirem e estiverem atualizados. Perda potencial = semanas.
+> - Plano Pro+ do Supabase: restaurar o backup diário mais recente (ou PITR)
+>   pelo painel. Perda = até 24h (Pro) ou minutos (PITR).
+> - Plano Free: **não há backup do banco.** Os arquivos em `backend/backups/`
+>   reconstroem só as fichas técnicas e alguns insumos — semanas de vendas,
+>   financeiro e auditoria seriam perdidas.
+> - Em qualquer plano: o schema é reconstruível pelas 67 migrations.
 
 > **Perda máxima de dados?**
 > **NÃO COMPROVADO.** Depende inteiramente do plano contratado, que não é
-> verificável a partir do código.
+> verificável a partir do código. **Assuma o pior (perda total além do schema)
+> até haver evidência documentada de backup automático + um teste de restore.**
 
 ### Ação recomendada (P0.11)
 
