@@ -21,12 +21,20 @@ function qs(p = {}) {
   return s ? `?${s}` : "";
 }
 
+/**
+ * @param {string} rota
+ * @param {RequestInit & {json?: object}} [opcoes] `json` serializa o corpo e
+ *   já manda o Content-Type — só as rotas de desbloqueio usam.
+ */
 async function chamar(rota, opcoes = {}) {
   const token = await tokenAtual();
+  const { json, ...resto } = opcoes;
   const r = await fetch(API_BASE + BASE + rota, {
-    ...opcoes,
+    ...resto,
+    ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
     headers: {
       ...(opcoes.headers ?? {}),
+      ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
@@ -82,6 +90,29 @@ export const painelAdmApi = {
    */
   calendarioUnidade: (unidadeId, mes) =>
     chamar(`/unidades/${encodeURIComponent(unidadeId)}/calendario` + qs({ mes })),
+
+  // -- Desbloqueio administrativo de um dia (migration 068) --
+  //
+  // As ÚNICAS chamadas de ESCRITA do painel. Quem decide se um dia PODE ser
+  // liberado é o backend (`podeDesbloquear` vem pronto no calendário); aqui
+  // não se recalcula regra nenhuma.
+
+  /** Histórico de liberações da unidade no mês (ativas e revogadas). */
+  desbloqueios: (unidadeId, mes) =>
+    chamar(`/unidades/${encodeURIComponent(unidadeId)}/desbloqueios` + qs({ mes })),
+
+  /**
+   * Libera UM dia. `motivo` é uma das chaves canônicas do backend;
+   * `observacao` é obrigatória quando o motivo é "outro".
+   * @param {string} unidadeId
+   * @param {{data: string, motivo: string, observacao?: string}} corpo
+   */
+  desbloquearDia: (unidadeId, corpo) =>
+    chamar(`/unidades/${encodeURIComponent(unidadeId)}/desbloqueios`, { method: "POST", json: corpo }),
+
+  /** Revoga uma liberação ainda não usada. */
+  revogarDesbloqueio: (unidadeId, desbloqueioId) =>
+    chamar(`/unidades/${encodeURIComponent(unidadeId)}/desbloqueios/${encodeURIComponent(desbloqueioId)}`, { method: "DELETE" }),
 
   // -- Financeiro / Relatórios --
   //

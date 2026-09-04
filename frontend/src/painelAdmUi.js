@@ -113,10 +113,36 @@ export function estadoDiaCalendario(dia) {
     if (motivo === "hoje") return { classe: "hoje", rotulo: "Hoje — vence amanhã" };
     return { classe: "na", rotulo: "Não aplicável" };
   }
-  if (dia.painel === "COMPLETO") return { classe: "concluido", rotulo: "Concluído" };
+  if (dia.painel === "COMPLETO") {
+    // Um dia que só fechou porque alguém liberou merece nome próprio — é o
+    // "Regularizado" da linha do tempo, não um concluído qualquer.
+    return dia.situacaoDesbloqueio === "regularizado"
+      ? { classe: "regularizado", rotulo: "Regularizado após liberação" }
+      : { classe: "concluido", rotulo: "Concluído" };
+  }
   if (dia.painel === "INCOMPLETO") return { classe: "em-preenchimento", rotulo: "Em preenchimento" };
-  if (dia.bloqueada) return { classe: "bloqueado", rotulo: "Bloqueado" };
+  // Liberado e AINDA vazio: continua sendo pendência (nunca vira "ok"), mas a
+  // cor conta a história certa — a porta está aberta e ninguém entrou.
+  if (dia.situacaoDesbloqueio === "aguardando_lancamento") {
+    return { classe: "liberado", rotulo: "Liberado administrativamente — aguardando lançamento" };
+  }
+  if (dia.bloqueada) return { classe: "bloqueado", rotulo: "Bloqueado pela sequência" };
   return { classe: "nao-realizado", rotulo: "Não realizado" };
+}
+
+/** Rótulos amigáveis da coluna "Financeiro" na lista de dias (item 1 e 11). */
+export function rotuloFinanceiroDia(dia) {
+  if (!dia) return "—";
+  if (dia.painel === "NAO_APLICAVEL") {
+    return dia.motivoNaoAplicavel === "hoje" ? "Vence amanhã" : "—";
+  }
+  if (dia.painel === "COMPLETO") {
+    return dia.situacaoDesbloqueio === "regularizado" ? "Regularizado" : "Lançado";
+  }
+  if (dia.painel === "INCOMPLETO") return "Em preenchimento";
+  if (dia.situacaoDesbloqueio === "aguardando_lancamento") return "Aguardando lançamento";
+  if (dia.bloqueada) return "Bloqueado pela sequência";
+  return "Bloqueado";
 }
 
 // ---------------------------------------------------------------------------

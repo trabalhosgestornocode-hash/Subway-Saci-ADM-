@@ -29,14 +29,32 @@ administrativoRouter.use(requirePainelAdministrativo);
 administrativoRouter.get("/ping", c.ping);
 
 // ---- Fase F: monitoramento cross-tenant (monitor "Dashboard iFood").
-// Tudo GET / somente leitura. O universo monitorado (unidades elegíveis) e os
+// Somente leitura. O universo monitorado (unidades elegíveis) e os
 // lançamentos são carregados em lote no service — nunca `for unidade: SELECT`.
+//
+// (A ÚNICA exceção ao "somente leitura" deste router é o bloco de
+// desbloqueios logo abaixo — POST/DELETE que concedem/revogam permissão de
+// lançamento de UM dia, sem tocar em nenhum dado operacional.)
 administrativoRouter.get("/visao-geral", c.visaoGeral);
 administrativoRouter.get("/monitoramento-diario", c.monitoramentoDiario);
 administrativoRouter.get("/pendencias", c.pendencias);
 administrativoRouter.get("/empresas", c.empresas);            // antes de /empresas/:id
 administrativoRouter.get("/empresas/:organizacaoId", c.detalheEmpresa);
 administrativoRouter.get("/unidades/:unidadeId/calendario", c.calendarioUnidade);
+
+// ---- Desbloqueio administrativo de um dia do Dashboard iFood (migration 068).
+//
+// PRIMEIRA e ÚNICA escrita deste router — o resto continua somente leitura. A
+// autorização é a MESMA do módulo inteiro (`requirePainelAdministrativo` no
+// router, com bypass de SuperAdmin): não existe permissão nova, e usuário
+// comum de empresa não alcança estas rotas nem chamando direto.
+//
+// Escopo estreito por construção: uma unidade, uma data, um tipo. Nunca
+// atinge outra unidade/empresa/data nem qualquer outro módulo. Ver
+// administrativo.service.js#desbloquearDia.
+administrativoRouter.get("/unidades/:unidadeId/desbloqueios", c.listarDesbloqueios);
+administrativoRouter.post("/unidades/:unidadeId/desbloqueios", c.criarDesbloqueio);
+administrativoRouter.delete("/unidades/:unidadeId/desbloqueios/:desbloqueioId", c.revogarDesbloqueio);
 
 // ---- Financeiro / Relatorios. Rankings e relatorio executivo vivem em rotas
 // proprias para nao inchar o payload da Visao Geral.

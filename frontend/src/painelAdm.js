@@ -116,6 +116,10 @@ export async function abrirPainelAdministrativo(opcoes) {
     voltar: voltarPadm,
     irParaTela: irParaPadm,
     mudarPeriodo,
+    // Repinta a tela atual sem mexer na pilha nem no período — usado depois
+    // de liberar/revogar um dia, para o calendário refletir o novo estado
+    // vindo do backend (nunca um estado remendado no cliente).
+    recarregar: renderPadmAtual,
     aoAcessoRevogado: (msg) => {
       state.telaPainelAdm = null;
       opcoes.aoAcessoRevogado?.(msg);

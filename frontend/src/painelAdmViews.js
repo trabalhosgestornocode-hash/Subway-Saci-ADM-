@@ -22,7 +22,7 @@ import {
   card, cards, secao, carregando, erro, vazio, busca, metrica, barraSaude,
   chipCriticidade, chipCategoria, chip, notaHerdada,
   fmtPct, fmtConformidade, fmtNum, fmtData, fmtDataCurta, fmtMesLongo, fmtDiasPendentes,
-  CATEGORIA_D1, CRITICIDADE, ORDEM_ACAO, EXPLICACAO_D1, estadoDiaCalendario,
+  CATEGORIA_D1, CRITICIDADE, ORDEM_ACAO, EXPLICACAO_D1, estadoDiaCalendario, rotuloFinanceiroDia,
   realce, seloPendencia, blocoEmpresa, filtroSeveridade, filtrarEmpresas,
   contagensEmpresas, severidadeDe, qtdPendentes, linhaUnidadePendente,
   fmtDinheiro, fmtDinheiroCurto, fmtDinheiroExato, fmtVariacao, fmtVariacaoPP,
@@ -72,7 +72,7 @@ export function resetFiltrosIdentificacao() {
 // ---------------------------------------------------------------------------
 
 /** Ganchos injetados por painelAdm.js: navegação interna + acesso revogado. */
-let nav = { abrirEmpresa() {}, abrirUnidade() {}, irParaTela() {}, voltar() {}, mudarPeriodo() {}, aoAcessoRevogado: null };
+let nav = { abrirEmpresa() {}, abrirUnidade() {}, irParaTela() {}, voltar() {}, mudarPeriodo() {}, recarregar() {}, aoAcessoRevogado: null };
 export function ligarNavegacao(ganchos) { nav = { ...nav, ...ganchos }; }
 
 /** Silhueta de carregamento por tipo de tela. */
@@ -101,7 +101,12 @@ export async function renderViewPadm(entrada = { tipo: "tela", id: "visao-geral"
     } else if (entrada.tipo === "calendario") {
       const dados = await api.calendarioUnidade(entrada.unidadeId, mes);
       v.innerHTML = htmlCalendario(dados, entrada.unidadeNome);
-      ligarCalendario();
+      ligarCalendario({
+        api,
+        unidadeId: entrada.unidadeId,
+        unidadeNome: entrada.unidadeNome ?? dados?.unidade?.unidadeNome,
+        motivos: dados?.motivos,
+      });
     } else if (entrada.id === "diario") {
       const dados = await api.monitoramentoDiario(filtrosSemVazio(mes));
       v.innerHTML = htmlDiario(dados, filtrosDiario);
@@ -857,13 +862,75 @@ function cabecalhoDetalhe({ voltar, titulo, selo = "", sub = "" }) {
 
 const LEGENDA_CAL = [
   ["concluido", "Concluído"],
+  ["regularizado", "Regularizado após liberação"],
   ["em-preenchimento", "Em preenchimento"],
+  ["liberado", "Liberado administrativamente"],
   ["nao-realizado", "Não realizado"],
-  ["bloqueado", "Bloqueado"],
+  ["bloqueado", "Bloqueado pela sequência"],
   ["hoje", "Hoje"],
   ["futuro", "Ainda não venceu"],
   ["na", "Não aplicável"],
 ];
+
+/**
+ * Lista dos dias que exigem atenção — a tabela do item 1 do pedido. Só entra
+ * dia que o painel considera cobrável e que ainda não fechou (`NAO_LANCADO`)
+ * ou que fechou por liberação (para mostrar a regularização).
+ *
+ * A ação "Desbloquear" aparece SÓ onde o backend disse `podeDesbloquear` —
+ * nenhuma regra de disponibilidade é recalculada aqui (item 4 do pedido).
+ * @param {Array<object>} dias
+ */
+export function htmlDiasPendentes(dias = []) {
+  const relevantes = dias.filter((d) => d.painel === "NAO_LANCADO" || d.situacaoDesbloqueio);
+  if (!relevantes.length) {
+    return `<p class="padm-vazio">Nenhum dia pendente ou liberado neste mês.</p>`;
+  }
+
+  const linhas = relevantes.map((dia) => {
+    const est = estadoDiaCalendario(dia);
+    const lib = dia.liberacaoAtiva;
+    const acao = dia.podeDesbloquear
+      ? `<button type="button" class="btn btn-sm" data-padm-desbloquear="${escapeHtml(dia.data)}">Desbloquear financeiro</button>`
+      : lib && dia.situacaoDesbloqueio === "aguardando_lancamento"
+        ? `<button type="button" class="btn btn-ghost btn-sm" data-padm-revogar="${escapeHtml(lib.id)}" data-padm-data="${escapeHtml(dia.data)}">Revogar liberação</button>`
+        : `<span class="padm-dia-acao-vazia">—</span>`;
+
+    // Procedência: quem liberou e quando. Some depois da revogação, mas
+    // continua no histórico do backend.
+    const porQuem = lib
+      ? `<small class="padm-dia-origem">Liberado por ${escapeHtml(lib.criadoPorNome ?? "—")} em ${escapeHtml(fmtDataHoraCurta(lib.criadoEm))}${lib.motivoRotulo ? ` · ${escapeHtml(lib.motivoRotulo)}` : ""}</small>`
+      : "";
+
+    return `
+      <li class="padm-dia-item padm-dia-item--${est.classe}">
+        <span class="padm-dia-data"><b>${escapeHtml(fmtDiaCurto(dia.data))}</b></span>
+        <span class="padm-dia-estado">
+          <span class="padm-dia-rotulo">${escapeHtml(rotuloFinanceiroDia(dia))}</span>
+          ${porQuem}
+        </span>
+        <span class="padm-dia-acao">${acao}</span>
+      </li>`;
+  }).join("");
+
+  return `<ul class="padm-dias-lista">${linhas}</ul>`;
+}
+
+/** "02 SET" — rótulo curto do dia na lista. */
+function fmtDiaCurto(iso) {
+  const MESES = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+  const [, m, d] = String(iso ?? "").split("-");
+  return m && d ? `${d} ${MESES[Number(m) - 1] ?? ""}`.trim() : String(iso ?? "—");
+}
+
+/** "04/09/2026 10:32" a partir de um timestamptz; "—" quando ausente. */
+function fmtDataHoraCurta(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "—";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 export function htmlCalendario(d, unidadeNome) {
   const dias = d?.dias ?? [];
@@ -888,6 +955,9 @@ export function htmlCalendario(d, unidadeNome) {
     return acc;
   }, {});
 
+  // Destaque de risco (item 12): liberado e ainda vazio continua cobrando.
+  const aguardando = d?.liberacoes?.total ?? 0;
+
   return `
     ${cabecalhoDetalhe({
       voltar: "Voltar",
@@ -895,6 +965,7 @@ export function htmlCalendario(d, unidadeNome) {
       sub: d?.unidade?.empresaNome ? `${d.unidade.empresaNome} · ${fmtMesLongo(d?.mes)}` : fmtMesLongo(d?.mes),
     })}
     ${d?.sequenciaBloqueada ? `<div class="padm-aviso padm-aviso--critico">${icon("ban", { size: 15 })}<span><b>Sequência bloqueada.</b> Há dia(s) sem lançamento travando os seguintes — resolva o mais antigo primeiro.</span></div>` : ""}
+    ${aguardando > 0 ? `<div class="padm-aviso padm-aviso--atencao">${icon("clock", { size: 15 })}<span><b>${aguardando} dia${aguardando > 1 ? "s" : ""} liberado${aguardando > 1 ? "s" : ""} administrativamente</b> aguardando a unidade lançar o financeiro.</span></div>` : ""}
     <div class="padm-cal-wrap">
       <div class="padm-cal">
         <header class="padm-cal-nav">
@@ -912,7 +983,16 @@ export function htmlCalendario(d, unidadeNome) {
             <li><i class="padm-cal-dia--${c}"></i><span>${escapeHtml(r)}</span><b>${contagem[c] ? contagem[c] : ""}</b></li>`).join("")}
         </ul>
       </aside>
-    </div>`;
+    </div>
+    <section class="padm-dias">
+      <h3>Dias pendentes</h3>
+      <p class="padm-dias-ajuda">
+        Liberar um dia apenas <b>permite</b> que a unidade lance o financeiro dele —
+        não preenche nada nem conclui o dia. A unidade ainda precisa entrar no
+        Dashboard iFood e preencher.
+      </p>
+      ${htmlDiasPendentes(dias)}
+    </section>`;
 }
 
 /** "próximo mês" só até o mês corrente (dataReferencia). Sem futuro infinito. */
@@ -1345,11 +1425,162 @@ function ligarDetalhe() {
  * O calendário navega o PERÍODO GLOBAL — mudar o mês aqui move o painel
  * inteiro, para o gestor não voltar e encontrar outro mês.
  */
-function ligarCalendario() {
+function ligarCalendario(ctx = {}) {
   el('[data-padm-acao="voltar"]')?.addEventListener("click", () => nav.voltar?.());
   el('[data-padm-acao="mes-anterior"]')?.addEventListener("click", () => nav.mudarPeriodo?.(-1));
   const prox = el('[data-padm-acao="mes-proximo"]');
   if (prox && !prox.disabled) prox.addEventListener("click", () => nav.mudarPeriodo?.(+1));
+
+  els("[data-padm-desbloquear]").forEach((b) =>
+    b.addEventListener("click", () => abrirModalDesbloqueio({
+      ...ctx, data: b.dataset.padmDesbloquear,
+    })));
+  els("[data-padm-revogar]").forEach((b) =>
+    b.addEventListener("click", () => confirmarRevogacao({
+      ...ctx, desbloqueioId: b.dataset.padmRevogar, data: b.dataset.padmData,
+    })));
+}
+
+// ===========================================================================
+// 6.1 DESBLOQUEIO ADMINISTRATIVO DE UM DIA (migration 068)
+//
+// O painel NUNCA decide se um dia pode ser liberado — ele só oferece a ação
+// onde o backend marcou `podeDesbloquear`. Aqui há apenas coleta de motivo,
+// confirmação explícita e o recarregamento da tela.
+// ===========================================================================
+
+/** Motivos vindos do backend (fonte única); fallback só para o modal não vazar vazio. */
+const MOTIVOS_FALLBACK = {
+  dia_nao_lancado: "Dia não lançado pela unidade",
+  falha_operacional: "Falha operacional",
+  dados_posteriores: "Dados disponíveis posteriormente",
+  correcao_administrativa: "Correção administrativa",
+  outro: "Outro",
+};
+
+/**
+ * HTML do modal de liberação. Construtor PURO — o teste monta e inspeciona
+ * sem abrir nada (mesma disciplina de `htmlModalPdf`).
+ * @param {{data: string, unidadeNome?: string, motivos?: Record<string,string>, erro?: string|null, salvando?: boolean}} ctx
+ */
+export function htmlModalDesbloqueio(ctx = {}) {
+  const motivos = ctx.motivos ?? MOTIVOS_FALLBACK;
+  const opcoes = Object.entries(motivos)
+    .map(([v, r]) => `<option value="${escapeHtml(v)}">${escapeHtml(r)}</option>`).join("");
+
+  return `
+    <div class="padm-modal-fundo" data-padm-acao="fechar-desbloqueio"></div>
+    <div class="padm-modal" role="dialog" aria-modal="true" aria-labelledby="padm-desb-tit">
+      <header class="padm-modal-head">
+        <h2 id="padm-desb-tit">Desbloquear financeiro</h2>
+        <button class="padm-modal-x" data-padm-acao="fechar-desbloqueio" aria-label="Fechar">✕</button>
+      </header>
+      <div class="padm-modal-corpo">
+        <p class="padm-desb-aviso">
+          Este desbloqueio permitirá que a unidade lance manualmente o financeiro de
+          <b>${escapeHtml(fmtData(ctx.data))}</b>${ctx.unidadeNome ? ` (${escapeHtml(ctx.unidadeNome)})` : ""}
+          mesmo fora da sequência normal do Dashboard iFood.
+        </p>
+        <p class="padm-desb-nota">
+          A liberação <b>não</b> preenche valores nem conclui o dia — a unidade
+          ainda precisa lançar os dados normalmente.
+        </p>
+        <label class="padm-campo">
+          <span>Motivo</span>
+          <select data-padm-desb-motivo>${opcoes}</select>
+        </label>
+        <label class="padm-campo" data-padm-desb-obs-campo hidden>
+          <span>Observação</span>
+          <textarea data-padm-desb-obs rows="3" maxlength="500"
+            placeholder="Descreva o motivo desta liberação."></textarea>
+        </label>
+        ${ctx.erro ? `<p class="padm-erro">${escapeHtml(ctx.erro)}</p>` : ""}
+      </div>
+      <footer class="padm-modal-pe">
+        <button class="btn btn-ghost" data-padm-acao="fechar-desbloqueio">Cancelar</button>
+        <button class="btn" data-padm-acao="desb-confirmar" ${ctx.salvando ? "disabled" : ""}>
+          ${ctx.salvando ? "Liberando…" : "Confirmar desbloqueio"}
+        </button>
+      </footer>
+    </div>`;
+}
+
+function pintarModalDesbloqueio(ctx) {
+  const cx = caixaModal();
+  if (!cx) return;
+  cx.hidden = false;
+  cx.innerHTML = htmlModalDesbloqueio(ctx);
+
+  els('[data-padm-acao="fechar-desbloqueio"]').forEach((b) => b.addEventListener("click", fecharModalDesbloqueio));
+
+  // "Outro" é o único motivo que exige texto — o backend recusa sem ele.
+  const sel = el("[data-padm-desb-motivo]");
+  const campoObs = el("[data-padm-desb-obs-campo]");
+  const sincronizarObs = () => { if (campoObs) campoObs.hidden = sel?.value !== "outro"; };
+  sel?.addEventListener("change", sincronizarObs);
+  sincronizarObs();
+
+  el('[data-padm-acao="desb-confirmar"]')?.addEventListener("click", () => confirmarDesbloqueio(ctx));
+}
+
+export function fecharModalDesbloqueio() {
+  const cx = caixaModal();
+  if (!cx) return;
+  cx.hidden = true;
+  cx.innerHTML = "";
+}
+
+/** @param {{unidadeId: string, unidadeNome?: string, data: string, api?: object, motivos?: object}} ctx */
+export function abrirModalDesbloqueio(ctx = {}) {
+  pintarModalDesbloqueio({ ...ctx, erro: null, salvando: false });
+}
+
+async function confirmarDesbloqueio(ctx) {
+  const api = ctx.api ?? painelAdmApi;
+  const motivo = el("[data-padm-desb-motivo]")?.value ?? "dia_nao_lancado";
+  const observacao = el("[data-padm-desb-obs]")?.value?.trim() || undefined;
+
+  if (motivo === "outro" && !observacao) {
+    pintarModalDesbloqueio({ ...ctx, erro: "Descreva o motivo na observação." });
+    return;
+  }
+
+  pintarModalDesbloqueio({ ...ctx, salvando: true, erro: null });
+  try {
+    await api.desbloquearDia(ctx.unidadeId, { data: ctx.data, motivo, observacao });
+    fecharModalDesbloqueio();
+    nav.recarregar?.();
+  } catch (e) {
+    if (e?.status === 403) {
+      fecharModalDesbloqueio();
+      nav.aoAcessoRevogado?.(e.message || "Seu acesso ao Painel Administrativo não está mais disponível.");
+      return;
+    }
+    pintarModalDesbloqueio({ ...ctx, salvando: false, erro: e?.message ?? "Não foi possível liberar este dia." });
+  }
+}
+
+/**
+ * Revogar é destrutivo do ponto de vista do operador da loja (o dia volta a
+ * travar), então confirma antes. Não usa modal próprio: é uma pergunta de
+ * sim/não, sem dado a coletar.
+ */
+async function confirmarRevogacao(ctx = {}) {
+  const api = ctx.api ?? painelAdmApi;
+  const ok = globalThis.confirm?.(
+    `Revogar a liberação de ${fmtData(ctx.data)}? O dia volta a seguir a regra normal do Dashboard iFood.`,
+  );
+  if (!ok) return;
+  try {
+    await api.revogarDesbloqueio(ctx.unidadeId, ctx.desbloqueioId);
+    nav.recarregar?.();
+  } catch (e) {
+    if (e?.status === 403) {
+      nav.aoAcessoRevogado?.(e.message || "Seu acesso ao Painel Administrativo não está mais disponível.");
+      return;
+    }
+    globalThis.alert?.(e?.message ?? "Não foi possível revogar a liberação.");
+  }
 }
 
 // ===========================================================================

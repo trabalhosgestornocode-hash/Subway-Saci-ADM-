@@ -78,6 +78,10 @@ export function projetarDia(dia, { hojeIso, unidadeCriadaEm = null }) {
     statusDia: dia.status,
     bloqueada: dia.status === STATUS_DIA.BLOQUEADO,
     emPreenchimento: dia.status === STATUS_DIA.FINANCEIRO_PENDENTE || dia.status === STATUS_DIA.RASCUNHO,
+    // Procedência (migration 068): este dia está disponível por LIBERAÇÃO
+    // ADMINISTRATIVA, não pela regra normal. Vem de `statusMes` — este
+    // arquivo continua sem recalcular nada de sequência.
+    desbloqueadoAdmin: dia.desbloqueadoAdmin === true,
   };
 
   // D+0 e futuro: fora da cobrança. A fronteira do fechamento é SEMPRE "ontem"
@@ -93,16 +97,35 @@ export function projetarDia(dia, { hojeIso, unidadeCriadaEm = null }) {
     return { ...base, painel: STATUS_PAINEL.NAO_APLICAVEL, motivoNaoAplicavel: "antes_da_criacao" };
   }
 
-  return { ...base, painel: PROJECAO[dia.status] ?? STATUS_PAINEL.NAO_APLICAVEL, motivoNaoAplicavel: null };
+  const painel = PROJECAO[dia.status] ?? STATUS_PAINEL.NAO_APLICAVEL;
+  return { ...base, painel, situacaoDesbloqueio: situacaoDesbloqueio(base.desbloqueadoAdmin, painel), motivoNaoAplicavel: null };
+}
+
+/**
+ * Em que pé está uma liberação administrativa NESTE dia — o que a UI traduz
+ * para "Aguardando lançamento" / "Regularizado" (itens 6 e 11 do pedido).
+ *
+ * REGRA DE OURO preservada: `regularizado` é uma LEITURA do status real do
+ * dia (COMPLETO), nunca uma promoção. Liberar não regulariza nada — só a
+ * unidade preencher regulariza. Enquanto isso o dia segue NAO_LANCADO e
+ * continua contando como pendência (item 12).
+ * @returns {"aguardando_lancamento"|"regularizado"|null}
+ */
+function situacaoDesbloqueio(desbloqueadoAdmin, painel) {
+  if (!desbloqueadoAdmin) return null;
+  if (painel === STATUS_PAINEL.COMPLETO) return "regularizado";
+  return "aguardando_lancamento";
 }
 
 /**
  * Roda `statusMes` (FONTE ÚNICA da sequência) para um mês e projeta cada dia.
- * @param {{dias: Array<{data: string, lancamento: object|null}>, hojeIso: string, unidadeCriadaEm?: string|null}} p
+ * `desbloqueios` (Set de datas ISO liberadas administrativamente) só é
+ * repassado — quem interpreta continua sendo `statusMes`.
+ * @param {{dias: Array<{data: string, lancamento: object|null}>, hojeIso: string, unidadeCriadaEm?: string|null, desbloqueios?: Set<string>}} p
  * @returns {Array<ReturnType<typeof projetarDia>>}
  */
-export function projetarMes({ dias, hojeIso, unidadeCriadaEm = null }) {
-  const comStatus = statusMes({ dias, hojeIso });
+export function projetarMes({ dias, hojeIso, unidadeCriadaEm = null, desbloqueios }) {
+  const comStatus = statusMes({ dias, hojeIso, desbloqueios });
   return comStatus.map((d) => projetarDia(d, { hojeIso, unidadeCriadaEm }));
 }
 
@@ -187,6 +210,30 @@ export function pendenciasAntesDe(diasProjetados, dataLimite) {
 
 export function pendenciasAcumuladas(diasProjetados, hojeIso) {
   return pendenciasAntesDe(diasProjetados, diaAnterior(hojeIso));
+}
+
+/**
+ * Recorte de DESTAQUE DE RISCO (item 12 do pedido): dias que já foram
+ * liberados administrativamente e MESMO ASSIM continuam sem lançamento.
+ *
+ * É de propósito um subconjunto das pendências, nunca um desconto delas: o
+ * objetivo do destaque é o oposto de "ficou tudo certo" — é dizer que alguém
+ * já abriu a porta e a unidade ainda não entrou. Uma unidade só sai do
+ * vermelho preenchendo.
+ * @param {Array<ReturnType<typeof projetarDia>>} diasProjetados
+ * @returns {{dias: string[], total: number, regularizados: number}}
+ */
+export function liberacoesAguardando(diasProjetados) {
+  const lista = diasProjetados ?? [];
+  const aguardando = lista
+    .filter((d) => d.situacaoDesbloqueio === "aguardando_lancamento")
+    .map((d) => d.data)
+    .sort();
+  return {
+    dias: aguardando,
+    total: aguardando.length,
+    regularizados: lista.filter((d) => d.situacaoDesbloqueio === "regularizado").length,
+  };
 }
 
 /**

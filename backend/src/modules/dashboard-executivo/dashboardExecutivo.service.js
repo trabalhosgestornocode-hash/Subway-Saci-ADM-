@@ -14,6 +14,7 @@ import {
   distribuirValorMensal, distribuirQuantidadeMensal, recalcularDistribuicaoMensal,
 } from "./dashboardExecutivo.calc.js";
 import { gerarDiagnostico, LIMIARES_DIAGNOSTICO } from "./dashboardExecutivo.diagnostico.js";
+import { carregarDatasLiberadas } from "../../shared/desbloqueiosIfood.js";
 
 const TABELA = "lancamentos_financeiros_diarios";
 const TABELA_AUDITORIA = "lancamentos_financeiros_auditoria";
@@ -150,15 +151,24 @@ async function carregarCalendarioMes({ unidadeId, ano, mes, hojeIso }) {
   const inicio = dias[0];
   const fim = dias[dias.length - 1];
 
-  const { data, error } = await supabase
-    .from(TABELA).select("*").eq("unidade_id", unidadeId)
-    .gte("data_lancamento", inicio).lte("data_lancamento", fim);
+  // As liberações administrativas do mês (migration 068) vêm JUNTO com os
+  // lançamentos, em paralelo — este é o único ponto do mundo tenant que lê
+  // essa tabela, e é o mesmo ponto que já era a porta de entrada do
+  // calendário. Quem chama (`obterMes`, `criarLancamento`,
+  // `atualizarLancamento`, `obterLancamentoPorData`) herda a exceção sem
+  // saber que ela existe.
+  const [lancRes, desbloqueios] = await Promise.all([
+    supabase.from(TABELA).select("*").eq("unidade_id", unidadeId)
+      .gte("data_lancamento", inicio).lte("data_lancamento", fim),
+    carregarDatasLiberadas({ unidadeId, desdeIso: inicio, ateIso: fim }),
+  ]);
+  const { data, error } = lancRes;
   if (error) throw ApiError.internal(error.message);
 
   const porData = new Map((data ?? []).map((r) => [r.data_lancamento, r]));
   const diasComLancamento = dias.map((data_) => ({ data: data_, lancamento: porData.get(data_) ?? null }));
-  const diasComStatus = statusMes({ dias: diasComLancamento, hojeIso });
-  return { diasComStatus, linhas: data ?? [] };
+  const diasComStatus = statusMes({ dias: diasComLancamento, hojeIso, desbloqueios });
+  return { diasComStatus, linhas: data ?? [], desbloqueios };
 }
 
 // ---------------------------------------------------------------------------
@@ -720,42 +730,44 @@ export async function obterLancamentoPorData({ organizacaoId, unidadeIdSessao, u
 
   const hojeIso = hojeIsoBrasil();
   const [ano, mes] = dataIso.split("-").map(Number);
-  const { diasComStatus } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
+  const { diasComStatus, desbloqueios } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
   const disponibilidade = verificarDisponibilidade(diasComStatus, dataIso);
 
   return {
     lancamento: row ? paraApi(row) : null,
     disponibilidade,
-    ...financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: row?.valor_vendas_ifood ?? null, unidadeId }),
+    ...financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: row?.valor_vendas_ifood ?? null, desbloqueios }),
   };
 }
-
-// Exceção pontual (fora da regra geral — não é mecanismo reutilizável):
-// Matriz Subway Cajazeiras - Salvador ficou dias sem preencher o Dashboard
-// iFood e pediu pra liberar o Financeiro retroativamente só nessas datas,
-// pra não perder o acesso permanente aos dias que já passaram de "ontem".
-// Remover esta entrada depois que a loja regularizar o preenchimento.
-const EXCECAO_FINANCEIRO_RETROATIVO = {
-  "2d6da04a-821a-438a-8c16-4ab47cff9834": new Set(["2026-09-01", "2026-09-02", "2026-09-03"]),
-};
 
 /**
  * Regra central (item "REGRA" do pedido): a etapa Financeiro só é oferecida
  * quando a data lançada é exatamente ontem — OU quando o registro JÁ tem um
  * snapshot financeiro salvo (nunca esconde/impede acesso a dado histórico
- * já existente, mesmo que hoje a data não seja mais "ontem") — OU quando a
- * unidade/data está na exceção pontual acima. Comparação de CALENDÁRIO via
- * `diaAnterior` (calc.js), nunca diferença de milissegundos. Autoridade
- * única — usada tanto pela leitura (aqui) quanto pela escrita
+ * já existente, mesmo que hoje a data não seja mais "ontem") — OU quando
+ * existe um DESBLOQUEIO ADMINISTRATIVO ativo para aquela unidade e data
+ * (migration 068; o Set vem do banco via `carregarCalendarioMes`, nunca de
+ * uma lista no código). Comparação de CALENDÁRIO via `diaAnterior`
+ * (calc.js), nunca diferença de milissegundos. Autoridade única — usada
+ * tanto pela leitura (aqui) quanto pela escrita
  * (`criarLancamento`/`atualizarLancamento`), nunca recalculada no frontend.
- * @param {{dataIso: string, hojeIso: string, valorVendasIfoodExistente: number|null, unidadeId?: string}} p
+ *
+ * A ordem das três condições É a regra do produto: o fluxo normal decide
+ * primeiro, a exceção administrativa só entra quando ele já disse não.
+ * @param {{dataIso: string, hojeIso: string, valorVendasIfoodExistente: number|null, desbloqueios?: Set<string>}} p
  */
-function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente, unidadeId }) {
-  const excecaoPontual = EXCECAO_FINANCEIRO_RETROATIVO[unidadeId]?.has(dataIso) ?? false;
-  const mostrarFinanceiro = valorVendasIfoodExistente != null || dataIso === diaAnterior(hojeIso) || excecaoPontual;
+function financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente, desbloqueios }) {
+  const desbloqueioAdmin = desbloqueios instanceof Set && desbloqueios.has(dataIso);
+  const mostrarFinanceiro = valorVendasIfoodExistente != null
+    || dataIso === diaAnterior(hojeIso)
+    || desbloqueioAdmin;
   const [ano, mes] = dataIso.split("-").map(Number);
   return {
     mostrarFinanceiro,
+    // Procedência da liberação — o frontend usa só para AVISAR o operador de
+    // que aquele dia foi aberto por exceção ("liberado administrativamente"),
+    // nunca para decidir disponibilidade (isso é sempre backend).
+    financeiroPorDesbloqueio: desbloqueioAdmin && valorVendasIfoodExistente == null && dataIso !== diaAnterior(hojeIso),
     periodoFinanceiroInicio: `${ano}-${String(mes).padStart(2, "0")}-01`,
     periodoFinanceiroFim: dataIso,
   };
@@ -885,15 +897,16 @@ export async function criarLancamento({ organizacaoId, unidadeIdSessao, acesso, 
   if (dataIso > hojeIso) throw ApiError.badRequest("Não é possível lançar uma data futura.");
 
   const [ano, mes] = dataIso.split("-").map(Number);
-  const { diasComStatus, linhas } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
+  const { diasComStatus, linhas, desbloqueios } = await carregarCalendarioMes({ unidadeId, ano, mes, hojeIso });
   const disponibilidade = verificarDisponibilidade(diasComStatus, dataIso);
   if (!disponibilidade.disponivel) throw new ApiError(409, disponibilidade.motivo, { statusDia: disponibilidade.status });
   if (disponibilidade.status !== STATUS_DIA.PENDENTE) {
     throw new ApiError(409, "Já existe um lançamento para esta data. Utilize a edição.", { statusDia: disponibilidade.status });
   }
 
-  // Criação nunca tem snapshot anterior — exigirFinanceiro depende só da data ser ontem.
-  const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: null, unidadeId });
+  // Criação nunca tem snapshot anterior — exigirFinanceiro depende só da data
+  // ser ontem OU de haver desbloqueio administrativo ativo para ela.
+  const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({ dataIso, hojeIso, valorVendasIfoodExistente: null, desbloqueios });
   // `linhas` já veio de carregarCalendarioMes acima — nenhuma consulta extra
   // pra achar o acumulado de Desempenho do dia anterior (usado só se a
   // situação for Sem operação/Zero vendas, ver normalizarDadosLancamento).
@@ -997,15 +1010,16 @@ export async function atualizarLancamento({ organizacaoId, unidadeIdSessao, aces
   // tanto "está finalizado" (sempre tem, pelo invariante) quanto "é
   // rascunho mas alguém já preencheu financeiro nele". Fora isso, a regra
   // normal: só exige quando a data ainda é ontem, reavaliada agora.
+  // Mesmo raciocínio de criarLancamento: `linhasDoMes` só é usado se a edição
+  // virar Sem operação/Zero vendas (repete o acumulado de Desempenho do dia
+  // anterior em vez de zerar a série). O calendário é carregado ANTES da
+  // decisão porque é ele que traz os desbloqueios administrativos do mês.
   const hojeIso = hojeIsoBrasil();
-  const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({
-    dataIso: antes.data_lancamento, hojeIso, valorVendasIfoodExistente: antes.valor_vendas_ifood, unidadeId: antes.unidade_id,
-  });
-  // Mesmo raciocínio de criarLancamento: só usado se a edição virar Sem
-  // operação/Zero vendas (repete o acumulado de Desempenho do dia anterior
-  // em vez de zerar a série).
   const [anoAntes, mesAntes] = antes.data_lancamento.split("-").map(Number);
-  const { linhas: linhasDoMes } = await carregarCalendarioMes({ unidadeId: antes.unidade_id, ano: anoAntes, mes: mesAntes, hojeIso });
+  const { linhas: linhasDoMes, desbloqueios } = await carregarCalendarioMes({ unidadeId: antes.unidade_id, ano: anoAntes, mes: mesAntes, hojeIso });
+  const { mostrarFinanceiro: exigirFinanceiro } = financeiroDisponivelNaData({
+    dataIso: antes.data_lancamento, hojeIso, valorVendasIfoodExistente: antes.valor_vendas_ifood, desbloqueios,
+  });
   const desempenhoAnterior = ultimoDesempenhoConhecido(linhasDoMes, antes.data_lancamento);
   const dados = normalizarDadosLancamento(body, { exigirFinanceiro, desempenhoAnterior });
 

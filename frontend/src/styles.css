@@ -2557,6 +2557,7 @@ body {
   border-radius: var(--raio); padding: 11px 14px; margin-bottom: 16px; border: 1px solid transparent;
 }
 .padm-aviso--critico { background: var(--bad-bg); color: var(--bad); border-color: rgba(219,59,59,.24); }
+.padm-aviso--atencao { background: var(--warn-bg); color: var(--warn); border-color: rgba(197,132,10,.24); }
 .padm-aviso b { font-weight: 750; }
 
 /* ---------- calendário ---------- */
@@ -2583,6 +2584,12 @@ body {
 .padm-cal-dia--nao-realizado { background: var(--bad-bg); color: var(--bad); }
 .padm-cal-dia--bloqueado { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); border-style: dashed; }
 .padm-cal-dia--na { background: var(--superficie-2); color: var(--cinza-claro); }
+/* Liberado administrativamente e AINDA vazio: continua sendo pendência, então
+   nunca ganha o verde de "resolvido" — usa o âmbar de atenção com contorno
+   sólido, para se distinguir do bloqueado (vermelho tracejado). */
+.padm-cal-dia--liberado { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+/* Fechado DEPOIS de uma liberação: é concluído de verdade, só com procedência. */
+.padm-cal-dia--regularizado { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); border-style: dashed; }
 /* futuro e hoje NUNCA usam vermelho — não são erro */
 .padm-cal-dia--futuro { background: transparent; color: var(--cinza-claro); border: 1.5px dashed var(--cinza-claro); opacity: .65; font-weight: 500; }
 .padm-cal-dia--futuro:hover { opacity: 1; }
@@ -3009,10 +3016,48 @@ body {
 }
 .padm-exportar { display: inline-flex; gap: 7px; margin-left: auto; }
 
+/* ---------- dias pendentes + desbloqueio administrativo (068) ---------- */
+.padm-dias { margin-top: 22px; }
+.padm-dias h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--cinza); font-weight: 750; margin-bottom: 7px; }
+.padm-dias-ajuda { font-size: 12px; color: var(--cinza); line-height: 1.6; margin-bottom: 12px; max-width: 62ch; }
+.padm-dias-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.padm-dia-item {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--linha); border-left-width: 3px;
+  border-radius: var(--raio); padding: 10px 14px;
+}
+.padm-dia-item--bloqueado    { border-left-color: var(--bad); }
+.padm-dia-item--liberado     { border-left-color: var(--warn); }
+.padm-dia-item--regularizado { border-left-color: var(--ok); }
+.padm-dia-item--nao-realizado { border-left-color: var(--bad); }
+.padm-dia-data { font-size: 12.5px; font-weight: 750; min-width: 68px; text-transform: uppercase; letter-spacing: .3px; }
+.padm-dia-estado { flex: 1 1 220px; display: flex; flex-direction: column; gap: 2px; }
+.padm-dia-rotulo { font-size: 12.5px; color: var(--texto); }
+.padm-dia-origem { font-size: 11px; color: var(--cinza); line-height: 1.5; }
+.padm-dia-acao { margin-left: auto; }
+.padm-dia-acao-vazia { color: var(--cinza-claro); font-size: 12.5px; }
+
+.padm-desb-aviso { font-size: 13px; line-height: 1.6; }
+.padm-desb-nota { font-size: 11.5px; color: var(--cinza); line-height: 1.6; margin-top: 9px; }
+.padm-campo { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
+.padm-campo > span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .7px; color: var(--cinza); font-weight: 750; }
+.padm-campo select, .padm-campo textarea {
+  font: inherit; font-size: 13px; color: var(--texto); background: var(--card);
+  border: 1px solid var(--linha); border-radius: var(--raio-sm); padding: 8px 10px; width: 100%;
+}
+.padm-campo textarea { resize: vertical; min-height: 66px; }
+.padm-erro {
+  font-size: 12.5px; color: var(--bad); background: var(--bad-bg);
+  border-radius: var(--raio-sm); padding: 9px 12px; margin-top: 12px;
+}
+.padm-vazio { font-size: 12.5px; color: var(--cinza); padding: 10px 0; }
+
 @media (max-width: 720px) {
   .padm-pdf-opts { grid-template-columns: 1fr; }
   .padm-exportar { margin-left: 0; width: 100%; }
   .padm-exportar .btn { flex: 1; justify-content: center; }
+  .padm-dia-acao { margin-left: 0; width: 100%; }
+  .padm-dia-acao .btn { width: 100%; justify-content: center; }
 }
 
 /* =========================================================================

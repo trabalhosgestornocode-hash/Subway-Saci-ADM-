@@ -13,7 +13,7 @@ import { ApiError } from "../../shared/ApiError.js";
 import * as v from "../../shared/validar.js";
 import {
   hojeIsoBrasil, diaAnterior, diasDoMes, mesAnterior,
-  avaliarUnidade, projetarMes, avaliarDia, pendenciasAntesDe,
+  avaliarUnidade, projetarMes, avaliarDia, pendenciasAntesDe, liberacoesAguardando,
   STATUS_PAINEL, D1_CATEGORIA, ROLLUP,
 } from "./administrativo.status.js";
 import {
@@ -29,6 +29,11 @@ import {
   rankingFaturamento, rankingConformidade, evolucaoDiaria,
   variacao, variacaoPP, diaEquivalenteNoMesAnterior,
 } from "./administrativo.financeiro.js";
+import {
+  carregarDatasLiberadas, listarDesbloqueios, criarDesbloqueio, revogarDesbloqueio,
+  obterDesbloqueioAtivoPorId, MOTIVOS_VALIDOS, MOTIVOS_DESBLOQUEIO,
+} from "../../shared/desbloqueiosIfood.js";
+import { auditar, ACOES } from "../../shared/auditoria.js";
 
 const MONITOR = MONITORES.dashboard_ifood;
 const partesData = (iso) => iso.split("-").map(Number); // [ano, mes, dia]
@@ -382,16 +387,31 @@ export async function calendarioUnidade({ unidadeId, mes, hojeIso } = {}, deps =
   const diasCorrIso = diasDoMes(ano, numMes);
   const diasAntIso = diasDoMes(ant.ano, ant.mes);
 
-  const linhas = await carregarLancamentosDaUnidade({
-    unidadeId: uniId, desdeIso: diasAntIso[0], ateIso: diasCorrIso[diasCorrIso.length - 1],
-  }, deps);
+  const desdeIso = diasAntIso[0];
+  const ateIso = diasCorrIso[diasCorrIso.length - 1];
+  // Lançamentos e liberações administrativas na MESMA janela (mês anterior +
+  // corrente) e em paralelo — o calendário não fica mais caro por causa da
+  // exceção: uma query a mais, nunca uma por dia.
+  const [linhas, liberadas, historico] = await Promise.all([
+    carregarLancamentosDaUnidade({ unidadeId: uniId, desdeIso, ateIso }, deps),
+    carregarDatasLiberadas({ unidadeId: uniId, desdeIso, ateIso }, deps),
+    listarDesbloqueios({ unidadeId: uniId, desdeIso, ateIso }, deps),
+  ]);
   const porData = new Map(linhas.map((r) => [r.data_lancamento, r]));
   const mkDias = (isos) => isos.map((data) => ({ data, lancamento: porData.get(data) ?? null }));
 
   const proj = projetarMes({
-    dias: mkDias(diasCorrIso), hojeIso: hoje, unidadeCriadaEm: alvo.unidadeCriadaEm,
+    dias: mkDias(diasCorrIso), hojeIso: hoje, unidadeCriadaEm: alvo.unidadeCriadaEm, desbloqueios: liberadas,
   });
-  const projTodos = [...projetarMes({ dias: mkDias(diasAntIso), hojeIso: hoje, unidadeCriadaEm: alvo.unidadeCriadaEm }), ...proj];
+  const projTodos = [...projetarMes({ dias: mkDias(diasAntIso), hojeIso: hoje, unidadeCriadaEm: alvo.unidadeCriadaEm, desbloqueios: liberadas }), ...proj];
+
+  // Liberação ATIVA de cada dia (para o botão "Revogar") e o histórico
+  // completo do dia (inclusive revogadas) — a linha do tempo do item 6.
+  const ativaPorData = new Map(historico.filter((h) => h.ativo).map((h) => [h.data, h]));
+  const historicoPorData = historico.reduce((acc, h) => {
+    (acc.get(h.data) ?? acc.set(h.data, []).get(h.data)).push(h);
+    return acc;
+  }, new Map());
 
   // Dia de referência DO PERÍODO: D-1 no mês corrente, último dia num mês
   // fechado — o mesmo alvo que a Visão Geral usa, para o calendário não
@@ -409,6 +429,10 @@ export async function calendarioUnidade({ unidadeId, mes, hojeIso } = {}, deps =
     mes: `${ano}-${String(numMes).padStart(2, "0")}`,
     d1Deste: d1.data === dataAlvo && diasCorrIso.includes(dataAlvo) ? d1.categoria : null,
     sequenciaBloqueada: pend.sequenciaBloqueada,
+    // Destaque de risco (item 12): liberado e AINDA sem lançamento continua
+    // sendo pendência — este número existe para cobrar, não para tranquilizar.
+    liberacoes: liberacoesAguardando(proj),
+    motivos: MOTIVOS_DESBLOQUEIO,
     dias: proj.map((d) => ({
       data: d.data,
       statusDia: d.statusDia,
@@ -418,9 +442,180 @@ export async function calendarioUnidade({ unidadeId, mes, hojeIso } = {}, deps =
       bloqueada: d.bloqueada,
       emPreenchimento: d.emPreenchimento,
       motivoNaoAplicavel: d.motivoNaoAplicavel ?? null,
+      // --- exceção administrativa (068)
+      desbloqueadoAdmin: d.desbloqueadoAdmin,
+      situacaoDesbloqueio: d.situacaoDesbloqueio ?? null,
+      // Só faz sentido oferecer "Desbloquear" num dia que a REGRA fecharia e
+      // que ainda não está liberado. Dia completo, futuro, de hoje ou já
+      // liberado não mostra ação — a decisão é do backend, o frontend só
+      // renderiza (item 4: nada de regra duplicada no cliente).
+      podeDesbloquear: podeDesbloquearDia(d, hoje),
+      liberacaoAtiva: ativaPorData.get(d.data) ?? null,
+      liberacoesHistorico: historicoPorData.get(d.data) ?? [],
     })),
   };
 }
+
+/**
+ * Um dia é candidato a desbloqueio administrativo quando a regra normal o
+ * mantém fechado E ele ainda não foi liberado:
+ *   * BLOQUEADO  — travado pela sequência;
+ *   * PENDENTE fora da janela D-1 — a unidade até consegue abrir o dia, mas o
+ *     Financeiro não é oferecido nele (não é mais "ontem"), que é justamente
+ *     o beco sem saída que a exceção existe para resolver.
+ *
+ * Nunca oferece para: hoje/futuro/antes da criação (`NAO_APLICAVEL`), dia já
+ * resolvido, dia já liberado, nem para o PRÓPRIO D-1 — esse está disponível
+ * pela regra normal e não precisa de exceção nenhuma.
+ * @param {ReturnType<typeof projetarMes>[number]} d
+ * @param {string} hojeIso
+ */
+function podeDesbloquearDia(d, hojeIso) {
+  if (d.desbloqueadoAdmin) return false;
+  if (d.painel !== STATUS_PAINEL.NAO_LANCADO) return false;
+  if (d.data === diaAnterior(hojeIso) && !d.bloqueada) return false;
+  return true;
+}
+
+// ===========================================================================
+// DESBLOQUEIO ADMINISTRATIVO DE UM DIA (migration 068)
+//
+// As ÚNICAS rotas de ESCRITA do Painel Administrativo. O resto do módulo é
+// monitoramento; aqui o painel age. Ainda assim NÃO é poder de SuperAdmin: a
+// escrita é estreita (uma data de uma unidade), sem efeito em nenhum outro
+// módulo, e todo o rastro fica em `dashboard_ifood_desbloqueios` +
+// `plataforma_auditoria`.
+// ===========================================================================
+
+/**
+ * Resolve a unidade do desbloqueio pelo MESMO caminho do resto do painel
+ * (`listarUnidadesElegiveis`): a unidade tem de estar no universo monitorado.
+ * É daqui — nunca do corpo da requisição — que sai o `organizacao_id` gravado,
+ * o que torna impossível uma liberação apontar para a empresa errada.
+ */
+async function unidadeParaDesbloqueio(unidadeId, deps) {
+  const uniId = v.uuid(unidadeId, "Unidade");
+  const elegiveis = await listarUnidadesElegiveis({ moduloId: MONITOR.modulo }, deps);
+  const alvo = elegiveis.find((u) => u.unidadeId === uniId);
+  if (!alvo) throw ApiError.notFound("Unidade não encontrada ou fora do monitoramento.");
+  return alvo;
+}
+
+/**
+ * Cria a liberação de UM dia. Recusa data futura e o próprio dia de hoje: não
+ * existe fechamento a lançar de um dia que ainda não terminou, então liberar
+ * isso seria abrir uma porta para lugar nenhum.
+ *
+ * NÃO valida se o dia está de fato bloqueado — um painel que só deixasse
+ * liberar o que ele mesmo acabou de calcular ficaria refém de corrida entre a
+ * tela e o banco (a unidade pode ter preenchido no meio do caminho). A
+ * unicidade real é o índice parcial da 068, e liberar um dia que já estava
+ * disponível é inócuo por construção: `financeiroDisponivelNaData` já diria
+ * sim por outro motivo.
+ *
+ * @param {{unidadeId: string, data: string, motivo: string, observacao?: string|null, hojeIso?: string, autor: object, req?: object}} p
+ */
+export async function desbloquearDia({ unidadeId, data, motivo, observacao, hojeIso, autor = {}, req } = {}, deps = {}) {
+  const hoje = hojeIso ?? hojeIsoBrasil();
+  const alvo = await unidadeParaDesbloqueio(unidadeId, deps);
+
+  const dataIso = v.dataOpcional(data, "Data") ?? (() => { throw ApiError.badRequest("Data é obrigatória."); })();
+  if (dataIso >= hoje) {
+    throw ApiError.badRequest("Só é possível liberar um dia já encerrado — o fechamento de hoje ainda não existe.");
+  }
+  const criadaEm = alvo.unidadeCriadaEm ? String(alvo.unidadeCriadaEm).slice(0, 10) : null;
+  if (criadaEm && dataIso < criadaEm) {
+    throw ApiError.badRequest("Esta data é anterior à criação da unidade — nunca houve obrigação de lançamento.");
+  }
+
+  const motivoOk = v.umDe(motivo, "Motivo", MOTIVOS_VALIDOS);
+  const obs = v.textoOpcional(observacao, "Observação", { max: 500 });
+  if (motivoOk === "outro" && !obs) {
+    throw ApiError.badRequest("Descreva o motivo na observação quando escolher \"Outro\".");
+  }
+
+  const criado = await criarDesbloqueio({
+    organizacaoId: alvo.organizacaoId, unidadeId: alvo.unidadeId, dataIso,
+    motivo: motivoOk, observacao: obs, autor,
+  }, deps);
+
+  // Espelho geral na auditoria da plataforma (a linha da 068 é o registro
+  // detalhado; esta é a trilha única onde se vê "o que a Crescer fez").
+  await auditar({
+    atorId: autor.id ?? null, atorEmail: autor.email ?? null, perfilId: autor.perfilId ?? null,
+    perfilNome: autor.nome ?? null,
+    acao: ACOES.IFOOD_DIA_DESBLOQUEADO,
+    entidade: "dashboard_ifood_desbloqueios", entidadeId: criado.id,
+    organizacaoId: alvo.organizacaoId,
+    detalhes: {
+      unidade_id: alvo.unidadeId, unidade_nome: alvo.unidadeNome, empresa_nome: alvo.empresaNome,
+      data_referencia: dataIso, tipo: criado.tipo, motivo: motivoOk, observacao: obs,
+    },
+    ip: req?.ip ?? null, userAgent: req?.get?.("user-agent") ?? null,
+  });
+
+  return { desbloqueio: criado, unidade: dadosDaUnidade(alvo) };
+}
+
+/**
+ * Revoga uma liberação ainda ATIVA — o dia volta a obedecer só à regra normal.
+ *
+ * Se o financeiro daquele dia JÁ foi lançado, a revogação é recusada: não
+ * existe desfazer aqui. Apagar/reverter lançamento é outro assunto, com outra
+ * permissão (`DASHBOARD_EXECUTIVO_CORRIGIR`), e silenciosamente esconder um
+ * dado já gravado seria pior do que manter a liberação no histórico.
+ */
+export async function revogarDesbloqueioDia({ unidadeId, desbloqueioId, hojeIso, autor = {}, req } = {}, deps = {}) {
+  const hoje = hojeIso ?? hojeIsoBrasil();
+  const alvo = await unidadeParaDesbloqueio(unidadeId, deps);
+  const id = v.uuid(desbloqueioId, "Liberação");
+
+  const ativo = await obterDesbloqueioAtivoPorId({ id, unidadeId: alvo.unidadeId }, deps);
+  if (!ativo) throw ApiError.notFound("Liberação não encontrada ou já revogada.");
+
+  const [lanc] = await carregarLancamentosDaUnidade({
+    unidadeId: alvo.unidadeId, desdeIso: ativo.data, ateIso: ativo.data,
+  }, deps);
+  if (lanc?.valor_vendas_ifood != null) {
+    throw new ApiError(409, "O financeiro deste dia já foi lançado — a liberação cumpriu seu papel e fica no histórico.");
+  }
+
+  const revogado = await revogarDesbloqueio({ id, unidadeId: alvo.unidadeId, autor }, deps);
+
+  await auditar({
+    atorId: autor.id ?? null, atorEmail: autor.email ?? null, perfilId: autor.perfilId ?? null,
+    perfilNome: autor.nome ?? null,
+    acao: ACOES.IFOOD_DIA_DESBLOQUEIO_REVOGADO,
+    entidade: "dashboard_ifood_desbloqueios", entidadeId: revogado.id,
+    organizacaoId: alvo.organizacaoId,
+    detalhes: {
+      unidade_id: alvo.unidadeId, unidade_nome: alvo.unidadeNome, empresa_nome: alvo.empresaNome,
+      data_referencia: revogado.data, motivo_original: revogado.motivo,
+    },
+    ip: req?.ip ?? null, userAgent: req?.get?.("user-agent") ?? null,
+  });
+
+  return { desbloqueio: revogado, unidade: dadosDaUnidade(alvo), dataReferencia: hoje };
+}
+
+/** Histórico de liberações de uma unidade no período (ativas e revogadas). */
+export async function historicoDesbloqueios({ unidadeId, mes, hojeIso } = {}, deps = {}) {
+  const hoje = hojeIso ?? hojeIsoBrasil();
+  const alvo = await unidadeParaDesbloqueio(unidadeId, deps);
+  const per = alvoDoPeriodo(mes, hoje);
+  const [ano, numMes] = per.periodo.split("-").map(Number);
+  const dias = diasDoMes(ano, numMes);
+
+  const lista = await listarDesbloqueios({
+    unidadeId: alvo.unidadeId, desdeIso: dias[0], ateIso: dias[dias.length - 1],
+  }, deps);
+  return { unidade: dadosDaUnidade(alvo), periodo: per.periodo, motivos: MOTIVOS_DESBLOQUEIO, desbloqueios: lista };
+}
+
+const dadosDaUnidade = (u) => ({
+  unidadeId: u.unidadeId, unidadeNome: u.unidadeNome,
+  organizacaoId: u.organizacaoId, empresaNome: u.empresaNome,
+});
 
 // ===========================================================================
 // FINANCEIRO — consolidado, rankings, evolução e comparação

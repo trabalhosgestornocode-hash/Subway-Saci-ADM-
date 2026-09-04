@@ -351,21 +351,39 @@ export function statusDiaBase({ lancamento, ehDataElegivel }) {
  * Deriva o status de cada dia de um mês. A sequência é calculada SEMPRE
  * dentro do mês recebido: o dia 1 nunca é bloqueado por pendência de um mês
  * anterior (isso vira um alerta à parte — ver `agruparPendenciasPorMes`).
- * @param {{dias: Array<{data: string, lancamento: object|null}>, hojeIso: string}} p
- * @returns {Array<{data: string, status: string, lancamento: object|null}>}
+ *
+ * `desbloqueios` é o ÚNICO ponto de entrada da exceção administrativa
+ * (migration 068 / Painel Administrativo). Um Set de datas ISO liberadas
+ * para AQUELA unidade que levanta, só naquelas datas, as duas travas desta
+ * função: a janela D-1 do Financeiro (`elegivelFinanceiro`) e a trava
+ * sequencial (`BLOQUEADO`). Vazio = comportamento padrão, byte a byte igual
+ * ao de antes da exceção existir.
+ *
+ * Deliberadamente NÃO "resolve" o dia: um dia liberado e ainda vazio vira
+ * PENDENTE, não some da conta de pendências — liberar não é preencher (ver
+ * `resumoPreenchimento` e a projeção do painel em administrativo.status.js).
+ * @param {{dias: Array<{data: string, lancamento: object|null}>, hojeIso: string, desbloqueios?: Set<string>}} p
+ * @returns {Array<{data: string, status: string, lancamento: object|null, elegivelFinanceiro: boolean, desbloqueadoAdmin: boolean}>}
  */
-export function statusMes({ dias, hojeIso }) {
+export function statusMes({ dias, hojeIso, desbloqueios }) {
   const resultado = [];
   let anteriorResolvido = true; // dia 1 do mês nunca começa bloqueado
   const dataElegivel = diaAnterior(hojeIso);
+  const liberado = (data) => desbloqueios instanceof Set && desbloqueios.has(data);
   for (const dia of dias ?? []) {
     let status;
+    const temDesbloqueio = liberado(dia.data);
     if (dia.data > hojeIso) {
+      // Uma liberação NUNCA antecipa o futuro: o dia de hoje/amanhã não tem
+      // fechamento nenhum para lançar. A exceção existe para o passado.
       status = STATUS_DIA.FUTURO;
     } else {
-      const base = statusDiaBase({ lancamento: dia.lancamento, ehDataElegivel: dia.data === dataElegivel });
+      const base = statusDiaBase({
+        lancamento: dia.lancamento,
+        ehDataElegivel: dia.data === dataElegivel || temDesbloqueio,
+      });
       if (base) status = base;
-      else if (!anteriorResolvido) status = STATUS_DIA.BLOQUEADO;
+      else if (!anteriorResolvido && !temDesbloqueio) status = STATUS_DIA.BLOQUEADO;
       else status = STATUS_DIA.PENDENTE;
     }
     // Exposto pro frontend decidir apresentação (badge "Financeiro
@@ -373,7 +391,17 @@ export function statusMes({ dias, hojeIso }) {
     // recalcular "hoje - 1" no cliente — mesma autoridade única de sempre,
     // só que agora visível fora desta função. Não muda NENHUMA regra: já
     // era exatamente isto que decidia `ehDataElegivel` acima.
-    resultado.push({ data: dia.data, status, lancamento: dia.lancamento ?? null, elegivelFinanceiro: dia.data === dataElegivel });
+    resultado.push({
+      data: dia.data,
+      status,
+      lancamento: dia.lancamento ?? null,
+      elegivelFinanceiro: dia.data === dataElegivel || (temDesbloqueio && status !== STATUS_DIA.FUTURO),
+      // Marca de PROCEDÊNCIA, não de status: diz que a disponibilidade deste
+      // dia veio de uma liberação administrativa, não da regra normal. O
+      // painel usa para rotular "Liberado administrativamente" sem precisar
+      // consultar a tabela de novo.
+      desbloqueadoAdmin: temDesbloqueio && status !== STATUS_DIA.FUTURO,
+    });
     anteriorResolvido = RESOLVIDOS.has(status);
   }
   return resultado;

@@ -86,6 +86,13 @@ export const ACOES = {
   PAINEL_ADM_CONCEDIDO: "usuario.painel_administrativo_concedido",
   PAINEL_ADM_REVOGADO: "usuario.painel_administrativo_revogado",
 
+  // Desbloqueio administrativo de um dia do Dashboard iFood (migration 068).
+  // As ÚNICAS ações de escrita do Painel Administrativo. O registro detalhado
+  // (motivo, observação, quem revogou) vive em `dashboard_ifood_desbloqueios`;
+  // estas linhas são o espelho na trilha única da plataforma.
+  IFOOD_DIA_DESBLOQUEADO: "dashboard_ifood.dia_desbloqueado",
+  IFOOD_DIA_DESBLOQUEIO_REVOGADO: "dashboard_ifood.dia_desbloqueio_revogado",
+
   // configuração global
   CONFIG_ALTERADA: "config.alterada",
 
