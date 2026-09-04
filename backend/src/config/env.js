@@ -44,4 +44,18 @@ export const config = {
   profileSelectionSecret,
   // Janela que define "usuário online" no Dashboard Global (minutos).
   janelaOnlineMin: Number(process.env.JANELA_ONLINE_MIN) || 15,
+  // Credenciais dos apps iFood (Portal do Desenvolvedor). Opcionais: vazio =
+  // o fluxo OAuth responde IFOOD_APP_SEM_CREDENCIAL de forma controlada.
+  // Lido só aqui; `credenciaisDoApp()` (ifoodToken.service.js) consome
+  // `config.ifood[appType].{clientId,clientSecret}` — appType ∈ analytics|financial.
+  ifood: {
+    analytics: {
+      clientId: process.env.IFOOD_ANALYTICS_CLIENT_ID || null,
+      clientSecret: process.env.IFOOD_ANALYTICS_CLIENT_SECRET || null,
+    },
+    financial: {
+      clientId: process.env.IFOOD_FINANCIAL_CLIENT_ID || null,
+      clientSecret: process.env.IFOOD_FINANCIAL_CLIENT_SECRET || null,
+    },
+  },
 };
