@@ -13,6 +13,10 @@ import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { supabase } from "../src/config/supabase.js";
 import * as conversas from "../src/modules/agente/agente.conversas.service.js";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+
+// Fase P0.4: cria/apaga organizações no Supabase configurado — NÃO em produção.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 
 // Fase D: o isolamento passou a ser por `agente_conversas.perfil_id`
 // (perfis_operacionais). No backfill da migration 060, `perfis_operacionais.id
@@ -26,6 +30,7 @@ let orgA = null;
 let orgB = null;
 
 before(async () => {
+  if (PULAR_INTEGRACAO) { tabelasExistem = false; return; } // não roda contra produção
   const probe = await supabase.from("agente_conversas").select("id, perfil_id").limit(0);
   if (probe.error) { tabelasExistem = false; return; } // 048 ou 060 ainda não aplicada
 
@@ -48,7 +53,7 @@ after(async () => {
   if (orgB) await supabase.from("organizacoes").delete().eq("id", orgB);
 });
 
-describe("agente.conversas.service.js — isolamento real (Supabase)", () => {
+describe("agente.conversas.service.js — isolamento real (Supabase)", { skip: PULAR_INTEGRACAO }, () => {
   test("uma conversa criada na organização A não é encontrada pela organização B (mesmo perfil)", async (t) => {
     if (!tabelasExistem) return t.skip("migration 048 (agente_conversas/agente_mensagens) ainda não aplicada — pulando.");
 

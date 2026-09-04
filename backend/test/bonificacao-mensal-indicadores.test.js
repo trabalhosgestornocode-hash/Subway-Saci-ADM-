@@ -13,6 +13,9 @@
 // Rodar: node --env-file=.env --test test/bonificacao-mensal-indicadores.test.js
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+// Fase P0.4: esta suite exercita um service real; NAO roda contra producao.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 import { supabase } from "../src/config/supabase.js";
 import { obterCalendarioIndicador, salvarValorDiaIndicador, historicoMensalIndicador } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
 
@@ -26,7 +29,7 @@ async function limpar() {
   await supabase.from("bonificacao_lancamentos_diarios").delete().eq("unidade_id", SACI_UNIDADE_ID).eq("data", DATA_TESTE);
 }
 
-describe("Indicadores manuais — validação e isolamento", () => {
+describe("Indicadores manuais — validação e isolamento", { skip: PULAR_INTEGRACAO }, () => {
   after(limpar);
 
   test("indicador fora da whitelist é rejeitado", async () => {
@@ -45,7 +48,7 @@ describe("Indicadores manuais — validação e isolamento", () => {
   });
 });
 
-describe("Indicadores manuais — lançar, editar, calendário e histórico", () => {
+describe("Indicadores manuais — lançar, editar, calendário e histórico", { skip: PULAR_INTEGRACAO }, () => {
   after(limpar);
 
   test("lança o valor de um dia", async () => {

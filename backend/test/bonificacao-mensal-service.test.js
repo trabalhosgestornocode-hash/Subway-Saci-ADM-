@@ -15,6 +15,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { supabase } from "../src/config/supabase.js";
 import { processarImportacaoVisio, obterMes, listarMetas, excluirLancamento } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+
+// Fase P0.4: esta suíte exercita um service real; NÃO roda contra produção.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -52,7 +56,7 @@ async function limparDadosDeTeste() {
   await supabase.from("bonificacao_importacoes").delete().eq("unidade_id", SACI_UNIDADE_ID).eq("data_lancamento", DATA_TESTE);
 }
 
-describe("Migration 041 aplicada — metas seedadas na unidade de teste", () => {
+describe("Migration 041 aplicada — metas seedadas na unidade de teste", { skip: PULAR_INTEGRACAO }, () => {
   test("unidade de teste tem os 11 indicadores cadastrados (réplica da Subway Saci)", async () => {
     const metas = await listarMetas({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID });
     assert.equal(metas.length, 11);
@@ -67,7 +71,7 @@ describe("Migration 041 aplicada — metas seedadas na unidade de teste", () => 
   });
 });
 
-describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado", () => {
+describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
   test("PDF da Subway Saci enviado com a Florianópolis-SC 1 selecionada é recusado", async () => {
     await assert.rejects(
@@ -77,7 +81,7 @@ describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado",
   });
 });
 
-describe("Fluxo completo de importação + Teste F (duplicidade)", () => {
+describe("Fluxo completo de importação + Teste F (duplicidade)", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
 
   test("preview não persiste nada", async () => {
@@ -144,7 +148,7 @@ describe("Fluxo completo de importação + Teste F (duplicidade)", () => {
   });
 });
 
-describe("Teste G — excluir lançamento libera o PDF para reimportação", () => {
+describe("Teste G — excluir lançamento libera o PDF para reimportação", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
 
   test("excluir apaga o lançamento, grava o snapshot e libera as importações", async () => {
@@ -185,7 +189,7 @@ describe("Teste G — excluir lançamento libera o PDF para reimportação", () 
   });
 });
 
-describe("Teste H — regressão do bug relatado: dia pedia pra ser preenchido de novo", () => {
+describe("Teste H — regressão do bug relatado: dia pedia pra ser preenchido de novo", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
 
   // Reproduz o cenário real: os 2 relatórios (Geral+Loja) ficam registrados

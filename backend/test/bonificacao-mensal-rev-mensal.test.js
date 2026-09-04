@@ -7,6 +7,10 @@ import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { supabase } from "../src/config/supabase.js";
 import { obterRevMensal, salvarRevMensal, obterMes } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+
+// Fase P0.4: NÃO roda contra produção. Só roda apontado a um Supabase de teste.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 
 const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
 const SACI_UNIDADE_ID = "00000000-0000-0000-0000-0000000000b1"; // unidade de teste (migration 041)
@@ -22,7 +26,7 @@ async function limpar() {
   await supabase.from("bonificacao_rev_mensal").delete().eq("unidade_id", SACI_UNIDADE_ID).eq("ano", ANO).eq("mes", MES);
 }
 
-describe("REV mensal — 1 registro por unidade+mês+ano (item 2 do pedido)", () => {
+describe("REV mensal — 1 registro por unidade+mês+ano (item 2 do pedido)", { skip: PULAR_INTEGRACAO }, () => {
   after(limpar);
 
   test("sem lançamento ainda -> obterRevMensal devolve null (nunca 0)", async () => {
@@ -75,7 +79,7 @@ describe("REV mensal — 1 registro por unidade+mês+ano (item 2 do pedido)", ()
   });
 });
 
-describe("Cenário 7 — isolamento entre organizações", () => {
+describe("Cenário 7 — isolamento entre organizações", { skip: PULAR_INTEGRACAO }, () => {
   test("não é possível ler/escrever REV de uma unidade de outra organização", async () => {
     await assert.rejects(
       () => obterRevMensal({ organizacaoId: SACI_ORG_ID, unidadeId: OUTRA_UNIDADE_ID, ano: ANO, mes: MES }),
