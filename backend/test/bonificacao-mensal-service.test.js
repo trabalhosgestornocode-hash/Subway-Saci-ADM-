@@ -8,7 +8,7 @@
 // unidade real toda vez que rodava. Ver docs do incidente no relatório do
 // chat / commit que introduziu a migration 041.
 // Rodar: node --env-file=.env --test test/bonificacao-mensal-service.test.js
-import { test, describe, after } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -28,7 +28,11 @@ const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
 // fixture (que diz "Subway Saci"), então a unidade de teste precisa
 // compartilhar esse token para o fluxo de importação validar de verdade.
 const SACI_UNIDADE_ID = "00000000-0000-0000-0000-0000000000b1";
-const OUTRA_UNIDADE_ID = "768a8c0c-fe9b-4576-a8df-f0ffa10b444e"; // Loja Florianópolis-SC 1 (outra unidade de teste — sem o token "Saci", usada só pro teste de rejeição)
+// Fase P0.6: antes era um ID fixo capturado em produção (migration 025, que
+// usa gen_random_uuid() — não existe num projeto de teste do zero). Agora é
+// criada e apagada por este arquivo — mesma organização, nome SEM o token
+// "Saci" de propósito (é o que faz processarImportacaoVisio recusar o PDF).
+let outraUnidadeId = null;
 // Precisa cair dentro da vigência da meta semeada pela migration 041
 // (valid_from 2026-08-01) pra evaluateBonusMetric ter meta pra avaliar.
 // Como agora é uma unidade isolada (nunca usada por operação real), a data
@@ -72,10 +76,20 @@ describe("Migration 041 aplicada — metas seedadas na unidade de teste", { skip
 });
 
 describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado", { skip: PULAR_INTEGRACAO }, () => {
-  after(limparDadosDeTeste);
-  test("PDF da Subway Saci enviado com a Florianópolis-SC 1 selecionada é recusado", async () => {
+  before(async () => {
+    const { data, error } = await supabase.from("unidades")
+      .insert({ organizacao_id: SACI_ORG_ID, nome: "__TESTE_P06__ Outra Unidade (sem token Saci)", eh_teste: true })
+      .select("id").single();
+    if (error) throw new Error(`Falha ao criar unidade descartável do Teste E: ${error.message}`);
+    outraUnidadeId = data.id;
+  });
+  after(async () => {
+    await limparDadosDeTeste();
+    if (outraUnidadeId) await supabase.from("unidades").delete().eq("id", outraUnidadeId);
+  });
+  test("PDF da Subway Saci enviado com outra unidade selecionada é recusado", async () => {
     await assert.rejects(
-      () => processarImportacaoVisio({ organizacaoId: SACI_ORG_ID, unidadeId: OUTRA_UNIDADE_ID, usuario: USUARIO, payload: payloadCompleto(), confirmar: false }),
+      () => processarImportacaoVisio({ organizacaoId: SACI_ORG_ID, unidadeId: outraUnidadeId, usuario: USUARIO, payload: payloadCompleto(), confirmar: false }),
       (err) => { assert.match(err.message, /unidade diferente/i); return true; },
     );
   });

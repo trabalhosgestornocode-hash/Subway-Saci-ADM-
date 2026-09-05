@@ -3,7 +3,7 @@
 // Supabase real, sempre na
 // unidade de teste isolada (migration 041) — nunca a Subway Saci real.
 // Rodar: node --env-file=.env --test test/bonificacao-mensal-rev-mensal.test.js
-import { test, describe, after } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { supabase } from "../src/config/supabase.js";
 import { obterRevMensal, salvarRevMensal, obterMes } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
@@ -14,10 +14,12 @@ const PULAR_INTEGRACAO = motivoPularIntegracao();
 
 const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
 const SACI_UNIDADE_ID = "00000000-0000-0000-0000-0000000000b1"; // unidade de teste (migration 041)
-// Unidade REAL de outra organização (Empresa Base) — usada só pro teste de
-// isolamento entre tenants; nunca escrevemos nela.
-const OUTRA_ORG_ID = "c8960b30-68e4-4f9b-9701-fb45e699e20c";
-const OUTRA_UNIDADE_ID = "99c99b87-0cc0-4aa7-b7cb-fe52b1a77ddf";
+// Fase P0.6: antes eram IDs fixos capturados em produção (Empresa Base) — não
+// existem num projeto de teste do zero. Agora esta suíte cria e apaga sua
+// própria organização+unidade descartáveis, só para o teste de isolamento
+// entre tenants (Cenário 7); nunca escreve nelas de outra forma.
+let outraOrgId = null;
+let outraUnidadeId = null;
 const USUARIO = { id: null, nome: "teste automatizado (bonificacao-mensal-rev-mensal.test.js)", email: "teste@local" };
 // Competência isolada — não colide com nenhuma outra suíte nesta unidade.
 const ANO = 2031, MES = 3;
@@ -80,19 +82,36 @@ describe("REV mensal — 1 registro por unidade+mês+ano (item 2 do pedido)", { 
 });
 
 describe("Cenário 7 — isolamento entre organizações", { skip: PULAR_INTEGRACAO }, () => {
+  before(async () => {
+    const { data: org, error: eOrg } = await supabase.from("organizacoes")
+      .insert({ nome: "__TESTE_P06__ Org descartável (rev-mensal isolamento)", status: "teste" })
+      .select("id").single();
+    if (eOrg) throw new Error(`Falha ao criar organização descartável: ${eOrg.message}`);
+    outraOrgId = org.id;
+
+    const { data: un, error: eUn } = await supabase.from("unidades")
+      .insert({ organizacao_id: outraOrgId, nome: "__TESTE_P06__ Unidade descartável (rev-mensal isolamento)", eh_teste: true })
+      .select("id").single();
+    if (eUn) throw new Error(`Falha ao criar unidade descartável: ${eUn.message}`);
+    outraUnidadeId = un.id;
+  });
+  after(async () => {
+    if (outraOrgId) await supabase.from("organizacoes").delete().eq("id", outraOrgId); // cascade cuida da unidade
+  });
+
   test("não é possível ler/escrever REV de uma unidade de outra organização", async () => {
     await assert.rejects(
-      () => obterRevMensal({ organizacaoId: SACI_ORG_ID, unidadeId: OUTRA_UNIDADE_ID, ano: ANO, mes: MES }),
+      () => obterRevMensal({ organizacaoId: SACI_ORG_ID, unidadeId: outraUnidadeId, ano: ANO, mes: MES }),
       (err) => { assert.match(err.message, /acesso/i); return true; },
     );
     await assert.rejects(
-      () => salvarRevMensal({ organizacaoId: SACI_ORG_ID, unidadeId: OUTRA_UNIDADE_ID, usuario: USUARIO, ano: ANO, mes: MES, valor: 90 }),
+      () => salvarRevMensal({ organizacaoId: SACI_ORG_ID, unidadeId: outraUnidadeId, usuario: USUARIO, ano: ANO, mes: MES, valor: 90 }),
       (err) => { assert.match(err.message, /acesso/i); return true; },
     );
   });
 
   test("a organização dona da unidade consegue ler normalmente (controle: o bloqueio acima é por tenant, não um bug geral)", async () => {
-    const r = await obterRevMensal({ organizacaoId: OUTRA_ORG_ID, unidadeId: OUTRA_UNIDADE_ID, ano: ANO, mes: MES });
+    const r = await obterRevMensal({ organizacaoId: outraOrgId, unidadeId: outraUnidadeId, ano: ANO, mes: MES });
     assert.equal(r, null); // sem dado lançado — mas a CHAMADA em si não é recusada
   });
 });
