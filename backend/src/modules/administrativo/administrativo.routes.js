@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { desenvolvimentoRouter } from '../desenvolvimento/desenvolvimento.routes.js';
 import * as c from "./administrativo.controller.js";
 import { requirePainelAdministrativo, exigirMfaSeExigido } from "../../middlewares/auth.js";
 import { limiteDeTaxa } from "../../shared/rateLimit.js";
@@ -53,4 +54,5 @@ administrativoRouter.get("/relatorios/evolucao", c.relatorioEvolucao);
 administrativoRouter.get("/relatorios/executivo", c.relatorioExecutivo);
 
 // Qualquer outra coisa sob /administrativo é 404 em JSON.
+administrativoRouter.use('/desenvolvimento', desenvolvimentoRouter);
 administrativoRouter.use(c.naoEncontrado);

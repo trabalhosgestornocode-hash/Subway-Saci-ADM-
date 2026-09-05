@@ -41,6 +41,10 @@ async function chamar(rota, opcoes = {}) {
 }
 
 export const painelAdmApi = {
+  desenvolvimento: (rota, params = {}) => chamar('/desenvolvimento' + rota + qs(params)),
+  salvarDemanda: (id, dados) => chamar('/desenvolvimento/demandas' + (id ? '/' + encodeURIComponent(id) : ''), { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) }),
+  excluirDemanda: (id, versao) => chamar('/desenvolvimento/demandas/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ versao }) }),
+  atualizarDemanda: (id, dados) => chamar('/desenvolvimento/demandas/' + encodeURIComponent(id) + '/atualizacoes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) }),
   /**
    * Sanidade + validação REAL do acesso. 200 = pode entrar; 403 = acesso não
    * está mais disponível (ex.: SuperAdmin revogou depois da tela carregada).

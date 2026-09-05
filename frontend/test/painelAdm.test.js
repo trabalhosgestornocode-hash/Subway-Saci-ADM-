@@ -220,8 +220,8 @@ describe("sairDoPainelAdministrativo (Trocar ambiente)", () => {
 });
 
 describe("TELAS_PADM", () => {
-  test("5 áreas fixas, na ordem da especificação", () => {
-    assert.deepEqual(TELAS_PADM.map((t) => t.id), ["visao-geral", "diario", "pendencias", "empresas", "relatorios"]);
+  test("áreas existentes preservadas, seguidas da agenda de desenvolvimento", () => {
+    assert.deepEqual(TELAS_PADM.map((t) => t.id), ["visao-geral", "diario", "pendencias", "empresas", "relatorios", "desenvolvimento"]);
   });
 
   test("irParaPadm abre Relatórios com o período ativo", async () => {

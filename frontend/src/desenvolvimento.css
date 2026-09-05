@@ -1,0 +1,80 @@
+/* Usa os tokens do design system existente, inclusive no tema escuro. */
+.dev-shell { max-width:1600px; margin:auto; color:var(--texto); }
+.dev-heading { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:22px; flex-wrap:wrap; }
+.dev-heading h1 { font-size:27px; letter-spacing:-.7px; margin:6px 0; }
+.dev-heading h2 { font-size:18px; }
+.dev-eyebrow { color:var(--verde); font-size:11px; letter-spacing:1.8px; font-weight:750; }
+.dev-muted { color:var(--cinza); font-size:13px; }
+.dev-tabs { display:flex; gap:5px; flex-wrap:wrap; border-bottom:1px solid var(--linha); margin-bottom:24px; }
+.dev-tabs button { background:none; border:0; border-bottom:3px solid transparent; padding:13px 17px; color:var(--cinza); font-weight:600; cursor:pointer; }
+.dev-tabs button.active { color:var(--verde); border-bottom-color:var(--verde); }
+.dev-metrics { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
+.dev-metric { padding:20px 16px; border:1px solid var(--linha); border-radius:var(--raio); background:var(--card); }
+.dev-metric span { display:block; color:var(--cinza); font-size:12px; margin-bottom:9px; }
+.dev-metric strong { display:block; font-size:24px; letter-spacing:-.6px; }
+.dev-metric:last-child strong { font-size:18px; }
+.dev-overview { display:grid; grid-template-columns:1.35fr 1fr; gap:20px; align-items:start; }
+.dev-panel,.dev-focus { background:var(--card); border:1px solid var(--linha); border-radius:var(--raio); padding:22px; margin-bottom:20px; min-width:0; }
+.dev-focus { border-top:3px solid var(--verde); }
+.dev-panel h2,.dev-focus h2 { font-size:18px; margin-bottom:18px; }
+.dev-panel h3,.dev-panel h4 { margin:14px 0 6px; }
+.dev-card { border:1px solid var(--linha); border-radius:12px; padding:16px; background:var(--card); margin-bottom:12px; min-width:0; }
+.dev-card-top,.dev-card-bottom { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:11px; color:var(--cinza); }
+.dev-title { display:block; border:0; background:none; text-align:left; color:var(--texto); font-size:15px; font-weight:650; line-height:1.45; margin:10px 0 6px; cursor:pointer; overflow-wrap:anywhere; }
+.dev-title:hover,.dev-link:hover { text-decoration:underline; }
+.dev-badge { display:inline-block; border:1px solid var(--linha); background:var(--superficie-2); border-radius:20px; padding:3px 8px; font-size:11px; white-space:nowrap; }
+.dev-priority-CRITICAL { color:var(--bad); background:var(--bad-bg); }
+.dev-priority-HIGH { color:var(--warn); background:var(--warn-bg); }
+.dev-progress { display:flex; align-items:center; gap:10px; margin:17px 0; font-size:12px; }
+.dev-progress progress { width:100%; height:6px; border:0; border-radius:10px; accent-color:var(--verde); }
+.dev-progress progress::-webkit-progress-bar { background:var(--linha); border-radius:10px; }
+.dev-progress progress::-webkit-progress-value { background:var(--verde); border-radius:10px; }
+.dev-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:14px; }
+.dev-board { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:start; }
+.dev-column { min-width:0; background:var(--superficie-2); padding:12px; border:1px solid var(--linha); border-radius:var(--raio); }
+.dev-column h3 { display:flex; justify-content:space-between; font-size:13px; margin:2px 2px 16px; }
+.dev-column h3 span { color:var(--cinza); }
+.dev-empty { color:var(--cinza); font-size:13px; text-align:center; border:1px dashed var(--linha); border-radius:12px; padding:28px 18px; }
+.dev-text { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.65; }
+.dev-facts { display:grid; grid-template-columns:140px 1fr; gap:12px; margin-top:20px; font-size:13px; }
+.dev-facts dt { color:var(--cinza); }
+.dev-facts dd { margin:0; overflow-wrap:anywhere; }
+.dev-timeline { list-style:none; padding:0 0 0 18px; border-left:2px solid var(--linha); }
+.dev-timeline li { position:relative; margin:0 0 23px; }
+.dev-timeline li:before { content:''; width:8px; height:8px; background:var(--verde); border-radius:50%; position:absolute; left:-23px; top:8px; }
+.dev-timeline time { color:var(--cinza); font-size:12px; margin-right:12px; }
+.dev-link { border:0; background:none; color:var(--verde); cursor:pointer; font:inherit; text-align:left; }
+.dev-timeline .dev-link { display:block; margin:8px 0; }
+.dev-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; padding:18px; border:1px solid var(--linha); border-radius:var(--raio); margin-bottom:22px; background:var(--card); align-items:end; }
+.dev-filter-disclosure { margin-bottom:20px; }
+.dev-filter-disclosure summary { cursor:pointer; color:var(--cinza); font-size:13px; padding:10px 0; font-weight:600; }
+.dev-shell label,.dev-dialog label { display:flex; flex-direction:column; gap:6px; color:var(--cinza); font-size:12px; }
+.dev-shell input,.dev-shell select,.dev-dialog input,.dev-dialog select,.dev-dialog textarea { width:100%; min-width:0; border:1px solid var(--linha); border-radius:8px; padding:10px; background:var(--campo-bg); color:var(--texto); font:inherit; }
+.dev-dialog textarea { min-height:95px; resize:vertical; }
+.dev-shell .dev-check,.dev-dialog .dev-check { display:flex; flex-direction:row; align-items:center; }
+.dev-check input { width:auto; }
+.dev-move { border-top:1px solid var(--linha); margin-top:14px; padding-top:10px; }
+.dev-pagination,.dev-calendar-controls,.dev-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:18px 0; font-size:13px; }
+.dev-calendar { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:1px; background:var(--linha); border:1px solid var(--linha); border-radius:var(--raio); overflow:hidden; margin-top:15px; }
+.dev-day { background:var(--card); min-height:120px; padding:8px; min-width:0; }
+.dev-day time { font-size:11px; color:var(--cinza); }
+.dev-event { width:100%; background:var(--superficie-2); color:var(--texto); border:0; border-left:2px solid var(--verde); text-align:left; border-radius:4px; padding:7px; margin-top:6px; cursor:pointer; overflow-wrap:anywhere; font-size:11px; }
+.dev-event small { display:block; color:var(--cinza); }
+.dev-day-list { display:grid; grid-template-columns:100px 1fr; gap:16px; align-items:center; }
+.dev-day-list time { font-size:12px; }
+.dev-dialog { position:fixed; inset:0; margin:auto; width:min(850px,calc(100% - 24px)); max-height:90dvh; overflow:auto; border:1px solid var(--linha); border-radius:var(--raio-lg); padding:24px; background:var(--bg); color:var(--texto); box-shadow:var(--sombra-lg); }
+.dev-dialog::backdrop { background:rgba(0,0,0,.5); }
+.dev-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.dev-span { grid-column:1 / -1; }
+.dev-error { padding:15px; background:var(--bad-bg); color:var(--bad); border-radius:10px; margin-bottom:15px; }
+.dev-shell button:focus-visible,.dev-dialog button:focus-visible { outline:2px solid var(--verde); outline-offset:3px; }
+@media(min-width:1700px) { .dev-board { grid-template-columns:repeat(6,minmax(0,1fr)); } }
+@media(max-width:1100px) { .dev-metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }.dev-overview { grid-template-columns:1fr; }.dev-board { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+/* Responsável — nome humano, nunca identificador técnico. */
+.dev-owner { display:flex; align-items:baseline; gap:6px; font-size:12px; margin:2px 0 4px; flex-wrap:wrap; }
+.dev-owner-label { color:var(--cinza); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+.dev-owner strong { font-size:13px; font-weight:600; }
+.dev-header-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.dev-form-grid input[readonly] { background:var(--fundo); color:var(--cinza); cursor:default; }
+
+@media(max-width:650px) { .dev-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.dev-board,.dev-form-grid { grid-template-columns:1fr; }.dev-calendar { grid-template-columns:1fr; }.dev-day { min-height:60px; }.dev-dialog { padding:16px; }.dev-heading h1 { font-size:23px; }.dev-tabs button { padding:10px; }.dev-facts { grid-template-columns:100px 1fr; }.dev-panel,.dev-focus { padding:16px; } }
