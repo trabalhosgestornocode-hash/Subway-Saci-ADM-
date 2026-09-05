@@ -8,13 +8,17 @@
 // unidade real toda vez que rodava. Ver docs do incidente no relatório do
 // chat / commit que introduziu a migration 041.
 // Rodar: node --env-file=.env --test test/bonificacao-mensal-service.test.js
-import { test, describe, after } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { supabase } from "../src/config/supabase.js";
 import { processarImportacaoVisio, obterMes, listarMetas, excluirLancamento } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+
+// Fase P0.4: esta suíte exercita um service real; NÃO roda contra produção.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -24,7 +28,11 @@ const SACI_ORG_ID = "00000000-0000-0000-0000-000000000001";
 // fixture (que diz "Subway Saci"), então a unidade de teste precisa
 // compartilhar esse token para o fluxo de importação validar de verdade.
 const SACI_UNIDADE_ID = "00000000-0000-0000-0000-0000000000b1";
-const OUTRA_UNIDADE_ID = "768a8c0c-fe9b-4576-a8df-f0ffa10b444e"; // Loja Florianópolis-SC 1 (outra unidade de teste — sem o token "Saci", usada só pro teste de rejeição)
+// Fase P0.6: antes era um ID fixo capturado em produção (migration 025, que
+// usa gen_random_uuid() — não existe num projeto de teste do zero). Agora é
+// criada e apagada por este arquivo — mesma organização, nome SEM o token
+// "Saci" de propósito (é o que faz processarImportacaoVisio recusar o PDF).
+let outraUnidadeId = null;
 // Precisa cair dentro da vigência da meta semeada pela migration 041
 // (valid_from 2026-08-01) pra evaluateBonusMetric ter meta pra avaliar.
 // Como agora é uma unidade isolada (nunca usada por operação real), a data
@@ -52,7 +60,7 @@ async function limparDadosDeTeste() {
   await supabase.from("bonificacao_importacoes").delete().eq("unidade_id", SACI_UNIDADE_ID).eq("data_lancamento", DATA_TESTE);
 }
 
-describe("Migration 041 aplicada — metas seedadas na unidade de teste", () => {
+describe("Migration 041 aplicada — metas seedadas na unidade de teste", { skip: PULAR_INTEGRACAO }, () => {
   test("unidade de teste tem os 11 indicadores cadastrados (réplica da Subway Saci)", async () => {
     const metas = await listarMetas({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID });
     assert.equal(metas.length, 11);
@@ -67,17 +75,29 @@ describe("Migration 041 aplicada — metas seedadas na unidade de teste", () => 
   });
 });
 
-describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado", () => {
-  after(limparDadosDeTeste);
-  test("PDF da Subway Saci enviado com a Florianópolis-SC 1 selecionada é recusado", async () => {
+describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado", { skip: PULAR_INTEGRACAO }, () => {
+  before(async () => {
+    const { data, error } = await supabase.from("unidades")
+      // Nome sem a palavra que identifica a unidade correta no PDF de fixture
+      // (propositalmente fora deste literal, para não reintroduzir o token).
+      .insert({ organizacao_id: SACI_ORG_ID, nome: "__TESTE_P06__ Outra Loja Descartavel", eh_teste: true })
+      .select("id").single();
+    if (error) throw new Error(`Falha ao criar unidade descartável do Teste E: ${error.message}`);
+    outraUnidadeId = data.id;
+  });
+  after(async () => {
+    await limparDadosDeTeste();
+    if (outraUnidadeId) await supabase.from("unidades").delete().eq("id", outraUnidadeId);
+  });
+  test("PDF da Subway Saci enviado com outra unidade selecionada é recusado", async () => {
     await assert.rejects(
-      () => processarImportacaoVisio({ organizacaoId: SACI_ORG_ID, unidadeId: OUTRA_UNIDADE_ID, usuario: USUARIO, payload: payloadCompleto(), confirmar: false }),
+      () => processarImportacaoVisio({ organizacaoId: SACI_ORG_ID, unidadeId: outraUnidadeId, usuario: USUARIO, payload: payloadCompleto(), confirmar: false }),
       (err) => { assert.match(err.message, /unidade diferente/i); return true; },
     );
   });
 });
 
-describe("Fluxo completo de importação + Teste F (duplicidade)", () => {
+describe("Fluxo completo de importação + Teste F (duplicidade)", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
 
   test("preview não persiste nada", async () => {
@@ -144,7 +164,7 @@ describe("Fluxo completo de importação + Teste F (duplicidade)", () => {
   });
 });
 
-describe("Teste G — excluir lançamento libera o PDF para reimportação", () => {
+describe("Teste G — excluir lançamento libera o PDF para reimportação", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
 
   test("excluir apaga o lançamento, grava o snapshot e libera as importações", async () => {
@@ -185,7 +205,7 @@ describe("Teste G — excluir lançamento libera o PDF para reimportação", () 
   });
 });
 
-describe("Teste H — regressão do bug relatado: dia pedia pra ser preenchido de novo", () => {
+describe("Teste H — regressão do bug relatado: dia pedia pra ser preenchido de novo", { skip: PULAR_INTEGRACAO }, () => {
   after(limparDadosDeTeste);
 
   // Reproduz o cenário real: os 2 relatórios (Geral+Loja) ficam registrados

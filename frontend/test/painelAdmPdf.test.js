@@ -611,3 +611,24 @@ describe("modal de geração", () => {
     assert.equal(padmModal.hidden, true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// CSP — o <script> inline do paginador tem hash fixado no backend.
+// Se SCRIPT_PAGINADOR mudar, o hash em backend/src/config/seguranca.js
+// (script-src 'sha256-...') PRECISA ser atualizado ou a CSP em enforce
+// quebra o PDF. Este teste falha de propósito quando isso acontece.
+// ---------------------------------------------------------------------------
+import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+describe("CSP hash do paginador do PDF", () => {
+  test("sha256(SCRIPT_PAGINADOR) bate com o declarado no backend", () => {
+    const hash = "sha256-" + crypto.createHash("sha256").update(PDF.SCRIPT_PAGINADOR, "utf8").digest("base64");
+    const seg = readFileSync(path.join(import.meta.dirname, "..", "..", "backend", "src", "config", "seguranca.js"), "utf8");
+    assert.ok(
+      seg.includes(`'${hash}'`),
+      `O hash do SCRIPT_PAGINADOR mudou.\n  Novo: '${hash}'\n  Atualize scriptSrc em backend/src/config/seguranca.js.`,
+    );
+  });
+});

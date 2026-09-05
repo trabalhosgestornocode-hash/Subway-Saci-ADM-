@@ -12,6 +12,9 @@
 // Rodar: node --env-file=.env --test test/bonificacao-mensal-metas-crud.test.js
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+// Fase P0.4: esta suite exercita um service real; NAO roda contra producao.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 import { supabase } from "../src/config/supabase.js";
 import { salvarMeta, listarMetas } from "../src/modules/bonificacao-mensal/bonificacaoMensal.service.js";
 
@@ -63,7 +66,7 @@ after(async () => {
   }
 });
 
-describe("salvarMeta — validação", () => {
+describe("salvarMeta — validação", { skip: PULAR_INTEGRACAO }, () => {
   test("indicador inválido é rejeitado", async () => {
     await assert.rejects(
       () => salvarMeta({ organizacaoId: SACI_ORG_ID, unidadeId: SACI_UNIDADE_ID, usuario: USUARIO, indicador: "nao_existe", direcao: "higher_is_better", validFrom: hojeIso(), faixas: [{ ordem: 1, tipo: "limite_minimo", valorMin: 10, bonus: 20 }] }),
@@ -86,7 +89,7 @@ describe("salvarMeta — validação", () => {
   });
 });
 
-describe("salvarMeta — cadastro inicial, edição in-place, nova vigência", () => {
+describe("salvarMeta — cadastro inicial, edição in-place, nova vigência", { skip: PULAR_INTEGRACAO }, () => {
   test("cadastra a 1ª meta do indicador (parte de uma unidade limpa)", async () => {
     await limparTudo();
     const r = await salvarMeta({

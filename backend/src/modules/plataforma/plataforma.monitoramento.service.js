@@ -163,10 +163,15 @@ async function estadoMartinBrower() {
 
 async function ultimaSincronizacaoMb() {
   try {
-    const { data, error } = await supabase.from("mb_sincronizacoes")
-      .select("status, created_at").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    // Tabela real é martin_brower_sincronizacoes — a antiga referência (mb_
+    // seguido de sincronizacoes, junto) nunca existiu; a consulta sempre
+    // errava e o monitor nunca via a sincronização de verdade. iniciado_em é
+    // a coluna de data — não há created_at nesta tabela (mesma convenção de
+    // martinbrower.repository.js).
+    const { data, error } = await supabase.from("martin_brower_sincronizacoes")
+      .select("status, iniciado_em").order("iniciado_em", { ascending: false }).limit(1).maybeSingle();
     if (error || !data) return null;
-    return { status: data.status, em: data.created_at, falhou: String(data.status).includes("erro") };
+    return { status: data.status, em: data.iniciado_em, falhou: String(data.status).includes("erro") };
   } catch {
     return null;
   }

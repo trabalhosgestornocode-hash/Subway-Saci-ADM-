@@ -318,10 +318,20 @@ describe("rotas — /perfis e /selecionar-perfil exigem auth+senha mas NÃO cont
 
   test("GET /perfis e POST /selecionar-perfil registrados com exigirSenhaDefinitiva, sem requireContexto", () => {
     assert.match(ROUTES, /get\("\/perfis",\s*exigirSenhaDefinitiva,\s*controller\.perfis\)/);
-    assert.match(ROUTES, /post\("\/selecionar-perfil",\s*exigirSenhaDefinitiva,\s*controller\.selecionarPerfil\)/);
-    // a linha de /perfis não pode conter requireContexto
-    const linhaPerfis = ROUTES.split("\n").find((l) => l.includes('"/perfis"'));
-    assert.ok(linhaPerfis && !linhaPerfis.includes("requireContexto"));
+    // /selecionar-perfil: exigirSenhaDefinitiva presente, controller ao final; um
+    // rate limiter (limitePin) pode vir no meio — Fase P0.3/P0.4.
+    assert.match(ROUTES, /post\("\/selecionar-perfil",\s*exigirSenhaDefinitiva,.*controller\.selecionarPerfil\)/);
+    // nem /perfis nem /selecionar-perfil podem conter requireContexto
+    for (const rota of ['"/perfis"', '"/selecionar-perfil"']) {
+      const linha = ROUTES.split("\n").find((l) => l.includes(rota));
+      assert.ok(linha && !linha.includes("requireContexto"), `${rota} não deve exigir contexto`);
+    }
+  });
+
+  test("POST /selecionar-perfil tem rate limit (P0.4 — anti brute-force de PIN por conta + IP)", () => {
+    assert.match(ROUTES, /post\("\/selecionar-perfil",[^)]*limitePin/);
+    assert.match(ROUTES, /sessao:pin:conta/);
+    assert.match(ROUTES, /sessao:pin:ip/);
   });
 });
 

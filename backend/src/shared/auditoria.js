@@ -80,6 +80,15 @@ export const ACOES = {
   PERFIL_PIN_REMOVIDO: "perfil.pin_removido",
   PERFIL_PIN_BLOQUEADO: "perfil.pin_bloqueado",
 
+  // Eventos de SEGURANÇA (Fase P0.10/P0.2) — capacidade mínima de detecção.
+  // Nunca gravam senha/PIN/token/Authorization/secret/TOTP nem payload
+  // sensível: só o fato, a rota, o ator e a origem.
+  SEGURANCA_ACESSO_NEGADO: "seguranca.acesso_negado",       // 403 em superfície privilegiada
+  SEGURANCA_RATE_LIMIT: "seguranca.rate_limit_excedido",    // 429 de um limiteDeTaxa (com throttle anti-spam)
+  SEGURANCA_MFA_REQUERIDA: "seguranca.mfa_requerida",       // gate de MFA barrou (AAL insuficiente)
+  MFA_CADASTRADA: "seguranca.mfa_cadastrada",               // conta passou a ter 2º fator verificado
+  MFA_REMOVIDA: "seguranca.mfa_removida",                   // conta deixou de ter 2º fator
+
   // Painel Administrativo da Crescer — acesso GLOBAL de monitoramento
   // (painel_administrativo_usuarios). NÃO é SuperAdmin: não concede poder
   // técnico. Concessão/revogação são feitas pelo SuperAdmin.

@@ -15,6 +15,9 @@
 // Rodar: node --env-file=.env --test test/parser-food-delivery-paginacao.test.js
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
+import { motivoPularIntegracao } from "./helpers/preflight-integracao.js";
+// Fase P0.4: esta suite exercita um service real; NAO roda contra producao.
+const PULAR_INTEGRACAO = motivoPularIntegracao();
 import { randomUUID } from "node:crypto";
 import { supabase } from "../src/config/supabase.js";
 import {
@@ -89,7 +92,7 @@ after(async () => {
 // 999/1000/1001 cobrem a fronteira EXATA do limite antigo (db.max_rows do
 // PostgREST); 1300 reproduz a ordem de grandeza do caso real.
 // ---------------------------------------------------------------------------
-describe("obterImportacao() (Visão Geral) reflete TODOS os pedidos, não só os primeiros 1000", () => {
+describe("obterImportacao() (Visão Geral) reflete TODOS os pedidos, não só os primeiros 1000", { skip: PULAR_INTEGRACAO }, () => {
   for (const n of [999, 1000, 1001, 1300]) {
     test(`importação com ${n} pedidos`, async () => {
       const { importacaoId } = await criarImportacao(n, { prefixo: `OI${n}` });
@@ -123,7 +126,7 @@ describe("obterImportacao() (Visão Geral) reflete TODOS os pedidos, não só os
 // (senão o valor hoje correto no banco seria corrompido para um valor
 // truncado — risco descrito no relatório de investigação).
 // ---------------------------------------------------------------------------
-describe("editarCodigosSemTaxa() em importação >1000 pedidos", () => {
+describe("editarCodigosSemTaxa() em importação >1000 pedidos", { skip: PULAR_INTEGRACAO }, () => {
   test("marcar um código como \"sem taxa\" recalcula sobre TODOS os 1050 pedidos, não só os primeiros 1000", async () => {
     const n = 1050;
     const { importacaoId, numeroPedidoCancelado } = await criarImportacao(n, { prefixo: "ED", situacaoCanceladaNoIndice: n - 1 });
@@ -152,7 +155,7 @@ describe("editarCodigosSemTaxa() em importação >1000 pedidos", () => {
 // alterarClassificacaoCancelamento() — mesmo risco de sobrescrita que
 // editarCodigosSemTaxa(), numa importação >1000 pedidos.
 // ---------------------------------------------------------------------------
-describe("alterarClassificacaoCancelamento() em importação >1000 pedidos", () => {
+describe("alterarClassificacaoCancelamento() em importação >1000 pedidos", { skip: PULAR_INTEGRACAO }, () => {
   test("override manual de UM cancelamento recalcula sobre TODOS os 1050 pedidos, não só os primeiros 1000", async () => {
     const n = 1050;
     const { importacaoId, pedidoCanceladoId } = await criarImportacao(n, { prefixo: "AC", situacaoCanceladaNoIndice: 0 });

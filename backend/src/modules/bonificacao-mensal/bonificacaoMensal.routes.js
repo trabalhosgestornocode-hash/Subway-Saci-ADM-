@@ -2,8 +2,14 @@ import { Router } from "express";
 import * as controller from "./bonificacaoMensal.controller.js";
 import { requirePermissao } from "../../middlewares/auth.js";
 import { PERMISSOES } from "../../shared/permissoes.js";
+import { limiteDeTaxa } from "../../shared/rateLimit.js";
+import { RATE_LIMIT } from "../../config/limites.js";
 
 export const bonificacaoMensalRouter = Router();
+
+// Mesmo orçamento de importação compartilhado entre módulos (ver vendas.routes.js).
+// Importa 2 PDFs da Visio no mesmo corpo — parse síncrono pesado.
+const limiteImport = limiteDeTaxa({ escopo: "importacao", ...RATE_LIMIT.importacao });
 
 const ver = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_VER);
 const lancar = requirePermissao(PERMISSOES.BONIFICACAO_MENSAL_LANCAR);
@@ -32,5 +38,5 @@ bonificacaoMensalRouter.get("/importacoes", ver, controller.importacoes);
 bonificacaoMensalRouter.get("/importacoes/:id/arquivo", ver, controller.arquivoImportacao);
 
 // Importação dos 2 PDFs da Visio: prévia (dry-run) sempre antes de confirmar.
-bonificacaoMensalRouter.post("/importar/preview", lancar, controller.importarPreview);
-bonificacaoMensalRouter.post("/importar", lancar, controller.importarConfirmar);
+bonificacaoMensalRouter.post("/importar/preview", lancar, limiteImport, controller.importarPreview);
+bonificacaoMensalRouter.post("/importar", lancar, limiteImport, controller.importarConfirmar);

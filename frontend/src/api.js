@@ -33,6 +33,14 @@ async function comAuth(extra = {}) {
 // do contexto que ainda está valendo.
 async function tratar(r, g) {
   if (r.status === 401) {
+    const c = await r.json().catch(() => ({}));
+    if ((c?.codigo || c?.details?.codigo) === "MFA_REQUERIDA") {
+      // Sessão válida, falta o 2º fator — não expulsa para o login.
+      document.dispatchEvent(new CustomEvent("app:mfa-requerida", { detail: c.error }));
+      const e = new Error(c.error || "Verificação em duas etapas necessária.");
+      e.codigo = "MFA_REQUERIDA";
+      throw e;
+    }
     document.dispatchEvent(new CustomEvent("app:sessao-expirada"));
     throw new Error("Sessão expirada. Faça login novamente.");
   }

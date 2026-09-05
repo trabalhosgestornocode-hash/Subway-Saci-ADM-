@@ -2,8 +2,13 @@ import { Router } from "express";
 import * as controller from "./parserFoodDelivery.controller.js";
 import { requirePermissao } from "../../middlewares/auth.js";
 import { PERMISSOES } from "../../shared/permissoes.js";
+import { limiteDeTaxa } from "../../shared/rateLimit.js";
+import { RATE_LIMIT } from "../../config/limites.js";
 
 export const parserFoodDeliveryRouter = Router();
+
+// Mesmo orçamento de importação compartilhado entre módulos (ver vendas.routes.js).
+const limiteImport = limiteDeTaxa({ escopo: "importacao", ...RATE_LIMIT.importacao });
 
 const ver = requirePermissao(PERMISSOES.PARSER_FD_VER);
 const importar = requirePermissao(PERMISSOES.PARSER_FD_IMPORTAR);
@@ -18,6 +23,6 @@ parserFoodDeliveryRouter.post("/importacoes/:id/pedidos/:pedidoId/classificacao"
 parserFoodDeliveryRouter.post("/importacoes/:id/excluir", excluir, controller.excluirImportacao);
 
 // Importação: prévia (dry-run) do arquivo -> prévia da conciliação -> confirmação.
-parserFoodDeliveryRouter.post("/importar/preview", importar, controller.importarPreview);
-parserFoodDeliveryRouter.post("/conciliar/preview", importar, controller.conciliarPreview);
-parserFoodDeliveryRouter.post("/conciliar/confirmar", importar, controller.conciliarConfirmar);
+parserFoodDeliveryRouter.post("/importar/preview", importar, limiteImport, controller.importarPreview);
+parserFoodDeliveryRouter.post("/conciliar/preview", importar, limiteImport, controller.conciliarPreview);
+parserFoodDeliveryRouter.post("/conciliar/confirmar", importar, limiteImport, controller.conciliarConfirmar);

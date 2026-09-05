@@ -67,6 +67,18 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
   const SENHA = `Iso-${tag}-Xx1!`;
   const ctx = { A: null, B: null, SUPER: null, MULTI: null };
 
+  // Fase P0.7: migration 063 tornou usuarios_organizacoes.perfil_id e
+  // usuarios_unidades.perfil_id NOT NULL — este arquivo é anterior a essa
+  // migration e inseria os vínculos sem perfil_id. perfis_operacionais.
+  // conta_id referencia perfis.id (== auth.users.id), então 1 perfil por
+  // conta, reaproveitado em todos os vínculos dessa conta.
+  async function criarPerfilOperacional(contaId, nome) {
+    const { data, error } = await admin.from("perfis_operacionais")
+      .insert({ conta_id: contaId, nome }).select("id").single();
+    assert.ifError(error);
+    return data.id;
+  }
+
   // Cria um usuário no Auth e devolve um cliente já autenticado como ele.
   async function criarUsuarioAutenticado(sufixo) {
     const email = `${tag}_${sufixo}@example.com`.toLowerCase();
@@ -99,11 +111,12 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
       nome: `User ${rotulo}`, email: u.email, papel: "admin", ativo: true,
     });
     assert.ifError(ePerf);
+    const perfilId = await criarPerfilOperacional(u.uid, `Perfil ${rotulo}`);
     const { error: eVo } = await admin.from("usuarios_organizacoes")
-      .insert({ usuario_id: u.uid, organizacao_id: org.id, papel: "organization_admin" });
+      .insert({ usuario_id: u.uid, organizacao_id: org.id, papel: "organization_admin", perfil_id: perfilId });
     assert.ifError(eVo);
     const { error: eVu } = await admin.from("usuarios_unidades")
-      .insert({ usuario_id: u.uid, unidade_id: uni.id });
+      .insert({ usuario_id: u.uid, unidade_id: uni.id, perfil_id: perfilId });
     assert.ifError(eVu);
 
     // Dado com escopo de ORGANIZAÇÃO e dado com escopo de UNIDADE
@@ -161,14 +174,19 @@ describe("Isolamento multi-tenant (RLS por vínculos)", { skip: motivoSkip }, ()
 
     // Usuário vinculado a DUAS organizações (A e B) — modelo multi-membership.
     ctx.MULTI = await criarUsuarioAutenticado("multi");
+    const { error: ePerfMulti } = await admin.from("perfis").insert({
+      id: ctx.MULTI.uid, nome: "User Multi", email: ctx.MULTI.email, papel: "leitura", ativo: true,
+    });
+    assert.ifError(ePerfMulti);
+    const perfilMultiId = await criarPerfilOperacional(ctx.MULTI.uid, "Perfil Multi");
     const { error: eM1 } = await admin.from("usuarios_organizacoes").insert([
-      { usuario_id: ctx.MULTI.uid, organizacao_id: ctx.A.orgId, papel: "viewer" },
-      { usuario_id: ctx.MULTI.uid, organizacao_id: ctx.B.orgId, papel: "viewer" },
+      { usuario_id: ctx.MULTI.uid, organizacao_id: ctx.A.orgId, papel: "viewer", perfil_id: perfilMultiId },
+      { usuario_id: ctx.MULTI.uid, organizacao_id: ctx.B.orgId, papel: "viewer", perfil_id: perfilMultiId },
     ]);
     assert.ifError(eM1);
     const { error: eM2 } = await admin.from("usuarios_unidades").insert([
-      { usuario_id: ctx.MULTI.uid, unidade_id: ctx.A.uniId },
-      { usuario_id: ctx.MULTI.uid, unidade_id: ctx.B.uniId },
+      { usuario_id: ctx.MULTI.uid, unidade_id: ctx.A.uniId, perfil_id: perfilMultiId },
+      { usuario_id: ctx.MULTI.uid, unidade_id: ctx.B.uniId, perfil_id: perfilMultiId },
     ]);
     assert.ifError(eM2);
   });

@@ -3989,3 +3989,15 @@ tr.dex-linha-na { opacity: .65; }
   .agente-painel-overlay.aberto { background: rgba(6,40,25,.45); pointer-events: auto; }
   .agente-painel { width: 100vw; }
 }
+
+/* --- MFA (verificação em duas etapas) ------------------------------------ */
+.mfa-dialog { max-width: 380px; }
+.mfa-dialog h2 { margin: 0 0 6px; font-size: 17px; }
+.mfa-codigo-input,
+#mfa-codigo { width: 100%; padding: 10px 12px; font-size: 20px; letter-spacing: 6px;
+  text-align: center; border: 1px solid var(--linha); border-radius: 10px;
+  background: var(--card); color: var(--txt); }
+.mfa-erro { margin: 8px 0 0; font-size: 13px; }
+.mfa-qr { display: flex; justify-content: center; margin: 10px 0; }
+.mfa-qr img { border: 1px solid var(--linha); border-radius: 10px; background: #fff; padding: 8px; }
+.cfg-passos { margin: 4px 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--txt-2); }

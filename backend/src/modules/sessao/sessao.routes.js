@@ -1,6 +1,20 @@
 import { Router } from "express";
 import * as controller from "./sessao.controller.js";
 import { requireContexto, exigirSenhaDefinitiva } from "../../middlewares/auth.js";
+import { limiteDeTaxa, combinar, ipCliente } from "../../shared/rateLimit.js";
+import { RATE_LIMIT } from "../../config/limites.js";
+
+// Limites de taxa das rotas de credencial. Chave por CONTA (req.user.id) e,
+// no PIN, TAMBÉM por IP — para que um atacante com a senha da conta não ataque
+// vários perfis em paralelo (contornando parte do lockout por perfil), nem
+// faça spray trocando de conta a partir de uma origem só. O 429 é genérico:
+// não revela se a conta/perfil existe.
+const limitePin = combinar(
+  limiteDeTaxa({ escopo: "sessao:pin:conta", ...RATE_LIMIT.pinPorConta }),
+  limiteDeTaxa({ escopo: "sessao:pin:ip", ...RATE_LIMIT.pinPorIp, chave: ipCliente }),
+);
+const limiteSelecionar = limiteDeTaxa({ escopo: "sessao:selecionar", ...RATE_LIMIT.selecionarContexto });
+const limiteSenha = limiteDeTaxa({ escopo: "sessao:senha", ...RATE_LIMIT.trocarSenha });
 
 // Rotas de sessão. Todas exigem estar AUTENTICADO (requireAuth já roda em
 // /api/v1), mas quase nenhuma exige CONTEXTO — é justamente aqui que o
@@ -11,14 +25,14 @@ export const sessaoRouter = Router();
 // Trocar a própria senha. É a ÚNICA saída do estado "senha provisória", então
 // NÃO passa pelo gate `exigirSenhaDefinitiva` — se passasse, o usuário ficaria
 // preso: bloqueado para tudo, inclusive para se desbloquear.
-sessaoRouter.post("/senha", controller.novaSenha);
+sessaoRouter.post("/senha", limiteSenha, controller.novaSenha);
 
 // As rotas abaixo exigem senha definitiva: escolher empresa/unidade antes de
 // definir a senha própria não faz sentido e é bloqueado. (O gate global de
 // routes.js só cobre o que vem DEPOIS do mount de /sessao; por isso as rotas
 // de sessão que devem ser bloqueadas repetem o gate aqui.)
 sessaoRouter.get("/acessos", exigirSenhaDefinitiva, controller.acessos);
-sessaoRouter.post("/selecionar", exigirSenhaDefinitiva, controller.selecionar);
+sessaoRouter.post("/selecionar", exigirSenhaDefinitiva, limiteSelecionar, controller.selecionar);
 
 // Perfil operacional (Fase C do multi-perfil) — o passo "Selecione seu
 // usuário", ENTRE o login e a seleção de contexto. Como `/acessos`, exigem
@@ -26,7 +40,12 @@ sessaoRouter.post("/selecionar", exigirSenhaDefinitiva, controller.selecionar);
 // operacional é escolhida, antes de ter empresa). A conta vem sempre de
 // req.user.id; nenhum handler lê conta_id do cliente.
 sessaoRouter.get("/perfis", exigirSenhaDefinitiva, controller.perfis);
-sessaoRouter.post("/selecionar-perfil", exigirSenhaDefinitiva, controller.selecionarPerfil);
+sessaoRouter.post("/selecionar-perfil", exigirSenhaDefinitiva, limitePin, controller.selecionarPerfil);
+
+// MFA (P0.2) — o frontend avisa após cadastrar/remover o 2º fator (o
+// enroll/verify é client-side via Supabase Auth). Só registra auditoria a
+// partir do estado REAL relido do JWT; não recebe segredo nenhum.
+sessaoRouter.post("/mfa/evento", exigirSenhaDefinitiva, controller.mfaEvento);
 
 // `atual` exige contexto (é o que ele descreve).
 sessaoRouter.get("/atual", exigirSenhaDefinitiva, requireContexto, controller.atual);
