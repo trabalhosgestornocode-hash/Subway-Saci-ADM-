@@ -78,7 +78,9 @@ describe("Migration 041 aplicada — metas seedadas na unidade de teste", { skip
 describe("Teste E (ponta a ponta) — relatório de outra unidade é bloqueado", { skip: PULAR_INTEGRACAO }, () => {
   before(async () => {
     const { data, error } = await supabase.from("unidades")
-      .insert({ organizacao_id: SACI_ORG_ID, nome: "__TESTE_P06__ Outra Unidade (sem token Saci)", eh_teste: true })
+      // Nome sem a palavra que identifica a unidade correta no PDF de fixture
+      // (propositalmente fora deste literal, para não reintroduzir o token).
+      .insert({ organizacao_id: SACI_ORG_ID, nome: "__TESTE_P06__ Outra Loja Descartavel", eh_teste: true })
       .select("id").single();
     if (error) throw new Error(`Falha ao criar unidade descartável do Teste E: ${error.message}`);
     outraUnidadeId = data.id;
