@@ -180,6 +180,35 @@ if (rpcOk) {
   m067Ok = invoker && searchPath && rlsOk && privOk;
 }
 
+// --- 3b. RPCs de PIN (migration 068) -----------------------------------
+function checarExecuteRpc(nomeExibicao, proname) {
+  const [[existe]] = q(
+    `select count(*) from pg_proc where proname='${proname}' and pronamespace='public'::regnamespace`
+  );
+  if (existe !== "1") {
+    reg(`função ${nomeExibicao}`, "AUSENTE", false);
+    return false;
+  }
+  const priv = q(
+    `select r.rolname, has_function_privilege(r.rolname, p.oid, 'EXECUTE')::text
+       from pg_proc p
+       cross join (values ('public'),('anon'),('authenticated'),('service_role')) r(rolname)
+      where p.proname='${proname}' and p.pronamespace='public'::regnamespace`
+  );
+  const mapa = Object.fromEntries(priv);
+  const esperado = { public: "false", anon: "false", authenticated: "false", service_role: "true" };
+  const ok = Object.entries(esperado).every(([k, v]) => mapa[k] === v);
+  reg(
+    `EXECUTE / ${nomeExibicao}`,
+    Object.entries(mapa).map(([k, v]) => `${k}=${v === "true" ? "sim" : "não"}`).join(", "),
+    ok
+  );
+  return ok;
+}
+const pinOk =
+  checarExecuteRpc("perfil_pin_registrar_falha", "perfil_pin_registrar_falha") &
+  checarExecuteRpc("perfil_pin_registrar_sucesso", "perfil_pin_registrar_sucesso");
+
 // --- 4. concorrência 10 / 1 (opcional, escreve) ----------------------
 let concResultado = "NÃO EXECUTADO (use --concorrencia)";
 let concOk = null;
@@ -231,6 +260,6 @@ for (const l of linhas) {
 console.log("");
 
 const veredito =
-  baseOk && rpcOk && m067Ok && (concOk === null || concOk === true);
+  baseOk && rpcOk && m067Ok && !!pinOk && (concOk === null || concOk === true);
 console.log(veredito ? "VEREDITO: PASS\n" : "VEREDITO: FAIL\n");
 process.exit(veredito ? 0 : 1);
