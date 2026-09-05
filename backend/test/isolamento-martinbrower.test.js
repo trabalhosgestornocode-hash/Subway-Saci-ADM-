@@ -148,6 +148,16 @@ describe("Isolamento Martin Brower (migration 017)", { skip: motivoSkip }, () =>
     return { email, uid: data.user.id, cli };
   }
 
+  // Fase P0.7: migration 063 tornou usuarios_organizacoes.perfil_id e
+  // usuarios_unidades.perfil_id NOT NULL — este arquivo é anterior a essa
+  // migration. perfis_operacionais.conta_id referencia perfis.id.
+  async function criarPerfilOperacional(contaId, nome) {
+    const { data, error } = await admin.from("perfis_operacionais")
+      .insert({ conta_id: contaId, nome }).select("id").single();
+    assert.ifError(error);
+    return data.id;
+  }
+
   async function criarOrganizacao(rotulo) {
     const { data, error } = await admin.from("organizacoes").insert({ nome: `MBISO ${rotulo} ${tag}` }).select("id").single();
     assert.ifError(error);
@@ -167,12 +177,13 @@ describe("Isolamento Martin Brower (migration 017)", { skip: motivoSkip }, () =>
       nome: `User ${rotulo}`, email: u.email, papel: "admin", ativo: true,
     });
     assert.ifError(ePerf);
+    const perfilId = await criarPerfilOperacional(u.uid, `Perfil ${rotulo}`);
     // Vínculo com a ORGANIZAÇÃO e com APENAS ESTA unidade — é o que faz o
     // cenário A1 vs A2 ter sentido: mesma org, unidades diferentes.
     const { error: eVo } = await admin.from("usuarios_organizacoes")
-      .insert({ usuario_id: u.uid, organizacao_id: orgId, papel: "organization_admin" });
+      .insert({ usuario_id: u.uid, organizacao_id: orgId, papel: "organization_admin", perfil_id: perfilId });
     assert.ifError(eVo);
-    const { error: eVu } = await admin.from("usuarios_unidades").insert({ usuario_id: u.uid, unidade_id: uni.id });
+    const { error: eVu } = await admin.from("usuarios_unidades").insert({ usuario_id: u.uid, unidade_id: uni.id, perfil_id: perfilId });
     assert.ifError(eVu);
 
     const { data: integ, error: eInt } = await admin.from("martin_brower_integracoes")
@@ -710,9 +721,14 @@ describe("Isolamento Martin Brower (migration 017)", { skip: motivoSkip }, () =>
     assert.equal(prod.codigo, "1001088", "código de PRODUTO é outro campo — não pode ter sido tocado");
     assert.equal(Number(prod.preco), 486.01, "preço alterado pela migration");
 
+    // Fase P0.7: exclui o histId do SEED do before() (90 -> 100) — sem isso
+    // o .order().limit(1) pega a linha do seed em vez da do sync real, porque
+    // ela é sempre a mais antiga por coletado_em (bug de query do teste, não
+    // do código: martinbrower.sync.service.js nunca leu essa linha errada).
     const { data: hist, error: eH } = await admin.from("martin_brower_precos_historico")
       .select("codigo, preco_anterior, preco_novo, client_id")
-      .eq("unidade_id", ctx.A1.uniId).eq("codigo", "1001088").order("coletado_em").limit(1).single();
+      .eq("unidade_id", ctx.A1.uniId).eq("codigo", "1001088").neq("id", ctx.A1.histId)
+      .order("coletado_em").limit(1).single();
     assert.ifError(eH);
     assert.equal(Number(hist.preco_anterior), 100);
     assert.equal(Number(hist.preco_novo), 486.01);
