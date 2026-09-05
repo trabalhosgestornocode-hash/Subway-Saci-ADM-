@@ -100,9 +100,14 @@ describe("Isolamento HTTP — rotas de Configurações", { skip: motivoSkip }, (
 
     const user = await criarAuthUser(rotulo);
     await admin.from("perfis").insert({ id: user.uid, organizacao_id: org.id, nome: `User ${rotulo}`, email: user.email, papel: "admin", ativo: true });
-    await admin.from("usuarios_organizacoes").insert({ usuario_id: user.uid, organizacao_id: org.id, papel: "organization_admin" });
+    // Fase P0.7: migration 063 tornou perfil_id NOT NULL nos vínculos, e
+    // sessao.service.js (Fase D) exige perfilId em toda sessão normal.
+    const { data: perfilOp } = await admin.from("perfis_operacionais")
+      .insert({ conta_id: user.uid, nome: `Perfil ${rotulo}` }).select("id").single();
+    const perfilId = perfilOp.id;
+    await admin.from("usuarios_organizacoes").insert({ usuario_id: user.uid, organizacao_id: org.id, papel: "organization_admin", perfil_id: perfilId });
     await admin.from("usuarios_unidades").insert([
-      { usuario_id: user.uid, unidade_id: u1.id }, { usuario_id: user.uid, unidade_id: u2.id },
+      { usuario_id: user.uid, unidade_id: u1.id, perfil_id: perfilId }, { usuario_id: user.uid, unidade_id: u2.id, perfil_id: perfilId },
     ]);
 
     // metas de CMV só na 1ª unidade
@@ -113,7 +118,7 @@ describe("Isolamento HTTP — rotas de Configurações", { skip: motivoSkip }, (
     await admin.from("produto_precos").insert({ produto_id: prod.id, canal: "balcao", tabela, preco: 20 });
 
     const mk = (unidadeId) => criarSessao({
-      usuarioId: user.uid, organizacaoId: org.id, unidadeId,
+      usuarioId: user.uid, perfilId, organizacaoId: org.id, unidadeId,
       papel: "organization_admin", permissoes: PERMS_ADMIN, modulos: [],
     });
     const [s1, s2] = await Promise.all([mk(u1.id), mk(u2.id)]);
