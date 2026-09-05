@@ -1,0 +1,13 @@
+import { asyncHandler } from '../../shared/asyncHandler.js';
+import * as s from './desenvolvimento.service.js';
+const deps = req => req.app.locals.desenvolvimentoDeps ?? {};
+const action = (fn, status = 200) => asyncHandler(async (req,res) => res.status(status).json({ data: await fn(req) }));
+export const listar = action(r => s.listar(r.user,r.query,deps(r)));
+export const obter = action(r => s.obter(r.user,r.params.id,deps(r)));
+export const criar = action(r => s.salvar(r.user,null,r.body,deps(r)),201);
+export const editar = action(r => s.salvar(r.user,r.params.id,r.body,deps(r)));
+export const excluir = action(r => s.excluir(r.user,r.params.id,r.body,deps(r)));
+export const resumo = action(r => s.resumo(r.user,deps(r)));
+export const catalogos = action(r => s.catalogos(r.user,deps(r)));
+export const atualizacoes = action(r => s.atualizacoes(r.user,r.query,deps(r)));
+export const adicionar = action(r => s.adicionarAtualizacao(r.user,r.params.id,r.body,deps(r)),201);

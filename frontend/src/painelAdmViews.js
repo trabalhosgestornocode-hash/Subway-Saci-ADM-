@@ -17,6 +17,7 @@
 import { el, els, escapeHtml, normalizarBusca } from "./utils.js";
 import { icon } from "./icons.js";
 import { painelAdmApi } from "./painelAdmApi.js";
+import { renderDesenvolvimento, montarCardDesenvolvimento } from './desenvolvimento.js';
 import { SECOES_PDF, secoesPadrao, gerarPdf, previewPdf, nomeArquivoPdf } from "./painelAdmPdf.js";
 import {
   card, cards, secao, carregando, erro, vazio, busca, metrica, barraSaude,
@@ -29,13 +30,14 @@ import {
   tomVariacao, seloProvisorio, textoCobertura, linhaRanking, barrasEvolucao,
 } from "./painelAdmUi.js";
 
-/** Menu do painel — 5 áreas fixas. */
+/** Áreas gerenciais existentes e agenda oficial do desenvolvimento. */
 export const TELAS_PADM = [
   { id: "visao-geral", label: "Visão Geral",          icone: "target" },
   { id: "diario",      label: "Monitoramento Diário", icone: "calendar" },
   { id: "pendencias",  label: "Pendências",           icone: "alert-triangle" },
   { id: "empresas",    label: "Empresas",             icone: "building" },
   { id: "relatorios",  label: "Relatórios",           icone: "archive" },
+  { id: 'desenvolvimento', label: 'Agenda de Demandas', icone: 'calendar' },
 ];
 
 const view = () => el("#padm-view");
@@ -90,6 +92,7 @@ export async function renderViewPadm(entrada = { tipo: "tela", id: "visao-geral"
   const mes = opts.mes || undefined;
   const v = view();
   if (!v) return;
+  if (entrada.id === 'desenvolvimento') return renderDesenvolvimento(v, api, nav.aoAcessoRevogado);
 
 
   v.innerHTML = carregando(formaDe(entrada));
@@ -126,6 +129,7 @@ export async function renderViewPadm(entrada = { tipo: "tela", id: "visao-geral"
     } else {
       v.innerHTML = htmlVisaoGeral(await api.visaoGeral({ mes }));
       ligarLista();
+      montarCardDesenvolvimento(v, api, () => nav.irParaTela('desenvolvimento'));
     }
   } catch (e) {
     if (e && e.status === 403) {

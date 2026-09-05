@@ -216,7 +216,7 @@ function ligarPeriodo() {
 function montarMenu() {
   const menu = el("#padm-menu");
   if (!menu) return;
-  menu.innerHTML = `<li class="menu-secao">Monitoramento</li>` + TELAS_PADM.map((t) => `
+  menu.innerHTML = `<li class="menu-secao">Monitoramento</li>` + TELAS_PADM.map((t) => `${t.id === 'desenvolvimento' ? '<li class="menu-secao">Desenvolvimento</li>' : ''}
     <li data-tela="${t.id}">
       <span class="m-icon">${icon(t.icone, { size: 15 })}</span>
       <span class="m-label">${t.label}</span>
@@ -269,6 +269,8 @@ function tituloDoTopo() {
 }
 
 function renderPadmAtual() {
+  const seletor = el('#padm-cabecalho .padm-periodo');
+  if (seletor) seletor.hidden = topo().id === 'desenvolvimento';
   const titulo = el("#padm-titulo");
   if (titulo) titulo.textContent = tituloDoTopo();
   return renderViewPadm(topo(), { api: apiAtual, mes: periodo().ym });
