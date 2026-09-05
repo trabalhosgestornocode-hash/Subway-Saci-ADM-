@@ -1,6 +1,17 @@
 -- =====================================================================
--- MIGRATION 068 — Restringir as RPCs de PIN a service_role
+-- MIGRATION 071 — Restringir as RPCs de PIN a service_role
 -- =====================================================================
+-- HISTÓRICO DE NUMERAÇÃO
+--   * Originalmente criada como `068_restringir_rpc_pin.sql`.
+--   * Já aplicada e validada em PRODUÇÃO em 2026-09-05 (revoke de PUBLIC/
+--     anon/authenticated confirmado no catálogo do PostgreSQL; grant a
+--     service_role confirmado).
+--   * Renumerada no repositório para 071 apenas para eliminar a colisão
+--     histórica com `068_dashboard_ifood_desbloqueios.sql`, que veio pela
+--     linha da feature de desbloqueio administrativo do Dashboard iFood.
+--   * NÃO deve ser reaplicada em produção só por causa da renumeração — o
+--     efeito já está aplicado e é idempotente de qualquer forma.
+--
 -- ⚠️  NÃO APLICAR EM PRODUÇÃO SEM APROVAÇÃO EXPLÍCITA.
 --
 -- PROBLEMA (achado na Fase P0.6, mesma classe de bug que a migration 067
