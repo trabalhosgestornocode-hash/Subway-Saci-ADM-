@@ -1,4 +1,23 @@
--- Central oficial do desenvolvimento. Aplicar após 068; não contém demandas seed.
+-- =====================================================================
+-- MIGRATION 072 — Agenda de Demandas do Desenvolvimento (estrutura)
+-- =====================================================================
+-- Central oficial do desenvolvimento. Aplicar após 071; não contém demandas seed.
+--
+-- HISTÓRICO DE NUMERAÇÃO
+--   * Originalmente criada como `069_desenvolvimento_demandas.sql`.
+--   * JÁ APLICADA como 069 no Supabase em uso — verificado em 2026-09-05 no
+--     catálogo do PostgreSQL (tabelas `desenvolvimento_demandas` e
+--     `desenvolvimento_demanda_atualizacoes` presentes).
+--   * Renumerada no repositório para 072 apenas para ficar depois de
+--     `071_restringir_rpc_pin.sql`, que main renumerou de 068 para 071 ao
+--     resolver a colisão com `068_dashboard_ifood_desbloqueios.sql`.
+--   * NÃO REEXECUTAR onde já rodou como 069: esta migration NÃO é
+--     idempotente (`create table` sem `if not exists`). A transação abortaria
+--     inteira, sem estrago parcial, mas o erro é evitável. Confirme ambiente a
+--     ambiente antes de executar.
+--   * Não há dependência funcional em relação à 071 nem à 068 — a ordem é
+--     apenas organizacional.
+-- =====================================================================
 begin;
 create table public.desenvolvimento_demandas (
   id uuid primary key default gen_random_uuid(),

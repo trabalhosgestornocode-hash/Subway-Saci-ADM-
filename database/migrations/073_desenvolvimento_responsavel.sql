@@ -1,8 +1,19 @@
 -- =====================================================================
--- MIGRATION 070 — Responsável pela demanda + nomes humanos no histórico
+-- MIGRATION 073 — Responsável pela demanda + nomes humanos no histórico
+-- =====================================================================
+-- HISTÓRICO DE NUMERAÇÃO
+--   * Originalmente criada como `070_desenvolvimento_responsavel.sql`.
+--   * JÁ APLICADA como 070 no Supabase em uso — verificado em 2026-09-05 no
+--     catálogo do PostgreSQL (coluna `responsavel_usuario_id` e funções
+--     `desenvolvimento_nome_usuario` / `desenvolvimento_ator_tipo` presentes).
+--   * Renumerada no repositório para 073 acompanhando a 072 (antiga 069).
+--   * REEXECUÇÃO É SEGURA onde já rodou: todo o corpo usa
+--     `add column if not exists`, `create index if not exists`,
+--     `drop constraint if exists` e `create or replace function`. Ainda assim,
+--     confirme ambiente a ambiente antes de executar.
 -- =====================================================================
 -- OBJETIVO
---   Evolução da Agenda de Demandas (069). A 069 NÃO é alterada: esta
+--   Evolução da Agenda de Demandas (072). A 072 NÃO é alterada: esta
 --   migration só ACRESCENTA coluna/índice/funções e SUBSTITUI o corpo de
 --   duas funções de trigger (create or replace), preservando o arquivo
 --   original como registro histórico do que foi aplicado primeiro.
@@ -16,7 +27,7 @@
 --      paralelo de pessoas: a fonte é a que já existe.
 --
 --   2. Histórico com NOME, não UUID. O texto do evento é montado no
---      momento da escrita (como todos os eventos da 069, que já gravam
+--      momento da escrita (como todos os eventos da 072, que já gravam
 --      texto pronto), então a troca de responsável fica legível para
 --      sempre — inclusive se a conta for removida depois.
 --
@@ -44,7 +55,7 @@ create index if not exists desenvolvimento_responsavel
 comment on column public.desenvolvimento_demandas.responsavel_usuario_id is
   'Conta responsavel pela demanda. Sempre um usuario com acesso ativo ao Painel Administrativo (painel_administrativo_usuarios) ou SuperAdmin ativo (plataforma_admins). Nulo = sem responsavel definido.';
 
--- Novo tipo de evento no histórico. O CHECK da 069 é recriado com ASSIGN
+-- Novo tipo de evento no histórico. O CHECK da 072 é recriado com ASSIGN
 -- somado — a lista original permanece exatamente como estava.
 alter table public.desenvolvimento_demanda_atualizacoes
   drop constraint if exists desenvolvimento_demanda_atualizacoes_tipo_check;
@@ -97,7 +108,7 @@ grant execute on function public.desenvolvimento_nome_usuario(uuid) to service_r
 grant execute on function public.desenvolvimento_pode_ser_responsavel(uuid) to service_role;
 
 -- ---------------------------------------------------------------------
--- 3. Preparação da linha — corpo da 069 + guarda do responsável.
+-- 3. Preparação da linha — corpo da 072 + guarda do responsável.
 --    A guarda só roda quando o responsável MUDA: revogar o acesso de
 --    alguém não pode travar a edição das demandas antigas dele.
 -- ---------------------------------------------------------------------
@@ -133,7 +144,7 @@ begin
 end $fn$;
 
 -- ---------------------------------------------------------------------
--- 4. Histórico e auditoria — corpo da 069 + evento ASSIGN com nomes
+-- 4. Histórico e auditoria — corpo da 072 + evento ASSIGN com nomes
 --    resolvidos na escrita, e ator_tipo derivado de quem realmente agiu.
 -- ---------------------------------------------------------------------
 create or replace function public.desenvolvimento_registrar() returns trigger language plpgsql set search_path=public as $fn$
@@ -201,5 +212,5 @@ commit;
 --   drop function if exists desenvolvimento_ator_tipo(uuid);
 --   drop function if exists desenvolvimento_pode_ser_responsavel(uuid);
 --   drop function if exists desenvolvimento_nome_usuario(uuid);
---   -- e reexecutar os blocos `desenvolvimento_preparar` / `desenvolvimento_registrar` da 069.
+--   -- e reexecutar os blocos `desenvolvimento_preparar` / `desenvolvimento_registrar` da 072.
 -- =====================================================================

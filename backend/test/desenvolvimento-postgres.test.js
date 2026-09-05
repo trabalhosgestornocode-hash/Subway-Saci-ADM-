@@ -8,10 +8,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const enabled=process.env.DEV_POSTGRES_TEST==='1';
 const bin=process.env.DEV_PSQL_BIN || 'C:/Program Files/PostgreSQL/17/bin/psql.exe';
-const db='crescer_dev_069_test_'+process.pid;
+const db='crescer_dev_072_test_'+process.pid;
 const port=process.env.DEV_POSTGRES_PORT || '55469';
 function sql(text, database=db) {
-  const temp=mkdtempSync(join(tmpdir(),'dev-069-sql-'));
+  const temp=mkdtempSync(join(tmpdir(),'dev-072-sql-'));
   try { const file=join(temp,'query.sql');writeFileSync(file,text,'utf8');return execFileSync(bin,['-X','-h','127.0.0.1','-p',port,'-U','postgres','-d',database,'-v','ON_ERROR_STOP=1','-At','-f',file],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000}).trim(); }
   finally { rmSync(temp,{recursive:true,force:true}); }
 }
@@ -29,8 +29,8 @@ before(()=>{
     insert into perfis values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Ana SuperAdmin','ana@crescer.test'),('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','João Pedro','joao@crescer.test'),('cccccccc-cccc-4ccc-8ccc-cccccccccccc','Carlos Operador','carlos@loja.test');
     insert into painel_administrativo_usuarios(usuario_id) values('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
     insert into plataforma_admins(usuario_id) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');`);
-  sql(readFileSync(new URL('../../database/migrations/069_desenvolvimento_demandas.sql',import.meta.url),'utf8'));
-  sql(readFileSync(new URL('../../database/migrations/070_desenvolvimento_responsavel.sql',import.meta.url),'utf8'));
+  sql(readFileSync(new URL('../../database/migrations/072_desenvolvimento_demandas.sql',import.meta.url),'utf8'));
+  sql(readFileSync(new URL('../../database/migrations/073_desenvolvimento_responsavel.sql',import.meta.url),'utf8'));
 });
 after(()=>{if(enabled)sql(`drop database if exists ${db};`,'postgres');});
 const pgtest=(name,fn)=>test(name,{skip:!enabled?'Defina DEV_POSTGRES_TEST=1 para PostgreSQL local descartável.':false},fn);
@@ -85,13 +85,13 @@ pgtest('service_role insere demanda, histórico e auditoria sem privilégio púb
 });
 
 // -------------------------------------------------------------------------
-// Migration 070 — responsável e nomes humanos, no PostgreSQL real.
+// Migration 073 — responsável e nomes humanos, no PostgreSQL real.
 // -------------------------------------------------------------------------
 const ANA='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';   // SuperAdmin
 const JOAO='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';  // Painel Administrativo
 const CARLOS='cccccccc-cccc-4ccc-8ccc-cccccccccccc';// sem acesso ao painel
 
-pgtest('070: só quem tem acesso ao painel pode ser responsável',()=>{
+pgtest('073: só quem tem acesso ao painel pode ser responsável',()=>{
   sql(`insert into desenvolvimento_demandas(titulo,atualizado_por,responsavel_usuario_id) values('Com dono','${ANA}','${JOAO}');`);
   assert.equal(sql(`select responsavel_usuario_id from desenvolvimento_demandas where titulo='Com dono';`),JOAO);
   // SuperAdmin também é elegível (faz bypass do painel).
@@ -104,7 +104,7 @@ pgtest('070: só quem tem acesso ao painel pode ser responsável',()=>{
   assert.equal(sql(`select responsavel_usuario_id is null from desenvolvimento_demandas where titulo='Sem dono';`),'t');
 });
 
-pgtest('070: revogar acesso não trava a edição das demandas antigas do responsável',()=>{
+pgtest('073: revogar acesso não trava a edição das demandas antigas do responsável',()=>{
   sql(`update painel_administrativo_usuarios set ativo=false where usuario_id='${JOAO}';`);
   // Editar outros campos segue funcionando, mesmo com o responsável já inelegível.
   sql(`update desenvolvimento_demandas set progresso=40 where titulo='Com dono';`);
@@ -114,7 +114,7 @@ pgtest('070: revogar acesso não trava a edição das demandas antigas do respon
   sql(`update painel_administrativo_usuarios set ativo=true where usuario_id='${JOAO}';`);
 });
 
-pgtest('070: troca de responsável vira histórico com NOME, nunca UUID',()=>{
+pgtest('073: troca de responsável vira histórico com NOME, nunca UUID',()=>{
   sql(`update desenvolvimento_demandas set responsavel_usuario_id='${ANA}',atualizado_por='${JOAO}' where titulo='Com dono';`);
   const texto=sql(`select texto from desenvolvimento_demanda_atualizacoes where tipo='ASSIGN' and demanda_id=(select id from desenvolvimento_demandas where titulo='Com dono') order by created_at desc limit 1;`);
   assert.equal(texto,'Responsável alterado de João Pedro para Ana SuperAdmin.');
@@ -128,7 +128,7 @@ pgtest('070: troca de responsável vira histórico com NOME, nunca UUID',()=>{
   assert.ok(sql(`select texto from desenvolvimento_demanda_atualizacoes where tipo='ASSIGN' and demanda_id=(select id from desenvolvimento_demandas where titulo='Do super') order by created_at desc limit 1;`).includes('para sem responsável.'));
 });
 
-pgtest('070: nome humano nunca devolve UUID e cai para o e-mail do Auth',()=>{
+pgtest('073: nome humano nunca devolve UUID e cai para o e-mail do Auth',()=>{
   assert.equal(sql(`select desenvolvimento_nome_usuario('${JOAO}');`),'João Pedro');
   // Sem linha em perfis (caso do SuperAdmin sem empresa): usa o e-mail do Auth.
   assert.equal(sql(`select desenvolvimento_nome_usuario('11111111-1111-4111-8111-111111111111');`),'sem-perfil@crescer.test');
@@ -138,7 +138,7 @@ pgtest('070: nome humano nunca devolve UUID e cai para o e-mail do Auth',()=>{
   assert.equal(sql(`select desenvolvimento_nome_usuario(null) is null;`),'t');
 });
 
-pgtest('070: auditoria registra o tipo real do ator, não "superadmin" fixo',()=>{
+pgtest('073: auditoria registra o tipo real do ator, não "superadmin" fixo',()=>{
   sql(`insert into desenvolvimento_demandas(titulo,atualizado_por) values('Auditada','${JOAO}');`);
   assert.equal(sql(`select ator_tipo from plataforma_auditoria where acao='desenvolvimento.insert' and ator_id='${JOAO}' order by created_at desc limit 1;`),'usuario');
   sql(`insert into desenvolvimento_demandas(titulo,atualizado_por) values('Auditada super','${ANA}');`);
@@ -147,7 +147,7 @@ pgtest('070: auditoria registra o tipo real do ator, não "superadmin" fixo',()=
   assert.equal(sql(`select count(*) from plataforma_auditoria where detalhes::text like '%nota_interna%' or detalhes::text like '%link_tecnico%';`),'0');
 });
 
-pgtest('070: funções novas continuam fora do alcance de anon/authenticated',()=>{
+pgtest('073: funções novas continuam fora do alcance de anon/authenticated',()=>{
   for(const role of ['anon','authenticated']){
     assert.throws(()=>sql(`set role ${role};select desenvolvimento_nome_usuario('${JOAO}');`));
     assert.throws(()=>sql(`set role ${role};select desenvolvimento_pode_ser_responsavel('${JOAO}');`));

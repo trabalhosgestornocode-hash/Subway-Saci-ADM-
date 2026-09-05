@@ -120,7 +120,7 @@ export async function salvar(user, id, body, deps = {}) {
   if (!admin && d.CAMPOS_RESTRITOS.some(k => Object.hasOwn(dados, k))) throw ApiError.forbidden('Nota interna e link técnico são exclusivos do SuperAdmin.');
   await validarRelacoes(db, { ...atual, ...dados });
   // Responsável precisa ser conta com acesso ao painel — checado aqui e de novo
-  // pelo gatilho da migration 070, para que nenhuma via de escrita escape.
+  // pelo gatilho da migration 073, para que nenhuma via de escrita escape.
   if (Object.hasOwn(dados, 'responsavel_usuario_id') && dados.responsavel_usuario_id
       && !await pessoas.podeSerResponsavel(db, dados.responsavel_usuario_id)) {
     throw ApiError.badRequest('O responsável precisa ser um usuário com acesso ao Painel Administrativo.');

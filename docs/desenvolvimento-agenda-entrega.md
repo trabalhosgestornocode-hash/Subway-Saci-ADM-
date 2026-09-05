@@ -10,7 +10,7 @@ Implementada no Painel Administrativo, em **Desenvolvimento → Agenda de Demand
 - A administração técnica usa `req.user.superadmin`, já resolvido pelo mecanismo existente. Não foi criada outra tabela de administradores nem usado e-mail hardcoded. O responsável técnico administra a agenda com seu acesso SuperAdmin existente.
 - Pessoas (criador, responsável, autor de evento) vêm de `perfis`, `painel_administrativo_usuarios` e `plataforma_admins` — as tabelas que já existem. A agenda não tem cadastro próprio de usuários.
 - Categorias e tipos são catálogos estáticos de domínio, com listas no backend e constraints no banco; o frontend recebe os catálogos da API. Não há CRUD de categorias nesta versão. A mesma decisão evita uma infraestrutura paralela de catálogos.
-- A última migration encontrada foi `068_restringir_rpc_pin.sql`; a nova estrutura usa **069**. A consolidação de schema existente não foi reescrita.
+- A estrutura usa **072** e **073**. Criadas originalmente como 069/070; renumeradas para ficarem depois de `071_restringir_rpc_pin.sql`, que `main` renumerou de 068 ao resolver a colisão com `068_dashboard_ifood_desbloqueios.sql`. Não há dependência funcional entre a Agenda e a 071/068 — a ordem é organizacional. A consolidação de schema existente não foi reescrita.
 - Riscos tratados: exposição de notas, autorização somente visual, códigos reutilizados, foco duplicado, sobrescrita concorrente, histórico fora da transação, truncamento silencioso e regressões em transferência/exclusão de unidades.
 
 ## 1. Arquivos criados
@@ -22,7 +22,7 @@ Implementada no Painel Administrativo, em **Desenvolvimento → Agenda de Demand
 | `backend/src/modules/desenvolvimento/desenvolvimento.service.js` | Autorizações, relações, CRUD, resumo e catálogos |
 | `backend/src/modules/desenvolvimento/desenvolvimento.controller.js` | Contratos HTTP e dependências de teste |
 | `backend/src/modules/desenvolvimento/desenvolvimento.routes.js` | Rotas protegidas |
-| `database/migrations/069_desenvolvimento_demandas.sql` | Estrutura, constraints, triggers, RLS e auditoria |
+| `database/migrations/072_desenvolvimento_demandas.sql` | Estrutura, constraints, triggers, RLS e auditoria |
 | `frontend/src/desenvolvimento.js` | Orquestração, filtros, formulários e detalhes |
 | `frontend/src/desenvolvimentoUi.js` | Cards, board, calendário, roadmap e timeline |
 | `frontend/src/desenvolvimento.css` | Estilos responsivos usando os tokens existentes |
@@ -44,7 +44,7 @@ Implementada no Painel Administrativo, em **Desenvolvimento → Agenda de Demand
 
 ## 3–4. Migration e tabelas
 
-Migration: **069_desenvolvimento_demandas.sql**, transacional, para execução única pelo processo normal de migrations.
+Migration: **072_desenvolvimento_demandas.sql**, transacional, para execução única pelo processo normal de migrations.
 
 Tabelas:
 
@@ -82,14 +82,14 @@ Filtros: `busca`, `status`, `prioridade`, `categoria`, `tipo`, `organizacao_id`,
 - Só o SuperAdmin exclui definitivamente, lê e escreve `nota_interna`/`link_tecnico` e publica atualizações `INTERNAL`. Para tirar uma demanda das visualizações ativas sem SuperAdmin, use o status Arquivada.
 - A autorização existe no router e no service; o frontend só esconde o que a API já recusa. A exclusão também passa pelo MFA de SuperAdmin se a política existente estiver habilitada.
 - Autoria nunca vem do cliente: `criado_por` e `atualizado_por` são preenchidos com `req.user.id`, e o autor de uma atualização também. Enviar essas chaves no corpo é rejeitado como campo não permitido.
-- O responsável precisa ser conta com acesso ativo ao painel (ou SuperAdmin ativo). Validado no service **e** por gatilho da migration 070 — nenhuma via de escrita escapa. A guarda do banco só dispara quando o responsável muda, para que revogar um acesso não trave a edição de demandas antigas.
+- O responsável precisa ser conta com acesso ativo ao painel (ou SuperAdmin ativo). Validado no service **e** por gatilho da migration 073 — nenhuma via de escrita escapa. A guarda do banco só dispara quando o responsável muda, para que revogar um acesso não trave a edição de demandas antigas.
 - Projeções públicas nunca selecionam `nota_interna` ou `link_tecnico`. Histórico de gestores inclui predicado `visibilidade=PUBLIC` no banco, inclusive em atualizações recentes.
 - RLS habilitado; acesso direto de `anon`/`authenticated` revogado nas duas tabelas. A função de exclusão não é executável por esses papéis.
 - Inputs têm whitelist; campos desconhecidos, autoria/código enviados pelo cliente, enums inválidos, UUIDs inválidos, progresso fora de 0–100, datas impossíveis e URLs técnicas não HTTP/HTTPS são rejeitados.
 - O frontend escapa conteúdo dinâmico e não interpreta descrições como HTML.
 - Nenhum UUID chega à interface como rótulo. Nomes resolvem por `perfis.nome` → `perfis.email` → e-mail do Auth → "Usuário sem cadastro"; sem responsável exibe "Sem responsável" e sem autor, "Sistema". A mesma ordem existe em SQL (`desenvolvimento_nome_usuario`) para o texto do histórico.
 
-## 6.1 Responsável (migration 070)
+## 6.1 Responsável (migration 073)
 
 `responsavel_usuario_id` é nulo por padrão — demandas antigas continuam válidas e nenhuma migration atribui dono a ninguém. Trocar o responsável gera um evento `ASSIGN` no histórico com os dois nomes resolvidos no momento da escrita ("Responsável alterado de Maria Silva para João Pedro."), então o registro continua legível mesmo se a conta for removida depois. A lista de responsáveis oferecida pelo formulário é exatamente a união consultada por `requirePainelAdministrativo`. A auditoria passou a gravar o `ator_tipo` real do autor em vez de `superadmin` fixo.
 
@@ -137,8 +137,8 @@ A suíte foi executada com URL Supabase apontando a loopback inválido e chaves 
 ## 17–20. Riscos, pendências e liberação
 
 - **Pronto para revisão e commit** da feature. Nenhum commit foi criado automaticamente.
-- **Deploy depende de homologação** com autenticação real e aplicação ordenada da migration 069 no ambiente de destino. Confirmar ali que a 068 e anteriores já foram aplicadas. Não foi afirmado que produção está migrada.
-- Migration necessária para esta feature: **069**. Não foi aplicada em nenhum Supabase remoto.
+- **Deploy depende de homologação** com autenticação real e aplicação ordenada das migrations no ambiente de destino. Confirmar ali que a 071 e anteriores já foram aplicadas.
+- Migrations desta feature: **072** e **073**. Estado verificado em 2026-09-05 no catálogo do PostgreSQL do Supabase em uso: **ambas já aplicadas ali** sob os números antigos (069 e 070). A 072 **não é idempotente** e não deve ser reexecutada onde já rodou; a 073 é idempotente e pode ser reexecutada com segurança. Confirme ambiente a ambiente — não foi verificado nenhum outro banco.
 - Antes da liberação, executar smoke com uma conta SuperAdmin e uma conta somente do painel no ambiente de homologação, incluindo o transporte PostgREST real.
 - Board, calendário, roadmap e histórico são paginados, com total explícito. Indicadores da visão geral são calculados sobre toda a base, sem limite da página.
 - Dependência é uma relação única por demanda nesta versão. Categorias são estáticas. Não há drag-and-drop, Gantt, anexos nem notificações, que não são necessários para os fluxos implementados.
